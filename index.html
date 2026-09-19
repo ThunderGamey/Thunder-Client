@@ -13,7 +13,7 @@
 				left: 0;
 				width: 100%;
 				height: 100%;
-				z-index: 999;
+				z-index: 2147483646;
 				pointer-events: none;
 			}
 
@@ -25,7 +25,7 @@
 				width: 100%;
 				height: 100%;
 				background: #05070d;
-				z-index: 2000;
+				z-index: 2147483647;
 				display: flex;
 				flex-direction: column;
 				align-items: center;
@@ -120,7 +120,7 @@
 					0 0 25px #7fe3ff,
 					0 0 55px #4fd1ff,
 					0 0 90px #2b7ba3;
-				z-index: 1001;
+				z-index: 2147483645;
 				opacity: 0;
 				pointer-events: none;
 				white-space: nowrap;
@@ -147,7 +147,7 @@
 				height: 100%;
 				background: white;
 				opacity: 0;
-				z-index: 1000;
+				z-index: 2147483644;
 				pointer-events: none;
 			}
 		</style>
@@ -658,11 +658,13 @@
 				const percentLabel = loadScreen.querySelector('#thunderPercent');
 
 let progress = 0;
-				let phase = 'ramp'; // ramp -> finish
+				let phase = 'ramp'; // ramp -> waiting -> finish
 				let rampStart = null;
 				let finishStart = null;
-				const RAMP_MS = 1600;   // smooth climb 0 -> 90
-				const FINISH_MS = 260;  // quick smooth snap 90 -> 100
+				const RAMP_MS = 1800;
+				const FINISH_MS = 260;
+				const MIN_BOOT_COVER_MS = 3000;
+				let bootCoverStart = performance.now();
 
 				function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
@@ -672,7 +674,17 @@ let progress = 0;
 					if (phase === 'ramp') {
 						const t = Math.min(1, (ts - rampStart) / RAMP_MS);
 						progress = easeOutCubic(t) * 90;
+
 						if (t >= 1) {
+							progress = 90;
+							phase = 'waiting';
+						}
+					} else if (phase === 'waiting') {
+						progress = 90;
+
+						// Storm is drawn above Eagler, so the Eagler loading screen
+						// remains covered while the client finishes booting.
+						if (ts - bootCoverStart >= MIN_BOOT_COVER_MS) {
 							phase = 'finish';
 							finishStart = ts;
 						}
@@ -684,10 +696,10 @@ let progress = 0;
 					barFill.style.width = progress + '%';
 					percentLabel.textContent = Math.floor(progress) + '%';
 
-					if (progress < 99.95) {
-						requestAnimationFrame(progressLoop);
-					} else {
+					if (phase === 'finish' && progress >= 99.95) {
 						afterLoadingBar();
+					} else {
+						requestAnimationFrame(progressLoop);
 					}
 				}
 				requestAnimationFrame(progressLoop);
@@ -746,6 +758,11 @@ let progress = 0;
 					setTimeout(() => {
 						titleDiv.remove();
 						flashDiv.remove();
+
+						// Storm is only the loading/intro effect.
+						canvas.style.transition = 'opacity 0.8s ease-out';
+						canvas.style.opacity = '0';
+						setTimeout(() => canvas.remove(), 850);
 					}, 3100);
 				}
 
