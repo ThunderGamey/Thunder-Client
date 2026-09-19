@@ -16,6 +16,131 @@
 				z-index: 999;
 				pointer-events: none;
 			}
+
+			/* ===== Loading screen (sits above the storm canvas, storm still visible/animating underneath) ===== */
+			#thunderLoadScreen {
+				position: fixed;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
+				background: rgba(4, 6, 12, 0.72);
+				z-index: 2000;
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				justify-content: center;
+				pointer-events: none;
+			}
+			#thunderLoadLabel {
+				font-family: 'Courier New', monospace;
+				font-weight: bold;
+				font-size: 2vw;
+				letter-spacing: 0.3em;
+				color: #cfeeff;
+				text-shadow:
+					2px 0 0 #4fd1ff,
+					-2px 0 0 #4fd1ff,
+					0 0 25px #7fe3ff;
+				margin-bottom: 26px;
+			}
+			#thunderBarOuter {
+				width: 40vw;
+				max-width: 560px;
+				height: 30px;
+				background: rgba(10, 14, 24, 0.85);
+				border: 2px solid #3a8bb8;
+				border-radius: 3px;
+				position: relative;
+				overflow: hidden;
+				box-shadow:
+					0 0 0 1px rgba(79, 209, 255, 0.15) inset,
+					0 0 22px rgba(79, 209, 255, 0.25);
+			}
+			#thunderBarFill {
+				height: 100%;
+				width: 0%;
+				background: linear-gradient(90deg, #1c5f82, #4fd1ff 60%, #eaf6ff);
+				box-shadow: 0 0 20px 2px #4fd1ff;
+				position: relative;
+				transition: width 0.15s ease-out;
+			}
+			/* jagged lightning notch that rides at the leading edge of the fill */
+			#thunderBarFill::after {
+				content: "";
+				position: absolute;
+				top: 0;
+				right: -9px;
+				width: 18px;
+				height: 100%;
+				background: #eaf6ff;
+				clip-path: polygon(60% 0%, 100% 0%, 40% 45%, 80% 45%, 20% 100%, 50% 55%, 0% 55%);
+				filter: drop-shadow(0 0 6px #ffffff);
+			}
+			/* subtle tick marks across the bar for texture */
+			#thunderBarOuter .tick {
+				position: absolute;
+				top: 0;
+				bottom: 0;
+				width: 2px;
+				background: rgba(5, 8, 16, 0.5);
+			}
+			#thunderPercent {
+				margin-top: 16px;
+				font-family: 'Courier New', monospace;
+				color: #7fe3ff;
+				font-size: 1vw;
+				letter-spacing: 0.15em;
+				text-shadow: 0 0 10px rgba(79, 209, 255, 0.6);
+			}
+
+			/* ===== Title splash ===== */
+			#splashTitle {
+				position: fixed;
+				top: 50%;
+				left: 50%;
+				transform: translate(-50%, -50%) scale(0.85);
+				font-family: 'Courier New', monospace;
+				font-weight: bold;
+				font-size: 6vw;
+				letter-spacing: 0.12em;
+				color: #eaf6ff;
+				text-shadow:
+					3px 0 0 #4fd1ff,
+					-3px 0 0 #4fd1ff,
+					0 0 25px #7fe3ff,
+					0 0 55px #4fd1ff,
+					0 0 90px #2b7ba3;
+				z-index: 1001;
+				opacity: 0;
+				pointer-events: none;
+				white-space: nowrap;
+				clip-path: polygon(
+					0% 10%, 3% 0%, 97% 0%, 100% 10%,
+					100% 90%, 97% 100%, 3% 100%, 0% 90%
+				);
+				padding: 6px 18px;
+			}
+			#splashTitle .bolt {
+				display: inline-block;
+				transform: scale(1.15) rotate(-4deg);
+				color: #ffffff;
+				text-shadow:
+					0 0 15px #ffffff,
+					0 0 40px #7fe3ff,
+					0 0 80px #4fd1ff;
+			}
+			#splashFlash {
+				position: fixed;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
+				background: white;
+				opacity: 0;
+				z-index: 1000;
+				pointer-events: none;
+			}
 		</style>
 		<meta property="og:locale" content="en-US" />
 		<meta property="og:type" content="website" />
@@ -62,196 +187,347 @@
 					
 				}
 			});
+
+			// ===== Storm (starts immediately) + Thunder loading bar + lightning strikes + THUNDER[bolt]CLIENT =====
+			window.addEventListener("load", function() {
+
+				// ---------- ambient storm canvas: starts right away, keeps running under everything ----------
+				const canvas = document.createElement('canvas');
+				canvas.id = 'stormCanvas';
+				document.body.appendChild(canvas);
+				const ctx = canvas.getContext('2d');
+
+				// render at the screen's actual pixel density for crisp, non-blurry lines
+				const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
+
+				function resize() {
+					const w = window.innerWidth;
+					const h = window.innerHeight;
+					canvas.style.width = w + 'px';
+					canvas.style.height = h + 'px';
+					canvas.width = Math.round(w * dpr);
+					canvas.height = Math.round(h * dpr);
+					ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+				}
+				window.addEventListener('resize', resize);
+				resize();
+
+				function viewW() { return canvas.width / dpr; }
+				function viewH() { return canvas.height / dpr; }
+
+				const clouds = [];
+				const CLOUD_COUNT = 16;
+				for (let i = 0; i < CLOUD_COUNT; i++) {
+					clouds.push({
+						x: Math.random() * viewW(),
+						y: Math.random() * viewH() * 0.55,
+						scale: 0.7 + Math.random() * 1.8,
+						speed: 0.3 + Math.random() * 0.9,
+						opacity: 0.2 + Math.random() * 0.3
+					});
+				}
+
+				const RAIN_COUNT = 260;
+				const rain = [];
+				for (let i = 0; i < RAIN_COUNT; i++) {
+					rain.push({
+						x: Math.random() * viewW(),
+						y: Math.random() * viewH(),
+						len: 10 + Math.random() * 20,
+						speed: 8 + Math.random() * 10,
+						drift: 2 + Math.random() * 2
+					});
+				}
+
+				function drawRain() {
+					ctx.save();
+					ctx.strokeStyle = 'rgba(150, 190, 230, 0.35)';
+					ctx.lineWidth = 1;
+					for (const d of rain) {
+						ctx.beginPath();
+						ctx.moveTo(d.x, d.y);
+						ctx.lineTo(d.x - d.drift, d.y + d.len);
+						ctx.stroke();
+						d.x -= d.drift;
+						d.y += d.speed;
+						if (d.y > viewH()) {
+							d.y = -d.len;
+							d.x = Math.random() * viewW();
+						}
+					}
+					ctx.restore();
+				}
+
+				let shakeFrames = 0;
+
+				function drawCloud(c) {
+					ctx.save();
+					ctx.translate(c.x, c.y);
+					ctx.scale(c.scale, c.scale);
+					ctx.fillStyle = `rgba(55, 70, 95, ${c.opacity})`;
+					ctx.beginPath();
+					ctx.arc(0, 0, 40, 0, Math.PI * 2);
+					ctx.arc(35, -10, 30, 0, Math.PI * 2);
+					ctx.arc(-35, -5, 28, 0, Math.PI * 2);
+					ctx.arc(15, 15, 32, 0, Math.PI * 2);
+					ctx.arc(-15, 15, 30, 0, Math.PI * 2);
+					ctx.fill();
+					ctx.restore();
+				}
+
+				let flashAlpha = 0;
+				let nextFlashTime = randomFlashDelay();
+				let lastFlashCheck = performance.now();
+				let boltPoints = null;
+
+				function randomFlashDelay() {
+					return 700 + Math.random() * 1800;
+				}
+
+				function generateBolt() {
+					const points = [];
+					let x = Math.random() * viewW();
+					let y = 0;
+					points.push({ x, y });
+					const segments = 10 + Math.floor(Math.random() * 8);
+					const branches = [];
+					for (let i = 0; i < segments; i++) {
+						x += (Math.random() - 0.5) * 90;
+						y += viewH() / segments;
+						points.push({ x, y });
+						if (Math.random() < 0.35 && i > 2) {
+							let bx = x, by = y;
+							const branch = [{ x: bx, y: by }];
+							const bSegs = 2 + Math.floor(Math.random() * 3);
+							for (let j = 0; j < bSegs; j++) {
+								bx += (Math.random() - 0.5) * 80 + 30;
+								by += 25 + Math.random() * 20;
+								branch.push({ x: bx, y: by });
+							}
+							branches.push(branch);
+						}
+					}
+					return { main: points, branches: branches };
+				}
+
+				function drawLine(points, alpha, width) {
+					ctx.beginPath();
+					ctx.moveTo(points[0].x, points[0].y);
+					for (let i = 1; i < points.length; i++) {
+						ctx.lineTo(points[i].x, points[i].y);
+					}
+					ctx.strokeStyle = `rgba(210, 235, 255, ${alpha})`;
+					ctx.lineWidth = width;
+					ctx.stroke();
+				}
+
+				function drawBolt(bolt, alpha) {
+					ctx.save();
+					ctx.shadowColor = '#7fe3ff';
+					ctx.shadowBlur = 35;
+					drawLine(bolt.main, alpha, 3);
+					for (const b of bolt.branches) {
+						drawLine(b, alpha * 0.7, 1.6);
+					}
+					ctx.restore();
+				}
+
+				function triggerFlash() {
+					flashAlpha = 1;
+					boltPoints = generateBolt();
+					shakeFrames = 8;
+					if (Math.random() < 0.3) {
+						setTimeout(() => {
+							flashAlpha = 1;
+							boltPoints = generateBolt();
+							shakeFrames = 6;
+						}, 90);
+					}
+				}
+
+				function animate(now) {
+					ctx.save();
+
+					if (shakeFrames > 0) {
+						const mag = shakeFrames * 0.8;
+						ctx.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
+						shakeFrames--;
+					}
+
+					ctx.clearRect(-20, -20, viewW() + 40, viewH() + 40);
+
+					const grad = ctx.createLinearGradient(0, 0, 0, viewH());
+					grad.addColorStop(0, 'rgba(5,7,15,0.35)');
+					grad.addColorStop(1, 'rgba(19,26,48,0.35)');
+					ctx.fillStyle = grad;
+					ctx.fillRect(-20, -20, viewW() + 40, viewH() + 40);
+
+					for (const c of clouds) {
+						c.x += c.speed;
+						if (c.x - 100 > viewW()) c.x = -100;
+						drawCloud(c);
+					}
+
+					drawRain();
+
+					if (now - lastFlashCheck > nextFlashTime) {
+						triggerFlash();
+						lastFlashCheck = now;
+						nextFlashTime = randomFlashDelay();
+					}
+
+					if (flashAlpha > 0) {
+						ctx.fillStyle = `rgba(190, 220, 255, ${flashAlpha * 0.18})`;
+						ctx.fillRect(-20, -20, viewW() + 40, viewH() + 40);
+						if (boltPoints) drawBolt(boltPoints, flashAlpha);
+						flashAlpha -= 0.07;
+						if (flashAlpha <= 0) boltPoints = null;
+					}
+
+					ctx.restore();
+					requestAnimationFrame(animate);
+				}
+				requestAnimationFrame(animate);
+
+				// ---------- loading screen sits ON TOP of the running storm ----------
+				const loadScreen = document.createElement('div');
+				loadScreen.id = 'thunderLoadScreen';
+				loadScreen.innerHTML =
+					'<div id="thunderLoadLabel">LOADING</div>' +
+					'<div id="thunderBarOuter"><div id="thunderBarFill"></div></div>' +
+					'<div id="thunderPercent">0%</div>';
+				document.body.appendChild(loadScreen);
+
+				// scattered tick marks for texture on the bar track
+				const barOuter = loadScreen.querySelector('#thunderBarOuter');
+				for (let i = 0; i < 22; i++) {
+					const tick = document.createElement('div');
+					tick.className = 'tick';
+					tick.style.left = (i * (100 / 22)) + '%';
+					barOuter.appendChild(tick);
+				}
+
+				const barFill = loadScreen.querySelector('#thunderBarFill');
+				const percentLabel = loadScreen.querySelector('#thunderPercent');
+
+				let progress = 0;
+				function tick() {
+					const jump = Math.random() < 0.15 ? (Math.random() * 10) : (Math.random() * 3.5);
+					progress = Math.min(100, progress + jump);
+					barFill.style.width = progress + '%';
+					percentLabel.textContent = Math.floor(progress) + '%';
+					if (progress < 100) {
+						setTimeout(tick, 90 + Math.random() * 120);
+					} else {
+						setTimeout(afterLoadingBar, 300);
+					}
+				}
+				setTimeout(tick, 200);
+
+				function afterLoadingBar() {
+					loadScreen.style.transition = 'opacity 0.4s ease-out';
+					loadScreen.style.opacity = '0';
+					setTimeout(() => {
+						loadScreen.remove();
+						runIntro();
+					}, 400);
+				}
+
+				// ---------- synthesized thunder sound ----------
+				function playThunder() {
+					try {
+						const AudioCtx = window.AudioContext || window.webkitAudioContext;
+						const actx = new AudioCtx();
+
+						const bufferSize = actx.sampleRate * 2.5;
+						const buffer = actx.createBuffer(1, bufferSize, actx.sampleRate);
+						const data = buffer.getChannelData(0);
+						for (let i = 0; i < bufferSize; i++) {
+							data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 1.5);
+						}
+						const noise = actx.createBufferSource();
+						noise.buffer = buffer;
+
+						const lowpass = actx.createBiquadFilter();
+						lowpass.type = 'lowpass';
+						lowpass.frequency.value = 180;
+
+						const gain = actx.createGain();
+						gain.gain.setValueAtTime(0, actx.currentTime);
+						gain.gain.linearRampToValueAtTime(0.9, actx.currentTime + 0.05);
+						gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 2.4);
+
+						noise.connect(lowpass);
+						lowpass.connect(gain);
+						gain.connect(actx.destination);
+
+						const crackBuf = actx.createBuffer(1, actx.sampleRate * 0.15, actx.sampleRate);
+						const crackData = crackBuf.getChannelData(0);
+						for (let i = 0; i < crackData.length; i++) {
+							crackData[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / crackData.length, 0.3);
+						}
+						const crack = actx.createBufferSource();
+						crack.buffer = crackBuf;
+						const crackGain = actx.createGain();
+						crackGain.gain.value = 1.0;
+						crack.connect(crackGain);
+						crackGain.connect(actx.destination);
+
+						noise.start();
+						crack.start();
+					} catch (e) {
+						// audio blocked or unsupported; fail silently
+					}
+				}
+
+				// ---------- splash flash + title (runs AFTER the loading bar finishes) ----------
+				function runIntro() {
+					const flashDiv = document.createElement('div');
+					flashDiv.id = 'splashFlash';
+					document.body.appendChild(flashDiv);
+
+					const titleDiv = document.createElement('div');
+					titleDiv.id = 'splashTitle';
+					titleDiv.innerHTML = 'THUNDER<span class="bolt">&#9889;</span>CLIENT';
+					document.body.appendChild(titleDiv);
+
+					function flashOnce(peakOpacity, duration) {
+						flashDiv.style.transition = 'none';
+						flashDiv.style.opacity = String(peakOpacity);
+						requestAnimationFrame(() => {
+							flashDiv.style.transition = `opacity ${duration}ms ease-out`;
+							flashDiv.style.opacity = '0';
+						});
+					}
+
+					flashOnce(0.85, 220);
+					setTimeout(() => flashOnce(0.65, 260), 180);
+					setTimeout(() => flashOnce(0.9, 300), 380);
+
+					playThunder();
+					setTimeout(playThunder, 200);
+
+					setTimeout(() => {
+						titleDiv.style.transition = 'opacity 0.15s ease-out, transform 0.15s ease-out';
+						titleDiv.style.opacity = '1';
+						titleDiv.style.transform = 'translate(-50%, -50%) scale(1)';
+						flashOnce(1, 350);
+						playThunder();
+					}, 620);
+
+					setTimeout(() => {
+						titleDiv.style.transition = 'opacity 0.8s ease-in';
+						titleDiv.style.opacity = '0';
+					}, 2200);
+
+					setTimeout(() => {
+						titleDiv.remove();
+						flashDiv.remove();
+					}, 3100);
+				}
+
+			});
 		</script>
 	</head>
-	<body style="margin:0px;width:100%;height:100%;overflow:hidden;background-color:black;" id="game_frame"><canvas id="stormCanvas"></canvas>
-<script>
-(function () {
-  const canvas = document.getElementById('stormCanvas');
-  const ctx = canvas.getContext('2d');
-
-  function resize() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-  }
-  window.addEventListener('resize', resize);
-  resize();
-
-  const clouds = [];
-  const CLOUD_COUNT = 16;
-  for (let i = 0; i < CLOUD_COUNT; i++) {
-    clouds.push({
-      x: Math.random() * canvas.width,
-      y: Math.random() * canvas.height * 0.55,
-      scale: 0.7 + Math.random() * 1.8,
-      speed: 0.3 + Math.random() * 0.9,
-      opacity: 0.2 + Math.random() * 0.3
-    });
-  }
-
-  const RAIN_COUNT = 220;
-  const rain = [];
-  for (let i = 0; i < RAIN_COUNT; i++) {
-    rain.push({
-      x: Math.random() * canvas.width,
-      y: Math.random() * canvas.height,
-      len: 10 + Math.random() * 20,
-      speed: 8 + Math.random() * 10,
-      drift: 2 + Math.random() * 2
-    });
-  }
-
-  function drawRain() {
-    ctx.save();
-    ctx.strokeStyle = 'rgba(150, 190, 230, 0.35)';
-    ctx.lineWidth = 1.2;
-    for (const d of rain) {
-      ctx.beginPath();
-      ctx.moveTo(d.x, d.y);
-      ctx.lineTo(d.x - d.drift, d.y + d.len);
-      ctx.stroke();
-      d.x -= d.drift;
-      d.y += d.speed;
-      if (d.y > canvas.height) {
-        d.y = -d.len;
-        d.x = Math.random() * canvas.width;
-      }
-    }
-    ctx.restore();
-  }
-
-  let shakeFrames = 0;
-
-  function drawCloud(c) {
-    ctx.save();
-    ctx.translate(c.x, c.y);
-    ctx.scale(c.scale, c.scale);
-    ctx.fillStyle = `rgba(55, 70, 95, ${c.opacity})`;
-    ctx.beginPath();
-    ctx.arc(0, 0, 40, 0, Math.PI * 2);
-    ctx.arc(35, -10, 30, 0, Math.PI * 2);
-    ctx.arc(-35, -5, 28, 0, Math.PI * 2);
-    ctx.arc(15, 15, 32, 0, Math.PI * 2);
-    ctx.arc(-15, 15, 30, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  let flashAlpha = 0;
-  let nextFlashTime = randomFlashDelay();
-  let lastFlashCheck = performance.now();
-  let boltPoints = null;
-
-  function randomFlashDelay() {
-    return 700 + Math.random() * 1800;
-  }
-
-  function generateBolt() {
-    const points = [];
-    let x = Math.random() * canvas.width;
-    let y = 0;
-    points.push({ x, y });
-    const segments = 10 + Math.floor(Math.random() * 8);
-    const branches = [];
-    for (let i = 0; i < segments; i++) {
-      x += (Math.random() - 0.5) * 90;
-      y += canvas.height / segments;
-      points.push({ x, y });
-      if (Math.random() < 0.35 && i > 2) {
-        let bx = x, by = y;
-        const branch = [{ x: bx, y: by }];
-        const bSegs = 2 + Math.floor(Math.random() * 3);
-        for (let j = 0; j < bSegs; j++) {
-          bx += (Math.random() - 0.5) * 80 + 30;
-          by += 25 + Math.random() * 20;
-          branch.push({ x: bx, y: by });
-        }
-        branches.push(branch);
-      }
-    }
-    return { main: points, branches };
-  }
-
-  function drawLine(points, alpha, width) {
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
-    }
-    ctx.strokeStyle = `rgba(210, 235, 255, ${alpha})`;
-    ctx.lineWidth = width;
-    ctx.stroke();
-  }
-
-  function drawBolt(bolt, alpha) {
-    ctx.save();
-    ctx.shadowColor = '#7fe3ff';
-    ctx.shadowBlur = 35;
-    drawLine(bolt.main, alpha, 3.5);
-    for (const b of bolt.branches) {
-      drawLine(b, alpha * 0.7, 2);
-    }
-    ctx.restore();
-  }
-
-  function triggerFlash() {
-    flashAlpha = 1;
-    boltPoints = generateBolt();
-    shakeFrames = 8;
-    if (Math.random() < 0.3) {
-      setTimeout(() => {
-        flashAlpha = 1;
-        boltPoints = generateBolt();
-        shakeFrames = 6;
-      }, 90);
-    }
-  }
-
-  function animate(now) {
-    ctx.save();
-
-    if (shakeFrames > 0) {
-      const mag = shakeFrames * 0.8;
-      ctx.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
-      shakeFrames--;
-    }
-
-    ctx.clearRect(-20, -20, canvas.width + 40, canvas.height + 40);
-
-    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    grad.addColorStop(0, 'rgba(5,7,15,0.35)');
-    grad.addColorStop(1, 'rgba(19,26,48,0.35)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(-20, -20, canvas.width + 40, canvas.height + 40);
-
-    for (const c of clouds) {
-      c.x += c.speed;
-      if (c.x - 100 > canvas.width) c.x = -100;
-      drawCloud(c);
-    }
-
-    drawRain();
-
-    if (now - lastFlashCheck > nextFlashTime) {
-      triggerFlash();
-      lastFlashCheck = now;
-      nextFlashTime = randomFlashDelay();
-    }
-
-    if (flashAlpha > 0) {
-      ctx.fillStyle = `rgba(190, 220, 255, ${flashAlpha * 0.18})`;
-      ctx.fillRect(-20, -20, canvas.width + 40, canvas.height + 40);
-      if (boltPoints) drawBolt(boltPoints, flashAlpha);
-      flashAlpha -= 0.07;
-      if (flashAlpha <= 0) boltPoints = null;
-    }
-
-    ctx.restore();
-    requestAnimationFrame(animate);
-  }
-
-  requestAnimationFrame(animate);
-})();
-</script>
-</body>
+	<body style="margin:0px;width:100%;height:100%;overflow:hidden;background-color:black;" id="game_frame"></body>
 </html>
