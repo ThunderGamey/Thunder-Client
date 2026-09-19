@@ -17,19 +17,27 @@
 				pointer-events: none;
 			}
 
-			/* ===== Loading screen (sits above the storm canvas, storm still visible/animating underneath) ===== */
+			/* ===== Loading screen (fully opaque so nothing underneath shows through) ===== */
 			#thunderLoadScreen {
 				position: fixed;
 				top: 0;
 				left: 0;
 				width: 100%;
 				height: 100%;
-				background: rgba(4, 6, 12, 0.72);
+				background: #05070d;
 				z-index: 2000;
 				display: flex;
 				flex-direction: column;
 				align-items: center;
 				justify-content: center;
+				pointer-events: none;
+			}
+			/* faint storm glow baked into the opaque backdrop so it doesn't look flat */
+			#thunderLoadScreen::before {
+				content: "";
+				position: absolute;
+				top: 0; left: 0; right: 0; bottom: 0;
+				background: radial-gradient(ellipse at 50% 40%, rgba(30, 60, 90, 0.35), rgba(5, 7, 13, 0) 65%);
 				pointer-events: none;
 			}
 			#thunderLoadLabel {
@@ -43,6 +51,7 @@
 					-2px 0 0 #4fd1ff,
 					0 0 25px #7fe3ff;
 				margin-bottom: 26px;
+				position: relative;
 			}
 			#thunderBarOuter {
 				width: 40vw;
@@ -63,7 +72,6 @@
 				background: linear-gradient(90deg, #1c5f82, #4fd1ff 60%, #eaf6ff);
 				box-shadow: 0 0 20px 2px #4fd1ff;
 				position: relative;
-				transition: width 0.15s ease-out;
 			}
 			/* jagged lightning notch that rides at the leading edge of the fill */
 			#thunderBarFill::after {
@@ -92,6 +100,7 @@
 				font-size: 1vw;
 				letter-spacing: 0.15em;
 				text-shadow: 0 0 10px rgba(79, 209, 255, 0.6);
+				position: relative;
 			}
 
 			/* ===== Title splash ===== */
@@ -155,9 +164,9 @@
 				if(window.location.href.indexOf("file:") === 0) {
 					alert("HTTP please, do not open this file locally, run a local HTTP server and load it via HTTP");
 				}else {
-					
+
 					// %%%%%%%%% launch options %%%%%%%%%%%%
-					
+
 					var relayId = Math.floor(Math.random() * 3);
 					window.eaglercraftXOpts = {
 						demoMode: false,
@@ -173,29 +182,261 @@
 							{ addr: "wss://relay.shhnowisnottheti.me/", comment: "ayunami relay #1", primary: relayId == 2 }
 						]
 					};
-					
+
 					// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-					
+
 					var q = window.location.search;
 					if((typeof q === "string") && q[0] === "?" && (typeof window.URLSearchParams !== "undefined")) {
 						q = new window.URLSearchParams(q);
 						var s = q.get("server");
 						if(s) window.eaglercraftXOpts.joinServer = s;
 					}
-					
+
 					main();
-					
+
 				}
 			});
 
 			// ===== Storm (starts immediately) + Thunder loading bar + lightning strikes + THUNDER[bolt]CLIENT =====
 			window.addEventListener("load", function() {
 
-				// ---------- ambient storm canvas: starts right away, keeps running under everything ----------
+				// ---------------------------------------------------------------
+				// Shared audio engine (real synthesized thunder/rain, not sfx clips)
+				// ---------------------------------------------------------------
+				let actx = null;
+				function getAudioCtx() {
+					try {
+						if (!actx) {
+							const AudioCtx = window.AudioContext || window.webkitAudioContext;
+							actx = new AudioCtx();
+						}
+						if (actx.state === 'suspended') {
+							actx.resume().catch(function(){});
+						}
+						return actx;
+					} catch (e) {
+						return null;
+					}
+				}
+				// browsers block audio until a user gesture; keep trying to unlock on every interaction
+				['pointerdown', 'keydown', 'touchstart'].forEach(function(evt) {
+					window.addEventListener(evt, function() { getAudioCtx(); }, { passive: true });
+				});
+
+				// shared distortion curve for a gritty, electric edge on the crack layer
+				function makeDistortionCurve(amount) {
+					const n = 44100;
+					const curve = new Float32Array(n);
+					for (let i = 0; i < n; i++) {
+						const x = (i * 2) / n - 1;
+						curve[i] = ((3 + amount) * x * 20 * (Math.PI / 180)) / (Math.PI + amount * Math.abs(x));
+					}
+					return curve;
+				}
+
+				// a shared compressor + master volume gives every strike punch at a clear, consistent level
+				let thunderBus = null;
+				const THUNDER_VOLUME = 0.38; // 30%-45% requested range
+				function getThunderBus(ctx) {
+					if (!thunderBus) {
+						thunderBus = ctx.createDynamicsCompressor();
+						thunderBus.threshold.value = -18;
+						thunderBus.knee.value = 12;
+						thunderBus.ratio.value = 6;
+						thunderBus.attack.value = 0.003;
+						thunderBus.release.value = 0.25;
+						const master = ctx.createGain();
+						master.gain.value = THUNDER_VOLUME;
+						thunderBus.connect(master);
+						master.connect(ctx.destination);
+					}
+					return thunderBus;
+				}
+
+				// tuff, electric thunder: zap transient + crackle burst + distorted crack + tremolo rumble + sub-bass
+				function playThunder(big) {
+					const ctx = getAudioCtx();
+					if (!ctx) return;
+					try {
+						const now = ctx.currentTime;
+						const bus = getThunderBus(ctx);
+
+						// ---- electric "zap" transient: fast-falling square/saw sweep, the initial spark of the strike ----
+						const zap = ctx.createOscillator();
+						zap.type = 'sawtooth';
+						zap.frequency.setValueAtTime(big ? 2600 : 1900, now);
+						zap.frequency.exponentialRampToValueAtTime(140, now + 0.045);
+						const zapGain = ctx.createGain();
+						zapGain.gain.setValueAtTime(big ? 0.5 : 0.35, now);
+						zapGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+						zap.connect(zapGain);
+						zapGain.connect(bus);
+						zap.start(now);
+						zap.stop(now + 0.06);
+
+						// ---- crackle: a handful of tiny random noise clicks right at the strike, before the boom ----
+						const crackleHits = 5 + Math.floor(Math.random() * 4);
+						for (let i = 0; i < crackleHits; i++) {
+							const t = now + Math.random() * 0.09;
+							const dur = 0.006 + Math.random() * 0.01;
+							const buf = ctx.createBuffer(1, Math.max(1, Math.floor(ctx.sampleRate * dur)), ctx.sampleRate);
+							const d = buf.getChannelData(0);
+							for (let j = 0; j < d.length; j++) d[j] = (Math.random() * 2 - 1);
+							const src = ctx.createBufferSource();
+							src.buffer = buf;
+							const hp = ctx.createBiquadFilter();
+							hp.type = 'highpass';
+							hp.frequency.value = 2500;
+							const g = ctx.createGain();
+							g.gain.value = (big ? 0.5 : 0.35) * (0.5 + Math.random() * 0.5);
+							src.connect(hp);
+							hp.connect(g);
+							g.connect(bus);
+							src.start(t);
+						}
+
+						// ---- main crack: distorted bandpass noise burst, the loudest single hit ----
+						const crackDur = 0.2;
+						const crackBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * crackDur), ctx.sampleRate);
+						const cd = crackBuf.getChannelData(0);
+						for (let i = 0; i < cd.length; i++) {
+							cd[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / cd.length, 0.28);
+						}
+						const crackSrc = ctx.createBufferSource();
+						crackSrc.buffer = crackBuf;
+
+						const crackHP = ctx.createBiquadFilter();
+						crackHP.type = 'highpass';
+						crackHP.frequency.value = 700;
+
+						const crackPeak = ctx.createBiquadFilter();
+						crackPeak.type = 'peaking';
+						crackPeak.frequency.value = 2200 + Math.random() * 900;
+						crackPeak.Q.value = 1.3;
+						crackPeak.gain.value = 9;
+
+						const shaper = ctx.createWaveShaper();
+						shaper.curve = makeDistortionCurve(big ? 32 : 18);
+						shaper.oversample = '2x';
+
+						const crackGain = ctx.createGain();
+						crackGain.gain.setValueAtTime(big ? 1.1 : 0.8, now + 0.005);
+						crackGain.gain.exponentialRampToValueAtTime(0.001, now + crackDur);
+
+						crackSrc.connect(crackHP);
+						crackHP.connect(crackPeak);
+						crackPeak.connect(shaper);
+						shaper.connect(crackGain);
+						crackGain.connect(bus);
+						crackSrc.start(now + 0.01);
+
+						// ---- rolling low rumble (brown-noise via leaky integration) with a slow tremolo for a "rolling" feel ----
+						const rumbleDur = (big ? 3.8 : 2.1) + Math.random() * 0.9;
+						const rumbleBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * rumbleDur), ctx.sampleRate);
+						const rd = rumbleBuf.getChannelData(0);
+						let last = 0;
+						for (let i = 0; i < rd.length; i++) {
+							const white = Math.random() * 2 - 1;
+							last = (last + 0.018 * white) / 1.018;
+							rd[i] = last * Math.pow(1 - i / rd.length, 1.1);
+						}
+						const rumbleSrc = ctx.createBufferSource();
+						rumbleSrc.buffer = rumbleBuf;
+
+						const rumbleFilter = ctx.createBiquadFilter();
+						rumbleFilter.type = 'lowpass';
+						rumbleFilter.frequency.setValueAtTime(big ? 260 : 170, now);
+						rumbleFilter.frequency.exponentialRampToValueAtTime(50, now + rumbleDur);
+						rumbleFilter.Q.value = 0.9;
+
+						const tremolo = ctx.createOscillator();
+						tremolo.type = 'sine';
+						tremolo.frequency.value = 3.5 + Math.random() * 2;
+						const tremoloDepth = ctx.createGain();
+						tremoloDepth.gain.value = big ? 0.35 : 0.25;
+
+						const rumbleGain = ctx.createGain();
+						rumbleGain.gain.setValueAtTime(0.0001, now);
+						rumbleGain.gain.linearRampToValueAtTime(big ? 1.1 : 0.7, now + 0.2);
+						rumbleGain.gain.exponentialRampToValueAtTime(0.001, now + rumbleDur);
+
+						tremolo.connect(tremoloDepth);
+						tremoloDepth.connect(rumbleGain.gain);
+
+						rumbleSrc.connect(rumbleFilter);
+						rumbleFilter.connect(rumbleGain);
+						rumbleGain.connect(bus);
+
+						// ---- sub-bass weight underneath the rumble ----
+						const sub = ctx.createOscillator();
+						sub.type = 'sine';
+						sub.frequency.setValueAtTime(big ? 62 : 48, now);
+						sub.frequency.exponentialRampToValueAtTime(24, now + rumbleDur * 0.85);
+
+						const subGain = ctx.createGain();
+						subGain.gain.setValueAtTime(0.0001, now);
+						subGain.gain.linearRampToValueAtTime(big ? 0.4 : 0.22, now + 0.08);
+						subGain.gain.exponentialRampToValueAtTime(0.001, now + rumbleDur * 0.9);
+
+						sub.connect(subGain);
+						subGain.connect(bus);
+
+						rumbleSrc.start(now);
+						tremolo.start(now);
+						tremolo.stop(now + rumbleDur);
+						sub.start(now);
+						sub.stop(now + rumbleDur * 0.9 + 0.05);
+					} catch (e) {
+						// audio blocked/unsupported, fail silently
+					}
+				}
+
+				// continuous looping rain hiss, fades in gently
+				function startRainLoop() {
+					const ctx = getAudioCtx();
+					if (!ctx) return;
+					try {
+						const loopSec = 4;
+						const buffer = ctx.createBuffer(1, ctx.sampleRate * loopSec, ctx.sampleRate);
+						const data = buffer.getChannelData(0);
+						for (let i = 0; i < data.length; i++) {
+							data[i] = Math.random() * 2 - 1;
+						}
+						const src = ctx.createBufferSource();
+						src.buffer = buffer;
+						src.loop = true;
+
+						const bandpass = ctx.createBiquadFilter();
+						bandpass.type = 'bandpass';
+						bandpass.frequency.value = 3000;
+						bandpass.Q.value = 0.55;
+
+						const shelf = ctx.createBiquadFilter();
+						shelf.type = 'highshelf';
+						shelf.frequency.value = 6500;
+						shelf.gain.value = -8;
+
+						const rainGain = ctx.createGain();
+						rainGain.gain.setValueAtTime(0.0001, ctx.currentTime);
+						rainGain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 3.5);
+
+						src.connect(bandpass);
+						bandpass.connect(shelf);
+						shelf.connect(rainGain);
+						rainGain.connect(ctx.destination);
+
+						src.start();
+					} catch (e) {}
+				}
+				startRainLoop();
+
+				// ---------------------------------------------------------------
+				// ambient storm canvas: starts right away, keeps running under everything
+				// ---------------------------------------------------------------
 				const canvas = document.createElement('canvas');
 				canvas.id = 'stormCanvas';
 				document.body.appendChild(canvas);
-				const ctx = canvas.getContext('2d');
+				const ctx2d = canvas.getContext('2d');
 
 				// render at the screen's actual pixel density for crisp, non-blurry lines
 				const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
@@ -207,7 +448,7 @@
 					canvas.style.height = h + 'px';
 					canvas.width = Math.round(w * dpr);
 					canvas.height = Math.round(h * dpr);
-					ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+					ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
 				}
 				window.addEventListener('resize', resize);
 				resize();
@@ -240,14 +481,14 @@
 				}
 
 				function drawRain() {
-					ctx.save();
-					ctx.strokeStyle = 'rgba(150, 190, 230, 0.35)';
-					ctx.lineWidth = 1;
+					ctx2d.save();
+					ctx2d.strokeStyle = 'rgba(150, 190, 230, 0.35)';
+					ctx2d.lineWidth = 1;
 					for (const d of rain) {
-						ctx.beginPath();
-						ctx.moveTo(d.x, d.y);
-						ctx.lineTo(d.x - d.drift, d.y + d.len);
-						ctx.stroke();
+						ctx2d.beginPath();
+						ctx2d.moveTo(d.x, d.y);
+						ctx2d.lineTo(d.x - d.drift, d.y + d.len);
+						ctx2d.stroke();
 						d.x -= d.drift;
 						d.y += d.speed;
 						if (d.y > viewH()) {
@@ -255,24 +496,24 @@
 							d.x = Math.random() * viewW();
 						}
 					}
-					ctx.restore();
+					ctx2d.restore();
 				}
 
 				let shakeFrames = 0;
 
 				function drawCloud(c) {
-					ctx.save();
-					ctx.translate(c.x, c.y);
-					ctx.scale(c.scale, c.scale);
-					ctx.fillStyle = `rgba(55, 70, 95, ${c.opacity})`;
-					ctx.beginPath();
-					ctx.arc(0, 0, 40, 0, Math.PI * 2);
-					ctx.arc(35, -10, 30, 0, Math.PI * 2);
-					ctx.arc(-35, -5, 28, 0, Math.PI * 2);
-					ctx.arc(15, 15, 32, 0, Math.PI * 2);
-					ctx.arc(-15, 15, 30, 0, Math.PI * 2);
-					ctx.fill();
-					ctx.restore();
+					ctx2d.save();
+					ctx2d.translate(c.x, c.y);
+					ctx2d.scale(c.scale, c.scale);
+					ctx2d.fillStyle = `rgba(55, 70, 95, ${c.opacity})`;
+					ctx2d.beginPath();
+					ctx2d.arc(0, 0, 40, 0, Math.PI * 2);
+					ctx2d.arc(35, -10, 30, 0, Math.PI * 2);
+					ctx2d.arc(-35, -5, 28, 0, Math.PI * 2);
+					ctx2d.arc(15, 15, 32, 0, Math.PI * 2);
+					ctx2d.arc(-15, 15, 30, 0, Math.PI * 2);
+					ctx2d.fill();
+					ctx2d.restore();
 				}
 
 				let flashAlpha = 0;
@@ -311,31 +552,35 @@
 				}
 
 				function drawLine(points, alpha, width) {
-					ctx.beginPath();
-					ctx.moveTo(points[0].x, points[0].y);
+					ctx2d.beginPath();
+					ctx2d.moveTo(points[0].x, points[0].y);
 					for (let i = 1; i < points.length; i++) {
-						ctx.lineTo(points[i].x, points[i].y);
+						ctx2d.lineTo(points[i].x, points[i].y);
 					}
-					ctx.strokeStyle = `rgba(210, 235, 255, ${alpha})`;
-					ctx.lineWidth = width;
-					ctx.stroke();
+					ctx2d.strokeStyle = `rgba(210, 235, 255, ${alpha})`;
+					ctx2d.lineWidth = width;
+					ctx2d.stroke();
 				}
 
 				function drawBolt(bolt, alpha) {
-					ctx.save();
-					ctx.shadowColor = '#7fe3ff';
-					ctx.shadowBlur = 35;
+					ctx2d.save();
+					ctx2d.shadowColor = '#7fe3ff';
+					ctx2d.shadowBlur = 35;
 					drawLine(bolt.main, alpha, 3);
 					for (const b of bolt.branches) {
 						drawLine(b, alpha * 0.7, 1.6);
 					}
-					ctx.restore();
+					ctx2d.restore();
 				}
 
 				function triggerFlash() {
 					flashAlpha = 1;
 					boltPoints = generateBolt();
 					shakeFrames = 8;
+
+					// thunder fires the instant the flash happens — fully synced
+					playThunder(false);
+
 					if (Math.random() < 0.3) {
 						setTimeout(() => {
 							flashAlpha = 1;
@@ -346,21 +591,21 @@
 				}
 
 				function animate(now) {
-					ctx.save();
+					ctx2d.save();
 
 					if (shakeFrames > 0) {
 						const mag = shakeFrames * 0.8;
-						ctx.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
+						ctx2d.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
 						shakeFrames--;
 					}
 
-					ctx.clearRect(-20, -20, viewW() + 40, viewH() + 40);
+					ctx2d.clearRect(-20, -20, viewW() + 40, viewH() + 40);
 
-					const grad = ctx.createLinearGradient(0, 0, 0, viewH());
+					const grad = ctx2d.createLinearGradient(0, 0, 0, viewH());
 					grad.addColorStop(0, 'rgba(5,7,15,0.35)');
 					grad.addColorStop(1, 'rgba(19,26,48,0.35)');
-					ctx.fillStyle = grad;
-					ctx.fillRect(-20, -20, viewW() + 40, viewH() + 40);
+					ctx2d.fillStyle = grad;
+					ctx2d.fillRect(-20, -20, viewW() + 40, viewH() + 40);
 
 					for (const c of clouds) {
 						c.x += c.speed;
@@ -377,19 +622,21 @@
 					}
 
 					if (flashAlpha > 0) {
-						ctx.fillStyle = `rgba(190, 220, 255, ${flashAlpha * 0.18})`;
-						ctx.fillRect(-20, -20, viewW() + 40, viewH() + 40);
+						ctx2d.fillStyle = `rgba(190, 220, 255, ${flashAlpha * 0.18})`;
+						ctx2d.fillRect(-20, -20, viewW() + 40, viewH() + 40);
 						if (boltPoints) drawBolt(boltPoints, flashAlpha);
 						flashAlpha -= 0.07;
 						if (flashAlpha <= 0) boltPoints = null;
 					}
 
-					ctx.restore();
+					ctx2d.restore();
 					requestAnimationFrame(animate);
 				}
 				requestAnimationFrame(animate);
 
-				// ---------- loading screen sits ON TOP of the running storm ----------
+				// ---------------------------------------------------------------
+				// loading screen sits ON TOP of the running storm, and is now fully opaque
+				// ---------------------------------------------------------------
 				const loadScreen = document.createElement('div');
 				loadScreen.id = 'thunderLoadScreen';
 				loadScreen.innerHTML =
@@ -401,28 +648,49 @@
 				// scattered tick marks for texture on the bar track
 				const barOuter = loadScreen.querySelector('#thunderBarOuter');
 				for (let i = 0; i < 22; i++) {
-					const tick = document.createElement('div');
-					tick.className = 'tick';
-					tick.style.left = (i * (100 / 22)) + '%';
-					barOuter.appendChild(tick);
+					const tickEl = document.createElement('div');
+					tickEl.className = 'tick';
+					tickEl.style.left = (i * (100 / 22)) + '%';
+					barOuter.appendChild(tickEl);
 				}
 
 				const barFill = loadScreen.querySelector('#thunderBarFill');
 				const percentLabel = loadScreen.querySelector('#thunderPercent');
 
-				let progress = 0;
-				function tick() {
-					const jump = Math.random() < 0.15 ? (Math.random() * 10) : (Math.random() * 3.5);
-					progress = Math.min(100, progress + jump);
+let progress = 0;
+				let phase = 'ramp'; // ramp -> finish
+				let rampStart = null;
+				let finishStart = null;
+				const RAMP_MS = 1600;   // smooth climb 0 -> 90
+				const FINISH_MS = 260;  // quick smooth snap 90 -> 100
+
+				function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+				function progressLoop(ts) {
+					if (rampStart === null) rampStart = ts;
+
+					if (phase === 'ramp') {
+						const t = Math.min(1, (ts - rampStart) / RAMP_MS);
+						progress = easeOutCubic(t) * 90;
+						if (t >= 1) {
+							phase = 'finish';
+							finishStart = ts;
+						}
+					} else if (phase === 'finish') {
+						const t = Math.min(1, (ts - finishStart) / FINISH_MS);
+						progress = 90 + 10 * easeOutCubic(t);
+					}
+
 					barFill.style.width = progress + '%';
 					percentLabel.textContent = Math.floor(progress) + '%';
-					if (progress < 100) {
-						setTimeout(tick, 90 + Math.random() * 120);
+
+					if (progress < 99.95) {
+						requestAnimationFrame(progressLoop);
 					} else {
-						setTimeout(afterLoadingBar, 300);
+						afterLoadingBar();
 					}
 				}
-				setTimeout(tick, 200);
+				requestAnimationFrame(progressLoop);
 
 				function afterLoadingBar() {
 					loadScreen.style.transition = 'opacity 0.4s ease-out';
@@ -433,54 +701,9 @@
 					}, 400);
 				}
 
-				// ---------- synthesized thunder sound ----------
-				function playThunder() {
-					try {
-						const AudioCtx = window.AudioContext || window.webkitAudioContext;
-						const actx = new AudioCtx();
-
-						const bufferSize = actx.sampleRate * 2.5;
-						const buffer = actx.createBuffer(1, bufferSize, actx.sampleRate);
-						const data = buffer.getChannelData(0);
-						for (let i = 0; i < bufferSize; i++) {
-							data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 1.5);
-						}
-						const noise = actx.createBufferSource();
-						noise.buffer = buffer;
-
-						const lowpass = actx.createBiquadFilter();
-						lowpass.type = 'lowpass';
-						lowpass.frequency.value = 180;
-
-						const gain = actx.createGain();
-						gain.gain.setValueAtTime(0, actx.currentTime);
-						gain.gain.linearRampToValueAtTime(0.9, actx.currentTime + 0.05);
-						gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 2.4);
-
-						noise.connect(lowpass);
-						lowpass.connect(gain);
-						gain.connect(actx.destination);
-
-						const crackBuf = actx.createBuffer(1, actx.sampleRate * 0.15, actx.sampleRate);
-						const crackData = crackBuf.getChannelData(0);
-						for (let i = 0; i < crackData.length; i++) {
-							crackData[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / crackData.length, 0.3);
-						}
-						const crack = actx.createBufferSource();
-						crack.buffer = crackBuf;
-						const crackGain = actx.createGain();
-						crackGain.gain.value = 1.0;
-						crack.connect(crackGain);
-						crackGain.connect(actx.destination);
-
-						noise.start();
-						crack.start();
-					} catch (e) {
-						// audio blocked or unsupported; fail silently
-					}
-				}
-
-				// ---------- splash flash + title (runs AFTER the loading bar finishes) ----------
+				// ---------------------------------------------------------------
+				// splash flash + title (runs AFTER the loading bar finishes)
+				// ---------------------------------------------------------------
 				function runIntro() {
 					const flashDiv = document.createElement('div');
 					flashDiv.id = 'splashFlash';
@@ -504,15 +727,15 @@
 					setTimeout(() => flashOnce(0.65, 260), 180);
 					setTimeout(() => flashOnce(0.9, 300), 380);
 
-					playThunder();
-					setTimeout(playThunder, 200);
+					playThunder(true);
+					setTimeout(function() { playThunder(true); }, 220);
 
 					setTimeout(() => {
 						titleDiv.style.transition = 'opacity 0.15s ease-out, transform 0.15s ease-out';
 						titleDiv.style.opacity = '1';
 						titleDiv.style.transform = 'translate(-50%, -50%) scale(1)';
 						flashOnce(1, 350);
-						playThunder();
+						playThunder(true);
 					}, 620);
 
 					setTimeout(() => {
