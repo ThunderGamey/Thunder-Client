@@ -6,6 +6,17 @@
 		<meta name="description" content="Play minecraft 1.12 in your browser" />
 		<meta name="keywords" content="eaglercraft, minecraft, 1.12, 1.12.2" />
 		<title>Eaglercraft 1.12 WASM-GC</title>
+		<style>
+			#stormCanvas {
+				position: fixed;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
+				z-index: 999;
+				pointer-events: none;
+			}
+		</style>
 		<meta property="og:locale" content="en-US" />
 		<meta property="og:type" content="website" />
 		<meta property="og:title" content="Eaglercraft 1.12 WASM" />
@@ -53,5 +64,194 @@
 			});
 		</script>
 	</head>
-	<body style="margin:0px;width:100%;height:100%;overflow:hidden;background-color:black;" id="game_frame"></body>
+	<body style="margin:0px;width:100%;height:100%;overflow:hidden;background-color:black;" id="game_frame"><canvas id="stormCanvas"></canvas>
+<script>
+(function () {
+  const canvas = document.getElementById('stormCanvas');
+  const ctx = canvas.getContext('2d');
+
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  const clouds = [];
+  const CLOUD_COUNT = 16;
+  for (let i = 0; i < CLOUD_COUNT; i++) {
+    clouds.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height * 0.55,
+      scale: 0.7 + Math.random() * 1.8,
+      speed: 0.3 + Math.random() * 0.9,
+      opacity: 0.2 + Math.random() * 0.3
+    });
+  }
+
+  const RAIN_COUNT = 220;
+  const rain = [];
+  for (let i = 0; i < RAIN_COUNT; i++) {
+    rain.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      len: 10 + Math.random() * 20,
+      speed: 8 + Math.random() * 10,
+      drift: 2 + Math.random() * 2
+    });
+  }
+
+  function drawRain() {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(150, 190, 230, 0.35)';
+    ctx.lineWidth = 1.2;
+    for (const d of rain) {
+      ctx.beginPath();
+      ctx.moveTo(d.x, d.y);
+      ctx.lineTo(d.x - d.drift, d.y + d.len);
+      ctx.stroke();
+      d.x -= d.drift;
+      d.y += d.speed;
+      if (d.y > canvas.height) {
+        d.y = -d.len;
+        d.x = Math.random() * canvas.width;
+      }
+    }
+    ctx.restore();
+  }
+
+  let shakeFrames = 0;
+
+  function drawCloud(c) {
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.scale(c.scale, c.scale);
+    ctx.fillStyle = `rgba(55, 70, 95, ${c.opacity})`;
+    ctx.beginPath();
+    ctx.arc(0, 0, 40, 0, Math.PI * 2);
+    ctx.arc(35, -10, 30, 0, Math.PI * 2);
+    ctx.arc(-35, -5, 28, 0, Math.PI * 2);
+    ctx.arc(15, 15, 32, 0, Math.PI * 2);
+    ctx.arc(-15, 15, 30, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  let flashAlpha = 0;
+  let nextFlashTime = randomFlashDelay();
+  let lastFlashCheck = performance.now();
+  let boltPoints = null;
+
+  function randomFlashDelay() {
+    return 700 + Math.random() * 1800;
+  }
+
+  function generateBolt() {
+    const points = [];
+    let x = Math.random() * canvas.width;
+    let y = 0;
+    points.push({ x, y });
+    const segments = 10 + Math.floor(Math.random() * 8);
+    const branches = [];
+    for (let i = 0; i < segments; i++) {
+      x += (Math.random() - 0.5) * 90;
+      y += canvas.height / segments;
+      points.push({ x, y });
+      if (Math.random() < 0.35 && i > 2) {
+        let bx = x, by = y;
+        const branch = [{ x: bx, y: by }];
+        const bSegs = 2 + Math.floor(Math.random() * 3);
+        for (let j = 0; j < bSegs; j++) {
+          bx += (Math.random() - 0.5) * 80 + 30;
+          by += 25 + Math.random() * 20;
+          branch.push({ x: bx, y: by });
+        }
+        branches.push(branch);
+      }
+    }
+    return { main: points, branches };
+  }
+
+  function drawLine(points, alpha, width) {
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.strokeStyle = `rgba(210, 235, 255, ${alpha})`;
+    ctx.lineWidth = width;
+    ctx.stroke();
+  }
+
+  function drawBolt(bolt, alpha) {
+    ctx.save();
+    ctx.shadowColor = '#7fe3ff';
+    ctx.shadowBlur = 35;
+    drawLine(bolt.main, alpha, 3.5);
+    for (const b of bolt.branches) {
+      drawLine(b, alpha * 0.7, 2);
+    }
+    ctx.restore();
+  }
+
+  function triggerFlash() {
+    flashAlpha = 1;
+    boltPoints = generateBolt();
+    shakeFrames = 8;
+    if (Math.random() < 0.3) {
+      setTimeout(() => {
+        flashAlpha = 1;
+        boltPoints = generateBolt();
+        shakeFrames = 6;
+      }, 90);
+    }
+  }
+
+  function animate(now) {
+    ctx.save();
+
+    if (shakeFrames > 0) {
+      const mag = shakeFrames * 0.8;
+      ctx.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
+      shakeFrames--;
+    }
+
+    ctx.clearRect(-20, -20, canvas.width + 40, canvas.height + 40);
+
+    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    grad.addColorStop(0, 'rgba(5,7,15,0.35)');
+    grad.addColorStop(1, 'rgba(19,26,48,0.35)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(-20, -20, canvas.width + 40, canvas.height + 40);
+
+    for (const c of clouds) {
+      c.x += c.speed;
+      if (c.x - 100 > canvas.width) c.x = -100;
+      drawCloud(c);
+    }
+
+    drawRain();
+
+    if (now - lastFlashCheck > nextFlashTime) {
+      triggerFlash();
+      lastFlashCheck = now;
+      nextFlashTime = randomFlashDelay();
+    }
+
+    if (flashAlpha > 0) {
+      ctx.fillStyle = `rgba(190, 220, 255, ${flashAlpha * 0.18})`;
+      ctx.fillRect(-20, -20, canvas.width + 40, canvas.height + 40);
+      if (boltPoints) drawBolt(boltPoints, flashAlpha);
+      flashAlpha -= 0.07;
+      if (flashAlpha <= 0) boltPoints = null;
+    }
+
+    ctx.restore();
+    requestAnimationFrame(animate);
+  }
+
+  requestAnimationFrame(animate);
+})();
+</script>
+</body>
 </html>
