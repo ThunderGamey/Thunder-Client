@@ -197,8 +197,13 @@
 				}
 			});
 
-			// ===== Storm (starts immediately) + Thunder loading bar + lightning strikes + THUNDER[bolt]CLIENT =====
+			// ===== Thunder sequence (Mojang/Eagler first, then Thunder) =====
 			window.addEventListener("load", function() {
+
+				// Let Eagler show its normal Mojang/loading screen first.
+				// The existing Thunder storm/loading sequence starts only after this delay.
+				const THUNDER_START_DELAY = 5000;
+				setTimeout(function() {
 
 				// ---------------------------------------------------------------
 				// Shared audio engine (real synthesized thunder/rain, not sfx clips)
@@ -749,6 +754,7 @@ let progress = 0;
 					}, 3100);
 				}
 
+				}, THUNDER_START_DELAY);
 			});
 		</script>
 	</head>
