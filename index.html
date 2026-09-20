@@ -150,6 +150,65 @@
 				z-index: 1000;
 				pointer-events: none;
 			}
+
+			/* ===== In-game HUD: FPS, then WASD+CPS group right below it, then coordinates ===== */
+			#thunderHud {
+				position: fixed;
+				top: 10px;
+				left: 10px;
+				z-index: 1500;
+				pointer-events: none;
+				font-family: 'Courier New', monospace;
+				color: #cfeeff;
+				display: flex;
+				flex-direction: column;
+				align-items: flex-start;
+				gap: 6px;
+				opacity: 0;
+				transition: opacity 0.5s ease-in;
+			}
+			#thunderHud.visible {
+				opacity: 1;
+			}
+			.thunder-hud-line {
+				font-size: 13px;
+				letter-spacing: 0.05em;
+				background: rgba(5, 7, 13, 0.4);
+				border: 1px solid rgba(79, 209, 255, 0.3);
+				border-radius: 4px;
+				padding: 3px 8px;
+				text-shadow: 0 0 8px rgba(79, 209, 255, 0.6);
+			}
+			#thunderKeysCps {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+			}
+			#thunderKeys {
+				display: grid;
+				grid-template-columns: repeat(3, 26px);
+				grid-template-rows: repeat(2, 26px);
+				gap: 3px;
+			}
+			.key-btn {
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				font-size: 12px;
+				font-weight: bold;
+				border: 1px solid rgba(79, 209, 255, 0.35);
+				border-radius: 4px;
+				background: rgba(10, 14, 24, 0.55);
+				transition: background 0.05s ease-out, box-shadow 0.05s ease-out;
+			}
+			.key-spacer {
+				border: none;
+				background: transparent;
+			}
+			.key-btn.active {
+				background: rgba(79, 209, 255, 0.6);
+				box-shadow: 0 0 14px 3px rgba(79, 209, 255, 0.7);
+			}
 		</style>
 		<meta property="og:locale" content="en-US" />
 		<meta property="og:type" content="website" />
@@ -200,13 +259,10 @@
 			// ===== Thunder sequence (Mojang/Eagler first, then Thunder) =====
 			window.addEventListener("load", function() {
 
-				// Let Eagler show its normal Mojang/loading screen first.
-				// The existing Thunder storm/loading sequence starts only after this delay.
-				const THUNDER_START_DELAY = 5000;
-				setTimeout(function() {
-
 				// ---------------------------------------------------------------
-				// Shared audio engine (real synthesized thunder/rain, not sfx clips)
+				// Shared audio engine — set up immediately so a click on Eagler's own
+				// "click to continue" screen (which happens during the delay below)
+				// still unlocks audio in time for the storm later.
 				// ---------------------------------------------------------------
 				let actx = null;
 				function getAudioCtx() {
@@ -223,7 +279,6 @@
 						return null;
 					}
 				}
-				// browsers block audio until a user gesture; keep trying to unlock on every interaction
 				['pointerdown', 'keydown', 'touchstart'].forEach(function(evt) {
 					window.addEventListener(evt, function() { getAudioCtx(); }, { passive: true });
 				});
@@ -397,6 +452,8 @@
 				}
 
 				// continuous looping rain hiss, fades in gently
+				let rainSource = null;
+				let rainGainRef = null;
 				function startRainLoop() {
 					const ctx = getAudioCtx();
 					if (!ctx) return;
@@ -431,13 +488,23 @@
 						rainGain.connect(ctx.destination);
 
 						src.start();
+						rainSource = src;
+						rainGainRef = rainGain;
 					} catch (e) {}
 				}
+
+				// Let Eagler show its normal Mojang/loading screen and click-to-continue first.
+				// The Thunder storm/loading sequence starts only after this delay.
+				const THUNDER_START_DELAY = 5000;
+				setTimeout(function() {
+
 				startRainLoop();
 
+
 				// ---------------------------------------------------------------
-				// ambient storm canvas: starts right away, keeps running under everything
+				// ambient storm canvas: starts right away, stops when the intro ends
 				// ---------------------------------------------------------------
+				let stormActive = true;
 				const canvas = document.createElement('canvas');
 				canvas.id = 'stormCanvas';
 				document.body.appendChild(canvas);
@@ -457,6 +524,54 @@
 				}
 				window.addEventListener('resize', resize);
 				resize();
+
+				// ---------------------------------------------------------------
+				// FPS + keystrokes + CPS + coordinates HUD — created now but stays
+				// invisible (opacity 0) until stopStorm() reveals it post-intro,
+				// so it's never visible during Eagler/Mojang/click/storm.
+				// ---------------------------------------------------------------
+				const hud = document.createElement('div');
+				hud.id = 'thunderHud';
+				hud.innerHTML =
+					'<div class="thunder-hud-line" id="thunderFps">FPS: 0</div>' +
+					'<div id="thunderKeysCps">' +
+						'<div id="thunderKeys">' +
+							'<div class="key-btn key-spacer"></div><div class="key-btn" id="keyW">W</div><div class="key-btn key-spacer"></div>' +
+							'<div class="key-btn" id="keyA">A</div><div class="key-btn" id="keyS">S</div><div class="key-btn" id="keyD">D</div>' +
+						'</div>' +
+						'<div class="thunder-hud-line" id="thunderCps">CPS: 0</div>' +
+					'</div>' +
+					'<div class="thunder-hud-line" id="thunderCoords">XYZ: —</div>';
+				document.body.appendChild(hud);
+				// NOTE: coordinates are a placeholder for now — real X/Y/Z needs a hook into
+				// classes.js's live player position, which is the native-GUI work planned next.
+
+				const fpsLabel = document.getElementById('thunderFps');
+				const cpsLabel = document.getElementById('thunderCps');
+				let fpsFrames = 0;
+				let fpsLastUpdate = performance.now();
+				let clickTimestamps = [];
+
+				const keyEls = {
+					KeyW: document.getElementById('keyW'),
+					KeyA: document.getElementById('keyA'),
+					KeyS: document.getElementById('keyS'),
+					KeyD: document.getElementById('keyD')
+				};
+				window.addEventListener('keydown', function(e) {
+					const el = keyEls[e.code];
+					if (el) el.classList.add('active');
+				});
+				window.addEventListener('keyup', function(e) {
+					const el = keyEls[e.code];
+					if (el) el.classList.remove('active');
+				});
+				window.addEventListener('blur', function() {
+					Object.keys(keyEls).forEach(function(k) { keyEls[k].classList.remove('active'); });
+				});
+				window.addEventListener('mousedown', function() {
+					clickTimestamps.push(performance.now());
+				});
 
 				function viewW() { return canvas.width / dpr; }
 				function viewH() { return canvas.height / dpr; }
@@ -598,46 +713,82 @@
 				function animate(now) {
 					ctx2d.save();
 
+					fpsFrames++;
+					if (now - fpsLastUpdate >= 500) {
+						const fps = Math.round((fpsFrames * 1000) / (now - fpsLastUpdate));
+						fpsLabel.textContent = 'FPS: ' + fps;
+						fpsFrames = 0;
+						fpsLastUpdate = now;
+
+						clickTimestamps = clickTimestamps.filter(function(t) { return now - t <= 1000; });
+						cpsLabel.textContent = 'CPS: ' + clickTimestamps.length;
+					}
+
 					if (shakeFrames > 0) {
 						const mag = shakeFrames * 0.8;
 						ctx2d.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
 						shakeFrames--;
 					}
 
-					ctx2d.clearRect(-20, -20, viewW() + 40, viewH() + 40);
+					if (stormActive) {
+						ctx2d.clearRect(-20, -20, viewW() + 40, viewH() + 40);
 
-					const grad = ctx2d.createLinearGradient(0, 0, 0, viewH());
-					grad.addColorStop(0, 'rgba(5,7,15,0.35)');
-					grad.addColorStop(1, 'rgba(19,26,48,0.35)');
-					ctx2d.fillStyle = grad;
-					ctx2d.fillRect(-20, -20, viewW() + 40, viewH() + 40);
-
-					for (const c of clouds) {
-						c.x += c.speed;
-						if (c.x - 100 > viewW()) c.x = -100;
-						drawCloud(c);
-					}
-
-					drawRain();
-
-					if (now - lastFlashCheck > nextFlashTime) {
-						triggerFlash();
-						lastFlashCheck = now;
-						nextFlashTime = randomFlashDelay();
-					}
-
-					if (flashAlpha > 0) {
-						ctx2d.fillStyle = `rgba(190, 220, 255, ${flashAlpha * 0.18})`;
+						const grad = ctx2d.createLinearGradient(0, 0, 0, viewH());
+						grad.addColorStop(0, 'rgba(5,7,15,0.35)');
+						grad.addColorStop(1, 'rgba(19,26,48,0.35)');
+						ctx2d.fillStyle = grad;
 						ctx2d.fillRect(-20, -20, viewW() + 40, viewH() + 40);
-						if (boltPoints) drawBolt(boltPoints, flashAlpha);
-						flashAlpha -= 0.07;
-						if (flashAlpha <= 0) boltPoints = null;
+
+						for (const c of clouds) {
+							c.x += c.speed;
+							if (c.x - 100 > viewW()) c.x = -100;
+							drawCloud(c);
+						}
+
+						drawRain();
+
+						if (now - lastFlashCheck > nextFlashTime) {
+							triggerFlash();
+							lastFlashCheck = now;
+							nextFlashTime = randomFlashDelay();
+						}
+
+						if (flashAlpha > 0) {
+							ctx2d.fillStyle = `rgba(190, 220, 255, ${flashAlpha * 0.18})`;
+							ctx2d.fillRect(-20, -20, viewW() + 40, viewH() + 40);
+							if (boltPoints) drawBolt(boltPoints, flashAlpha);
+							flashAlpha -= 0.07;
+							if (flashAlpha <= 0) boltPoints = null;
+						}
 					}
 
 					ctx2d.restore();
 					requestAnimationFrame(animate);
 				}
 				requestAnimationFrame(animate);
+
+				// stops the storm visuals + rain/thunder audio once the intro finishes —
+				// this is the fix that keeps the storm from following you into worlds/servers
+				function stopStorm() {
+					stormActive = false;
+					canvas.style.transition = 'opacity 0.6s ease-out';
+					canvas.style.opacity = '0';
+					setTimeout(function() { canvas.remove(); }, 650);
+					hud.classList.add('visible');
+
+					if (rainGainRef && actx) {
+						try {
+							rainGainRef.gain.cancelScheduledValues(actx.currentTime);
+							rainGainRef.gain.setValueAtTime(rainGainRef.gain.value, actx.currentTime);
+							rainGainRef.gain.linearRampToValueAtTime(0.0001, actx.currentTime + 1);
+						} catch (e) {}
+					}
+					if (rainSource) {
+						setTimeout(function() {
+							try { rainSource.stop(); } catch (e) {}
+						}, 1050);
+					}
+				}
 
 				// ---------------------------------------------------------------
 				// loading screen sits ON TOP of the running storm, and is now fully opaque
@@ -751,6 +902,7 @@ let progress = 0;
 					setTimeout(() => {
 						titleDiv.remove();
 						flashDiv.remove();
+						stopStorm();
 					}, 3100);
 				}
 
