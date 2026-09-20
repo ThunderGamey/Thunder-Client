@@ -409,26 +409,40 @@
 
 			function stopStormAudio() {
 				stormAudioEnabled = false;
+				const ctx = actx;
 				try {
-					const ctx = actx;
 					if (ctx) {
 						const now = ctx.currentTime;
 						if (rainGainNode) {
 							rainGainNode.gain.cancelScheduledValues(now);
 							rainGainNode.gain.setValueAtTime(Math.max(0.0001, rainGainNode.gain.value), now);
-							rainGainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+						rainGainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
 						}
 						if (thunderMaster) {
 							thunderMaster.gain.cancelScheduledValues(now);
 							thunderMaster.gain.setValueAtTime(Math.max(0.0001, thunderMaster.gain.value), now);
-							thunderMaster.gain.exponentialRampToValueAtTime(0.0001, now + 0.10);
+							thunderMaster.gain.linearRampToValueAtTime(0.0, now + 0.08);
 						}
 					}
 				} catch (e) {}
+
 				const src = rainSource;
 				rainSource = null;
 				rainGainNode = null;
-				if (src) setTimeout(function() { try { src.stop(); } catch (e) {} }, 150);
+				if (src) {
+					try { src.stop(); } catch (e) {}
+				}
+
+				// This AudioContext belongs only to Thunder. Closing it guarantees no
+				// scheduled thunder nodes can continue after the intro is finished.
+				if (ctx) {
+					setTimeout(function() {
+						try { ctx.close(); } catch (e) {}
+						if (actx === ctx) actx = null;
+						thunderMaster = null;
+						thunderBus = null;
+					}, 120);
+				}
 			}
 
 				// ---------------------------------------------------------------
@@ -779,22 +793,98 @@
 					}, 2450);
 				}
 
-				// Poll only for Eagler's canvas inside #game_frame. No Eagler hooks are touched.
-				function waitForEaglerCanvas() {
-					if (thunderSequenceStarted || introFinished) return;
-					if (hasEaglerCanvas()) {
-						if (!canvasSeenAt) canvasSeenAt = performance.now();
-						// Require the canvas to remain present for 350ms so we don't fire on a transient loader canvas.
-						if (performance.now() - canvasSeenAt >= 350) {
-							startThunderSequence();
-							return;
-						}
-					} else {
-						canvasSeenAt = 0;
-					}
-					setTimeout(waitForEaglerCanvas, 100);
+				// ---------------------------------------------------------------
+				// Wait for Eagler's *initial loading screen to finish*.
+				// Checking only for a canvas is too early: Eagler creates its
+				// canvas before it finishes showing the Mojang/loading screen.
+				// We sample a tiny copy of the canvas to avoid touching Eagler's
+				// WASM-GC hooks or startup configuration.
+				// ---------------------------------------------------------------
+				const sampleCanvas = document.createElement('canvas');
+				sampleCanvas.width = 24;
+				sampleCanvas.height = 14;
+				const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
+				const BOOT_MIN_WAIT_MS = 2500;
+				const BOOT_FALLBACK_MS = 20000;
+				const BOOT_CLEAR_SAMPLES = 3;
+				const bootStartedAt = performance.now();
+				let bootClearSamples = 0;
+				let bootFallbackTriggered = false;
+
+				function getEaglerCanvas() {
+					const game = document.getElementById('game_frame');
+					if (!game) return null;
+					const c = game.querySelector('canvas');
+					return c && c.width > 0 && c.height > 0 ? c : null;
 				}
-				waitForEaglerCanvas();
+
+				function looksLikeInitialMojangLoading(c) {
+					if (!sampleCtx) return null;
+					try {
+						sampleCtx.clearRect(0, 0, 24, 14);
+						sampleCtx.drawImage(c, 0, 0, 24, 14);
+						const px = sampleCtx.getImageData(0, 0, 24, 14).data;
+						let bright = 0;
+						let red = 0;
+						let totalLuma = 0;
+						for (let i = 0; i < px.length; i += 4) {
+							const r = px[i], g = px[i + 1], b = px[i + 2];
+							const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+							totalLuma += l;
+							if (r > 218 && g > 218 && b > 218) bright++;
+							if (r > 125 && r > g * 1.35 && r > b * 1.25) red++;
+						}
+						const count = px.length / 4;
+						const brightRatio = bright / count;
+						const redRatio = red / count;
+						const avgLuma = totalLuma / count;
+						// The initial Eagler/Mojang screen on this client is a very bright
+						// mostly-white frame with a small red logo.
+						return (brightRatio > 0.42) || (brightRatio > 0.28 && redRatio > 0.01) || avgLuma > 225;
+					} catch (e) {
+						return null;
+					}
+				}
+
+				function waitForEaglerBootComplete() {
+					if (thunderSequenceStarted || introFinished) return;
+					const now = performance.now();
+					const c = getEaglerCanvas();
+					if (!c) {
+						setTimeout(waitForEaglerBootComplete, 250);
+						return;
+					}
+
+					if (now - bootStartedAt < BOOT_MIN_WAIT_MS) {
+						setTimeout(waitForEaglerBootComplete, 250);
+						return;
+					}
+
+					const loading = looksLikeInitialMojangLoading(c);
+					if (loading === false) {
+						bootClearSamples++;
+					} else if (loading === true) {
+						bootClearSamples = 0;
+					}
+
+					// Normal path: the Mojang/loading frame is gone for 3 consecutive samples.
+					if (bootClearSamples >= BOOT_CLEAR_SAMPLES) {
+						startThunderSequence();
+						return;
+					}
+
+					// Safety path if this browser cannot sample the WebGL canvas.
+					// This is deliberately long so the Storm never races the normal boot.
+					if (!bootFallbackTriggered && now - bootStartedAt >= BOOT_FALLBACK_MS) {
+						bootFallbackTriggered = true;
+						startThunderSequence();
+						return;
+					}
+
+					setTimeout(waitForEaglerBootComplete, 500);
+				}
+
+				waitForEaglerBootComplete();
 
 				window.addEventListener('pagehide', function() {
 					try { stopStormAudio(); } catch (e) {}
