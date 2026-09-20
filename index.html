@@ -17,6 +17,9 @@
 				pointer-events: none;
 				overflow: hidden;
 				background: #05070d;
+				visibility: hidden;
+				opacity: 0;
+				transition: opacity 160ms ease-out;
 			}
 
 			#stormCanvas {
@@ -48,7 +51,7 @@
 				left: 0;
 				width: 100%;
 				height: 100%;
-				background: rgba(5, 7, 13, 0.28);
+				background: rgba(5, 7, 13, 0.72);
 				z-index: 2;
 				display: flex;
 				flex-direction: column;
@@ -60,7 +63,7 @@
 				content: "";
 				position: absolute;
 				inset: 0;
-				background: radial-gradient(ellipse at 50% 40%, rgba(40, 90, 130, 0.16), rgba(5, 7, 13, 0) 65%);
+				background: radial-gradient(ellipse at 50% 40%, rgba(40, 90, 130, 0.20), rgba(5, 7, 13, 0) 65%);
 				pointer-events: none;
 			}
 			#thunderLoadLabel, #thunderBarOuter, #thunderPercent {
@@ -197,10 +200,12 @@
 					}
 					return curve;
 				}
+				const SMALL_DISTORTION = makeDistortionCurve(18);
+				const BIG_DISTORTION = makeDistortionCurve(32);
 
 				// a shared compressor + master volume gives every strike punch at a clear, consistent level
 				let thunderBus = null;
-				const THUNDER_VOLUME = 0.38; // 30%-45% requested range
+				const THUNDER_VOLUME = 0.40; // 40% master volume
 				function getThunderBus(ctx) {
 					if (!thunderBus) {
 						thunderBus = ctx.createDynamicsCompressor();
@@ -280,7 +285,7 @@
 						crackPeak.gain.value = 9;
 
 						const shaper = ctx.createWaveShaper();
-						shaper.curve = makeDistortionCurve(big ? 32 : 18);
+						shaper.curve = big ? BIG_DISTORTION : SMALL_DISTORTION;
 						shaper.oversample = '2x';
 
 						const crackGain = ctx.createGain();
@@ -382,7 +387,7 @@
 
 						const rainGain = ctx.createGain();
 						rainGain.gain.setValueAtTime(0.0001, ctx.currentTime);
-						rainGain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 3.5);
+						rainGain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 2.0); // 15% rain volume
 
 						src.connect(bandpass);
 						bandpass.connect(shelf);
@@ -392,7 +397,6 @@
 						src.start();
 					} catch (e) {}
 				}
-				startRainLoop();
 
 				// ---------------------------------------------------------------
 				// Thunder overlay root + Eagler visual isolation
@@ -412,7 +416,7 @@
 				overlayRoot.appendChild(canvas);
 				const ctx2d = canvas.getContext('2d');
 
-				const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
+				const dpr = 1; // keep the storm light enough not to fight Eagler's WebGL renderer
 
 				function resize() {
 					const w = window.innerWidth;
@@ -430,7 +434,7 @@
 				function viewH() { return canvas.height / dpr; }
 
 				const clouds = [];
-				const CLOUD_COUNT = 16;
+				const CLOUD_COUNT = 8;
 				for (let i = 0; i < CLOUD_COUNT; i++) {
 					clouds.push({
 						x: Math.random() * viewW(),
@@ -441,7 +445,7 @@
 					});
 				}
 
-				const RAIN_COUNT = 260;
+				const RAIN_COUNT = 110;
 				const rain = [];
 				for (let i = 0; i < RAIN_COUNT; i++) {
 					rain.push({
@@ -453,23 +457,21 @@
 					});
 				}
 
-				function drawRain() {
-					ctx2d.save();
-					ctx2d.strokeStyle = 'rgba(185, 220, 255, 0.72)';
+				function drawRain(frameScale) {
+					ctx2d.strokeStyle = 'rgba(185, 220, 255, 0.66)';
 					ctx2d.lineWidth = 1;
+					ctx2d.beginPath();
 					for (const d of rain) {
-						ctx2d.beginPath();
 						ctx2d.moveTo(d.x, d.y);
 						ctx2d.lineTo(d.x - d.drift, d.y + d.len);
-						ctx2d.stroke();
-						d.x -= d.drift;
-						d.y += d.speed;
-						if (d.y > viewH()) {
+						d.x -= d.drift * frameScale;
+						d.y += d.speed * frameScale;
+						if (d.y > viewH() + d.len) {
 							d.y = -d.len;
 							d.x = Math.random() * viewW();
 						}
 					}
-					ctx2d.restore();
+					ctx2d.stroke();
 				}
 
 				let shakeFrames = 0;
@@ -481,10 +483,9 @@
 					ctx2d.fillStyle = `rgba(55, 70, 95, ${c.opacity})`;
 					ctx2d.beginPath();
 					ctx2d.arc(0, 0, 40, 0, Math.PI * 2);
-					ctx2d.arc(35, -10, 30, 0, Math.PI * 2);
-					ctx2d.arc(-35, -5, 28, 0, Math.PI * 2);
-					ctx2d.arc(15, 15, 32, 0, Math.PI * 2);
-					ctx2d.arc(-15, 15, 30, 0, Math.PI * 2);
+					ctx2d.arc(34, -8, 29, 0, Math.PI * 2);
+					ctx2d.arc(-32, -4, 27, 0, Math.PI * 2);
+					ctx2d.arc(12, 14, 30, 0, Math.PI * 2);
 					ctx2d.fill();
 					ctx2d.restore();
 				}
@@ -538,7 +539,7 @@
 				function drawBolt(bolt, alpha) {
 					ctx2d.save();
 					ctx2d.shadowColor = '#7fe3ff';
-					ctx2d.shadowBlur = 35;
+					ctx2d.shadowBlur = 16;
 					drawLine(bolt.main, alpha, 3);
 					for (const b of bolt.branches) {
 						drawLine(b, alpha * 0.7, 1.6);
@@ -560,53 +561,76 @@
 					}
 				}
 
-				let stormRunning = true;
+				let stormRunning = false;
+				let lastFrameTime = 0;
+				const TARGET_FRAME_MS = 1000 / 30;
 
 				function animate(now) {
 					if (!stormRunning || !ctx2d) return;
+					if (lastFrameTime && now - lastFrameTime < TARGET_FRAME_MS) {
+						requestAnimationFrame(animate);
+						return;
+					}
+					const frameScale = lastFrameTime ? Math.min(2.5, (now - lastFrameTime) / TARGET_FRAME_MS) : 1;
+					lastFrameTime = now;
+
 					ctx2d.save();
 					if (shakeFrames > 0) {
-						const mag = shakeFrames * 0.8;
+						const mag = shakeFrames * 0.65;
 						ctx2d.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
 						shakeFrames--;
 					}
-					ctx2d.clearRect(-20, -20, viewW() + 40, viewH() + 40);
-					const grad = ctx2d.createLinearGradient(0, 0, 0, viewH());
-					grad.addColorStop(0, 'rgba(3,5,10,0.32)');
-					grad.addColorStop(1, 'rgba(19,26,48,0.24)');
-					ctx2d.fillStyle = grad;
-					ctx2d.fillRect(-20, -20, viewW() + 40, viewH() + 40);
+
+					ctx2d.clearRect(0, 0, viewW(), viewH());
+					ctx2d.fillStyle = 'rgba(7, 12, 22, 0.24)';
+					ctx2d.fillRect(0, 0, viewW(), viewH());
+
 					for (const c of clouds) {
-						c.x += c.speed;
+						c.x += c.speed * frameScale;
 						if (c.x - 100 > viewW()) c.x = -100;
 						drawCloud(c);
 					}
-					drawRain();
+
+					drawRain(frameScale);
+
 					if (now - lastFlashCheck > nextFlashTime) {
 						triggerFlash();
 						lastFlashCheck = now;
 						nextFlashTime = randomFlashDelay();
 					}
+
 					if (flashAlpha > 0) {
-						ctx2d.fillStyle = `rgba(190, 220, 255, ${flashAlpha * 0.18})`;
-						ctx2d.fillRect(-20, -20, viewW() + 40, viewH() + 40);
+						ctx2d.fillStyle = `rgba(190, 220, 255, ${flashAlpha * 0.16})`;
+						ctx2d.fillRect(0, 0, viewW(), viewH());
 						if (boltPoints) drawBolt(boltPoints, flashAlpha);
-						flashAlpha -= 0.07;
+						flashAlpha -= 0.07 * frameScale;
 						if (flashAlpha <= 0) boltPoints = null;
 					}
+
 					ctx2d.restore();
 					requestAnimationFrame(animate);
 				}
-				requestAnimationFrame(animate);
-				setTimeout(triggerFlash, 250);
+
+				function startStormVisuals() {
+					if (stormRunning) return;
+					stormRunning = true;
+					lastFrameTime = 0;
+					flashAlpha = 0.9;
+					boltPoints = generateBolt();
+					shakeFrames = 6;
+					playThunder(true);
+					requestAnimationFrame(animate);
+				}
 
 				// ---------------------------------------------------------------
-				// custom loading screen over the storm
+				// IMPORTANT: Let Eagler's normal Mojang/Eagler loading screen
+				// stay fully visible FIRST. We only reveal Thunder's storm and
+				// custom loading animation once the real game frame is ready.
 				// ---------------------------------------------------------------
 				const loadScreen = document.createElement('div');
 				loadScreen.id = 'thunderLoadScreen';
 				loadScreen.innerHTML =
-					'<div id="thunderLoadLabel">LOADING</div>' +
+					'<div id="thunderLoadLabel">THUNDER CLIENT</div>' +
 					'<div id="thunderBarOuter"><div id="thunderBarFill"></div></div>' +
 					'<div id="thunderPercent">0%</div>';
 				overlayRoot.appendChild(loadScreen);
@@ -623,111 +647,124 @@
 				const percentLabel = loadScreen.querySelector('#thunderPercent');
 
 				let progress = 0;
-				let phase = 'ramp';
 				let rampStart = null;
-				let readyStart = performance.now();
-				let finishStart = null;
-				const RAMP_MS = 2400;
-				const FINISH_MS = 320;
-				const MIN_READY_WAIT_MS = 3000;
-				const MAX_READY_WAIT_MS = 30000;
-
-				function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+				let readyStarted = performance.now();
+				let readySamples = 0;
+				let lastReadySample = 0;
+				let readySampleResult = false;
+				let thunderSequenceStarted = false;
+				const READY_CHECK_INTERVAL = 400;
+				const MIN_EAGLER_WAIT_MS = 2500;
+				const MAX_EAGLER_WAIT_MS = 60000;
+				const THUNDER_BAR_MS = 1700;
 
 				function getEaglerCanvas() {
-					const gameCanvases = Array.from(document.querySelectorAll('#game_frame canvas'))
-						.filter(function(c) { return c !== canvas && c.width > 32 && c.height > 32; });
-					return gameCanvases.length ? gameCanvases[0] : null;
+					const canvases = Array.from(document.querySelectorAll('#game_frame canvas'));
+					return canvases.find(function(c) {
+						return c !== canvas && c.width > 64 && c.height > 64;
+					}) || null;
 				}
 
-				// Eagler's startup screen and the game use the same canvas, so there
-				// is no DOM element that reliably says "loading finished". Sample
-				// the actual WebGL framebuffer instead. The startup screen shown in
-				// your screenshot is almost entirely white; the usable client menu
-				// has a much darker, more varied image.
-				let lastReadySample = 0;
-				let readySample = false;
-
 				function eaglerLooksReady(now) {
-					if (now - lastReadySample < 250) return readySample;
+					if (now - lastReadySample < READY_CHECK_INTERVAL) return readySampleResult;
 					lastReadySample = now;
 
 					const c = getEaglerCanvas();
-					if (!c) { readySample = false; return false; }
+					if (!c) { readySampleResult = false; return false; }
 					try {
 						const gl = c.getContext('webgl2') || c.getContext('webgl') || c.getContext('experimental-webgl');
-						if (!gl) { readySample = false; return false; }
+						if (!gl) { readySampleResult = false; return false; }
 
 						const points = [
-							[0.12,0.18],[0.36,0.18],[0.64,0.18],[0.88,0.18],
-							[0.12,0.50],[0.36,0.50],[0.64,0.50],[0.88,0.50],
-							[0.12,0.82],[0.36,0.82],[0.64,0.82],[0.88,0.82]
+							[0.10,0.15],[0.30,0.15],[0.50,0.15],[0.70,0.15],[0.90,0.15],
+							[0.10,0.40],[0.30,0.40],[0.50,0.40],[0.70,0.40],[0.90,0.40],
+							[0.10,0.65],[0.30,0.65],[0.50,0.65],[0.70,0.65],[0.90,0.65],
+							[0.10,0.85],[0.30,0.85],[0.50,0.85],[0.70,0.85],[0.90,0.85]
 						];
-						const values = [];
 						const px = new Uint8Array(4);
+						let mean = 0;
+						let min = 255;
+						let max = 0;
+						let brightCount = 0;
 						for (const p of points) {
 							const x = Math.max(0, Math.min(c.width - 1, Math.floor(c.width * p[0])));
 							const y = Math.max(0, Math.min(c.height - 1, Math.floor(c.height * p[1])));
 							gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
-							values.push((px[0] + px[1] + px[2]) / 3);
+							const v = (px[0] + px[1] + px[2]) / 3;
+							mean += v;
+							min = Math.min(min, v);
+							max = Math.max(max, v);
+							if (v > 225) brightCount++;
 						}
+						mean /= points.length;
+						const range = max - min;
 
-						const mean = values.reduce((a, b) => a + b, 0) / values.length;
-						const variance = values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / values.length;
-
-						// White Eagler splash: mean is very high. Blank canvas: mean is
-						// very low with almost no variation. A usable menu/game frame is
-						// neither and has visible contrast.
-						readySample = mean > 18 && mean < 220 && variance > 120;
-						return readySample;
+						// A normal Eagler startup/splash is usually mostly uniform/bright.
+						// The actual menu/game frame has much more color/contrast.
+						readySampleResult = mean < 235 && range > 28 && brightCount < points.length * 0.85;
+						return readySampleResult;
 					} catch (e) {
-						readySample = false;
+						readySampleResult = false;
 						return false;
 					}
 				}
 
-				function progressLoop(ts) {
-					if (rampStart === null) rampStart = ts;
-
-					if (phase === 'ramp') {
-						const t = Math.min(1, (ts - rampStart) / RAMP_MS);
-						progress = easeOutCubic(t) * 90;
-						if (t >= 1) phase = 'waiting';
-					} else if (phase === 'waiting') {
-						progress = 90;
-						const waited = ts - readyStart;
-						if (waited >= MIN_READY_WAIT_MS && (eaglerLooksReady(ts) || waited >= MAX_READY_WAIT_MS)) {
-							phase = 'finish';
-							finishStart = ts;
-						}
-					} else {
-						const t = Math.min(1, (ts - finishStart) / FINISH_MS);
-						progress = 90 + 10 * easeOutCubic(t);
+				function waitForEagler() {
+					if (thunderSequenceStarted) return;
+					const now = performance.now();
+					const elapsed = now - readyStarted;
+					if (elapsed >= MIN_EAGLER_WAIT_MS && eaglerLooksReady(now)) {
+						readySamples++;
+					} else if (elapsed - lastReadySample > READY_CHECK_INTERVAL * 2) {
+						readySamples = 0;
 					}
 
+					if (readySamples >= 2 || elapsed >= MAX_EAGLER_WAIT_MS) {
+						startThunderSequence();
+						return;
+					}
+					setTimeout(waitForEagler, 200);
+				}
+
+				function startThunderSequence() {
+					if (thunderSequenceStarted) return;
+					thunderSequenceStarted = true;
+	
+					// Now that Eagler's own Mojang/loading screen has finished,
+					// bring in the Thunder transition on top of the ready game.
+					overlayRoot.style.visibility = 'visible';
+					overlayRoot.style.opacity = '1';
+					startRainLoop();
+					startStormVisuals();
+
+					progress = 0;
+					rampStart = null;
+					requestAnimationFrame(progressLoop);
+				}
+
+				function progressLoop(ts) {
+					if (rampStart === null) rampStart = ts;
+					const t = Math.min(1, (ts - rampStart) / THUNDER_BAR_MS);
+					progress = 100 * easeOutCubic(t);
 					barFill.style.width = progress + '%';
 					percentLabel.textContent = Math.floor(progress) + '%';
 
-					if (phase === 'finish' && progress >= 99.95) {
-						afterLoadingBar();
-					} else {
+					if (t < 1) {
 						requestAnimationFrame(progressLoop);
+					} else {
+						afterLoadingBar();
 					}
 				}
-				requestAnimationFrame(progressLoop);
 
 				function afterLoadingBar() {
-					loadScreen.style.transition = 'opacity 0.45s ease-out';
+					loadScreen.style.transition = 'opacity 220ms ease-out';
 					loadScreen.style.opacity = '0';
 					setTimeout(() => {
-						loadScreen.remove();
+						loadScreen.style.display = 'none';
 						runIntro();
-					}, 450);
+					}, 230);
 				}
 
-				// ---------------------------------------------------------------
-				// splash flash + title (runs AFTER the loading bar finishes)
-				// ---------------------------------------------------------------
 				function runIntro() {
 					const flashDiv = document.createElement('div');
 					flashDiv.id = 'splashFlash';
@@ -747,35 +784,31 @@
 						});
 					}
 
-					flashOnce(0.85, 220);
-					setTimeout(() => flashOnce(0.65, 260), 180);
-					setTimeout(() => flashOnce(0.9, 300), 380);
-
+					flashOnce(0.65, 220);
 					playThunder(true);
-					setTimeout(function() { playThunder(true); }, 220);
 
 					setTimeout(() => {
-						titleDiv.style.transition = 'opacity 0.15s ease-out, transform 0.15s ease-out';
+						titleDiv.style.transition = 'opacity 0.16s ease-out, transform 0.16s ease-out';
 						titleDiv.style.opacity = '1';
 						titleDiv.style.transform = 'translate(-50%, -50%) scale(1)';
-						flashOnce(1, 350);
+						flashOnce(0.9, 260);
 						playThunder(true);
-					}, 620);
+					}, 300);
 
 					setTimeout(() => {
-						titleDiv.style.transition = 'opacity 0.8s ease-in';
+						titleDiv.style.transition = 'opacity 0.6s ease-in';
 						titleDiv.style.opacity = '0';
-					}, 2200);
+					}, 1700);
 
 					setTimeout(() => {
 						titleDiv.remove();
 						flashDiv.remove();
-						// IMPORTANT: the overlay must be removed after the intro,
-						// otherwise it would remain above Eagler forever.
 						stormRunning = false;
 						overlayRoot.remove();
-					}, 3100);
+					}, 2450);
 				}
+
+				waitForEagler();
 
 			});
 		</script>
