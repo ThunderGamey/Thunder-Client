@@ -147,7 +147,15 @@
 							{ addr: "wss://relay.deev.is/", comment: "lax1dude relay #1", primary: relayId == 0 },
 							{ addr: "wss://relay.lax1dude.net/", comment: "lax1dude relay #2", primary: relayId == 1 },
 							{ addr: "wss://relay.shhnowisnottheti.me/", comment: "ayunami relay #1", primary: relayId == 2 }
-						]
+						],
+						hooks: {
+							screenChanged: function(screenName, scaledWidth, scaledHeight, realWidth, realHeight, scaleFactor) {
+								window.__thunderEaglerScreenName = screenName;
+								try {
+									window.dispatchEvent(new CustomEvent('thunder:eagler-screen', { detail: { screenName: screenName } }));
+								} catch (e) {}
+							}
+						}
 					};
 
 					// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -171,6 +179,11 @@
 				// Shared audio engine (real synthesized thunder/rain, not sfx clips)
 				// ---------------------------------------------------------------
 				let actx = null;
+				let rainSource = null;
+				let rainGainNode = null;
+				let thunderMaster = null;
+				let stormAudioEnabled = false;
+				const RAIN_VOLUME = 0.15; // 15% master volume
 				function getAudioCtx() {
 					try {
 						if (!actx) {
@@ -216,6 +229,7 @@
 						thunderBus.release.value = 0.25;
 						const master = ctx.createGain();
 						master.gain.value = THUNDER_VOLUME;
+						thunderMaster = master;
 						thunderBus.connect(master);
 						master.connect(ctx.destination);
 					}
@@ -362,41 +376,68 @@
 
 				// continuous looping rain hiss, fades in gently
 				function startRainLoop() {
-					const ctx = getAudioCtx();
-					if (!ctx) return;
-					try {
-						const loopSec = 4;
-						const buffer = ctx.createBuffer(1, ctx.sampleRate * loopSec, ctx.sampleRate);
-						const data = buffer.getChannelData(0);
-						for (let i = 0; i < data.length; i++) {
-							data[i] = Math.random() * 2 - 1;
+				if (!stormAudioEnabled || rainSource) return;
+				const ctx = getAudioCtx();
+				if (!ctx) return;
+				try {
+					const loopSec = 4;
+					const buffer = ctx.createBuffer(1, ctx.sampleRate * loopSec, ctx.sampleRate);
+					const data = buffer.getChannelData(0);
+					for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+
+					const src = ctx.createBufferSource();
+					src.buffer = buffer;
+					src.loop = true;
+
+					const bandpass = ctx.createBiquadFilter();
+					bandpass.type = 'bandpass';
+					bandpass.frequency.value = 3000;
+					bandpass.Q.value = 0.55;
+
+					const shelf = ctx.createBiquadFilter();
+					shelf.type = 'highshelf';
+					shelf.frequency.value = 6500;
+					shelf.gain.value = -8;
+
+					const rainGain = ctx.createGain();
+					rainGainNode = rainGain;
+					rainGain.gain.setValueAtTime(0.0001, ctx.currentTime);
+					rainGain.gain.linearRampToValueAtTime(RAIN_VOLUME, ctx.currentTime + 2.0);
+
+					src.connect(bandpass);
+					bandpass.connect(shelf);
+					shelf.connect(rainGain);
+					rainGain.connect(ctx.destination);
+
+					rainSource = src;
+				src.onended = function() { if (rainSource === src) rainSource = null; };
+				src.start();
+				} catch (e) {}
+			}
+
+			function stopStormAudio() {
+				stormAudioEnabled = false;
+				try {
+					const ctx = actx;
+					if (ctx) {
+						const now = ctx.currentTime;
+						if (rainGainNode) {
+							rainGainNode.gain.cancelScheduledValues(now);
+							rainGainNode.gain.setValueAtTime(Math.max(0.0001, rainGainNode.gain.value), now);
+							rainGainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
 						}
-						const src = ctx.createBufferSource();
-						src.buffer = buffer;
-						src.loop = true;
-
-						const bandpass = ctx.createBiquadFilter();
-						bandpass.type = 'bandpass';
-						bandpass.frequency.value = 3000;
-						bandpass.Q.value = 0.55;
-
-						const shelf = ctx.createBiquadFilter();
-						shelf.type = 'highshelf';
-						shelf.frequency.value = 6500;
-						shelf.gain.value = -8;
-
-						const rainGain = ctx.createGain();
-						rainGain.gain.setValueAtTime(0.0001, ctx.currentTime);
-						rainGain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 2.0); // 15% rain volume
-
-						src.connect(bandpass);
-						bandpass.connect(shelf);
-						shelf.connect(rainGain);
-						rainGain.connect(ctx.destination);
-
-						src.start();
-					} catch (e) {}
-				}
+						if (thunderMaster) {
+							thunderMaster.gain.cancelScheduledValues(now);
+							thunderMaster.gain.setValueAtTime(Math.max(0.0001, thunderMaster.gain.value), now);
+							thunderMaster.gain.exponentialRampToValueAtTime(0.0001, now + 0.10);
+						}
+					}
+				} catch (e) {}
+				const src = rainSource;
+				rainSource = null;
+				rainGainNode = null;
+				if (src) setTimeout(function() { try { src.stop(); } catch (e) {} }, 150);
+			}
 
 				// ---------------------------------------------------------------
 				// Thunder overlay root + Eagler visual isolation
@@ -563,7 +604,7 @@
 
 				let stormRunning = false;
 				let lastFrameTime = 0;
-				const TARGET_FRAME_MS = 1000 / 30;
+				const TARGET_FRAME_MS = 1000 / 60; // cap Storm renderer at 60 FPS
 
 				function animate(now) {
 					if (!stormRunning || !ctx2d) return;
@@ -648,95 +689,77 @@
 
 				let progress = 0;
 				let rampStart = null;
-				let readyStarted = performance.now();
-				let readySamples = 0;
-				let lastReadySample = 0;
-				let readySampleResult = false;
 				let thunderSequenceStarted = false;
-				const READY_CHECK_INTERVAL = 400;
-				const MIN_EAGLER_WAIT_MS = 2500;
-				const MAX_EAGLER_WAIT_MS = 60000;
+				let introFinished = false;
+				let currentScreenName = window.__thunderEaglerScreenName;
 				const THUNDER_BAR_MS = 1700;
+				const FALLBACK_BOOT_MS = 12000; // only used if the Eagler screen hook is unavailable
+				const bootStartedAt = performance.now();
 
-				function getEaglerCanvas() {
-					const canvases = Array.from(document.querySelectorAll('#game_frame canvas'));
-					return canvases.find(function(c) {
-						return c !== canvas && c.width > 64 && c.height > 64;
-					}) || null;
+				function normalizeScreenName(name) {
+					return name == null ? '' : String(name).toLowerCase().replace(/[\s_.:-]+/g, '');
 				}
 
-				function eaglerLooksReady(now) {
-					if (now - lastReadySample < READY_CHECK_INTERVAL) return readySampleResult;
-					lastReadySample = now;
+				function isMenuScreen(name) {
+					const s = normalizeScreenName(name);
+					return s.indexOf('guimainmenu') !== -1 || s.indexOf('mainmenu') !== -1 || s.indexOf('titlescreen') !== -1;
+				}
 
-					const c = getEaglerCanvas();
-					if (!c) { readySampleResult = false; return false; }
-					try {
-						const gl = c.getContext('webgl2') || c.getContext('webgl') || c.getContext('experimental-webgl');
-						if (!gl) { readySampleResult = false; return false; }
+				function isWorldScreen(name) {
+					if (name == null || name === '' || String(name).toLowerCase() === 'null') return true;
+					const s = normalizeScreenName(name);
+					return s.indexOf('ingame') !== -1 && s.indexOf('mainmenu') === -1;
+				}
 
-						const points = [
-							[0.10,0.15],[0.30,0.15],[0.50,0.15],[0.70,0.15],[0.90,0.15],
-							[0.10,0.40],[0.30,0.40],[0.50,0.40],[0.70,0.40],[0.90,0.40],
-							[0.10,0.65],[0.30,0.65],[0.50,0.65],[0.70,0.65],[0.90,0.65],
-							[0.10,0.85],[0.30,0.85],[0.50,0.85],[0.70,0.85],[0.90,0.85]
-						];
-						const px = new Uint8Array(4);
-						let mean = 0;
-						let min = 255;
-						let max = 0;
-						let brightCount = 0;
-						for (const p of points) {
-							const x = Math.max(0, Math.min(c.width - 1, Math.floor(c.width * p[0])));
-							const y = Math.max(0, Math.min(c.height - 1, Math.floor(c.height * p[1])));
-							gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
-							const v = (px[0] + px[1] + px[2]) / 3;
-							mean += v;
-							min = Math.min(min, v);
-							max = Math.max(max, v);
-							if (v > 225) brightCount++;
-						}
-						mean /= points.length;
-						const range = max - min;
+				function hideThunderOverlayNow() {
+					if (introFinished) return;
+					if (!thunderSequenceStarted && overlayRoot.style.visibility !== 'visible') return;
+					introFinished = true;
+					stopStormAudio();
+					stormRunning = false;
+					try { overlayRoot.remove(); } catch (e) {}
+				}
 
-						// A normal Eagler startup/splash is usually mostly uniform/bright.
-						// The actual menu/game frame has much more color/contrast.
-						readySampleResult = mean < 235 && range > 28 && brightCount < points.length * 0.85;
-						return readySampleResult;
-					} catch (e) {
-						readySampleResult = false;
-						return false;
+				function handleEaglerScreen(screenName) {
+					currentScreenName = screenName;
+					if (isWorldScreen(screenName)) {
+						hideThunderOverlayNow();
+						return;
+					}
+					if (!thunderSequenceStarted && isMenuScreen(screenName)) {
+						startThunderSequence();
 					}
 				}
 
-				function waitForEagler() {
-					if (thunderSequenceStarted) return;
-					const now = performance.now();
-					const elapsed = now - readyStarted;
-					if (elapsed >= MIN_EAGLER_WAIT_MS && eaglerLooksReady(now)) {
-						readySamples++;
-					} else if (elapsed - lastReadySample > READY_CHECK_INTERVAL * 2) {
-						readySamples = 0;
-					}
+				window.addEventListener('thunder:eagler-screen', function(ev) {
+					const detail = ev && ev.detail ? ev.detail : {};
+					handleEaglerScreen(detail.screenName);
+				});
 
-					if (readySamples >= 2 || elapsed >= MAX_EAGLER_WAIT_MS) {
+				if (currentScreenName != null) handleEaglerScreen(currentScreenName);
+
+				function hasEaglerCanvas() {
+					return !!document.querySelector('#game_frame canvas');
+				}
+
+				function fallbackWaitForMenu() {
+					if (thunderSequenceStarted || introFinished) return;
+					const elapsed = performance.now() - bootStartedAt;
+					if (elapsed >= FALLBACK_BOOT_MS && hasEaglerCanvas()) {
 						startThunderSequence();
 						return;
 					}
-					setTimeout(waitForEagler, 200);
+					setTimeout(fallbackWaitForMenu, 250);
 				}
 
 				function startThunderSequence() {
-					if (thunderSequenceStarted) return;
+					if (thunderSequenceStarted || introFinished) return;
 					thunderSequenceStarted = true;
-	
-					// Now that Eagler's own Mojang/loading screen has finished,
-					// bring in the Thunder transition on top of the ready game.
+					stormAudioEnabled = true;
 					overlayRoot.style.visibility = 'visible';
 					overlayRoot.style.opacity = '1';
 					startRainLoop();
 					startStormVisuals();
-
 					progress = 0;
 					rampStart = null;
 					requestAnimationFrame(progressLoop);
@@ -803,12 +826,17 @@
 					setTimeout(() => {
 						titleDiv.remove();
 						flashDiv.remove();
+						stopStormAudio();
 						stormRunning = false;
-						overlayRoot.remove();
+						hideThunderOverlayNow();
 					}, 2450);
 				}
 
-				waitForEagler();
+				fallbackWaitForMenu();
+
+				window.addEventListener('pagehide', function() {
+					try { stopStormAudio(); } catch (e) {}
+				}, { once: true });
 
 			});
 		</script>
