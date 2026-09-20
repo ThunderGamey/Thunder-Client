@@ -7,67 +7,38 @@
 		<meta name="keywords" content="eaglercraft, minecraft, 1.12, 1.12.2" />
 		<title>Eaglercraft 1.12 WASM-GC</title>
 		<style>
-			/* ===== Thunder visual overlay ===== */
-			#thunderOverlayRoot {
-				position: fixed;
-				inset: 0;
-				width: 100%;
-				height: 100%;
-				z-index: 2147483647;
-				pointer-events: auto; /* block clicks reaching Eagler while the transition plays */
-				overflow: hidden;
-				background: #05070d;
-				visibility: hidden;
-				opacity: 0;
-				transition: opacity 160ms ease-out;
-			}
-
 			#stormCanvas {
-				position: absolute;
-				opacity: 1;
-				mix-blend-mode: normal;
+				position: fixed;
 				top: 0;
 				left: 0;
 				width: 100%;
 				height: 100%;
-				z-index: 1;
-				display: block;
+				z-index: 999;
 				pointer-events: none;
 			}
 
-			#thunderOverlayRoot::before {
-				content: "";
-				position: absolute;
-				inset: 0;
-				background: radial-gradient(ellipse at 50% 35%, rgba(35, 58, 88, 0.16), rgba(5, 7, 13, 0) 72%);
-				z-index: 0;
-				pointer-events: none;
-			}
-
-			/* ===== Custom loading screen ===== */
+			/* ===== Loading screen (fully opaque so nothing underneath shows through) ===== */
 			#thunderLoadScreen {
-				position: absolute;
+				position: fixed;
 				top: 0;
 				left: 0;
 				width: 100%;
 				height: 100%;
-				background: rgba(5, 7, 13, 0.72);
-				z-index: 2;
+				background: #05070d;
+				z-index: 2000;
 				display: flex;
 				flex-direction: column;
 				align-items: center;
 				justify-content: center;
 				pointer-events: none;
 			}
+			/* faint storm glow baked into the opaque backdrop so it doesn't look flat */
 			#thunderLoadScreen::before {
 				content: "";
 				position: absolute;
-				inset: 0;
-				background: radial-gradient(ellipse at 50% 40%, rgba(40, 90, 130, 0.20), rgba(5, 7, 13, 0) 65%);
+				top: 0; left: 0; right: 0; bottom: 0;
+				background: radial-gradient(ellipse at 50% 40%, rgba(30, 60, 90, 0.35), rgba(5, 7, 13, 0) 65%);
 				pointer-events: none;
-			}
-			#thunderLoadLabel, #thunderBarOuter, #thunderPercent {
-				z-index: 3;
 			}
 			#thunderLoadLabel {
 				font-family: 'Courier New', monospace;
@@ -75,8 +46,12 @@
 				font-size: 2vw;
 				letter-spacing: 0.3em;
 				color: #cfeeff;
-				text-shadow: 2px 0 0 #4fd1ff, -2px 0 0 #4fd1ff, 0 0 25px #7fe3ff;
+				text-shadow:
+					2px 0 0 #4fd1ff,
+					-2px 0 0 #4fd1ff,
+					0 0 25px #7fe3ff;
 				margin-bottom: 26px;
+				position: relative;
 			}
 			#thunderBarOuter {
 				width: 40vw;
@@ -87,7 +62,9 @@
 				border-radius: 3px;
 				position: relative;
 				overflow: hidden;
-				box-shadow: 0 0 0 1px rgba(79, 209, 255, 0.15) inset, 0 0 22px rgba(79, 209, 255, 0.25);
+				box-shadow:
+					0 0 0 1px rgba(79, 209, 255, 0.15) inset,
+					0 0 22px rgba(79, 209, 255, 0.25);
 			}
 			#thunderBarFill {
 				height: 100%;
@@ -96,6 +73,7 @@
 				box-shadow: 0 0 20px 2px #4fd1ff;
 				position: relative;
 			}
+			/* jagged lightning notch that rides at the leading edge of the fill */
 			#thunderBarFill::after {
 				content: "";
 				position: absolute;
@@ -107,6 +85,7 @@
 				clip-path: polygon(60% 0%, 100% 0%, 40% 45%, 80% 45%, 20% 100%, 50% 55%, 0% 55%);
 				filter: drop-shadow(0 0 6px #ffffff);
 			}
+			/* subtle tick marks across the bar for texture */
 			#thunderBarOuter .tick {
 				position: absolute;
 				top: 0;
@@ -121,6 +100,7 @@
 				font-size: 1vw;
 				letter-spacing: 0.15em;
 				text-shadow: 0 0 10px rgba(79, 209, 255, 0.6);
+				position: relative;
 			}
 
 			/* ===== Title splash ===== */
@@ -140,7 +120,7 @@
 					0 0 25px #7fe3ff,
 					0 0 55px #4fd1ff,
 					0 0 90px #2b7ba3;
-				z-index: 2147483645;
+				z-index: 1001;
 				opacity: 0;
 				pointer-events: none;
 				white-space: nowrap;
@@ -154,7 +134,10 @@
 				display: inline-block;
 				transform: scale(1.15) rotate(-4deg);
 				color: #ffffff;
-				text-shadow: 0 0 15px #ffffff, 0 0 40px #7fe3ff, 0 0 80px #4fd1ff;
+				text-shadow:
+					0 0 15px #ffffff,
+					0 0 40px #7fe3ff,
+					0 0 80px #4fd1ff;
 			}
 			#splashFlash {
 				position: fixed;
@@ -164,7 +147,7 @@
 				height: 100%;
 				background: white;
 				opacity: 0;
-				z-index: 2147483644;
+				z-index: 1000;
 				pointer-events: none;
 			}
 		</style>
@@ -183,8 +166,6 @@
 				}else {
 
 					// %%%%%%%%% launch options %%%%%%%%%%%%
-					// UNCHANGED from the original file — nothing about Eagler's own
-					// startup config is touched. No hooks are added here.
 
 					var relayId = Math.floor(Math.random() * 3);
 					window.eaglercraftXOpts = {
@@ -216,19 +197,18 @@
 				}
 			});
 
-			// ===== Storm (starts immediately) + Thunder loading bar + lightning strikes + THUNDER[bolt]CLIENT =====
+			// ===== Thunder sequence (Mojang/Eagler first, then Thunder) =====
 			window.addEventListener("load", function() {
 
+				// Let Eagler show its normal Mojang/loading screen first.
+				// The existing Thunder storm/loading sequence starts only after this delay.
+				const THUNDER_START_DELAY = 5000;
+				setTimeout(function() {
+
 				// ---------------------------------------------------------------
-				// Shared audio engine — UNCHANGED, this already works correctly
-				// per prior testing (thunder + rain both confirmed audible).
+				// Shared audio engine (real synthesized thunder/rain, not sfx clips)
 				// ---------------------------------------------------------------
 				let actx = null;
-				let rainSource = null;
-				let rainGainNode = null;
-				let thunderMaster = null;
-				let stormAudioEnabled = false;
-				const RAIN_VOLUME = 0.15; // 15% master volume
 				function getAudioCtx() {
 					try {
 						if (!actx) {
@@ -243,10 +223,12 @@
 						return null;
 					}
 				}
+				// browsers block audio until a user gesture; keep trying to unlock on every interaction
 				['pointerdown', 'keydown', 'touchstart'].forEach(function(evt) {
 					window.addEventListener(evt, function() { getAudioCtx(); }, { passive: true });
 				});
 
+				// shared distortion curve for a gritty, electric edge on the crack layer
 				function makeDistortionCurve(amount) {
 					const n = 44100;
 					const curve = new Float32Array(n);
@@ -256,11 +238,10 @@
 					}
 					return curve;
 				}
-				const SMALL_DISTORTION = makeDistortionCurve(18);
-				const BIG_DISTORTION = makeDistortionCurve(32);
 
+				// a shared compressor + master volume gives every strike punch at a clear, consistent level
 				let thunderBus = null;
-				const THUNDER_VOLUME = 0.40; // 40% master volume
+				const THUNDER_VOLUME = 0.38; // 30%-45% requested range
 				function getThunderBus(ctx) {
 					if (!thunderBus) {
 						thunderBus = ctx.createDynamicsCompressor();
@@ -271,13 +252,13 @@
 						thunderBus.release.value = 0.25;
 						const master = ctx.createGain();
 						master.gain.value = THUNDER_VOLUME;
-						thunderMaster = master;
 						thunderBus.connect(master);
 						master.connect(ctx.destination);
 					}
 					return thunderBus;
 				}
 
+				// tuff, electric thunder: zap transient + crackle burst + distorted crack + tremolo rumble + sub-bass
 				function playThunder(big) {
 					const ctx = getAudioCtx();
 					if (!ctx) return;
@@ -285,6 +266,7 @@
 						const now = ctx.currentTime;
 						const bus = getThunderBus(ctx);
 
+						// ---- electric "zap" transient: fast-falling square/saw sweep, the initial spark of the strike ----
 						const zap = ctx.createOscillator();
 						zap.type = 'sawtooth';
 						zap.frequency.setValueAtTime(big ? 2600 : 1900, now);
@@ -297,6 +279,7 @@
 						zap.start(now);
 						zap.stop(now + 0.06);
 
+						// ---- crackle: a handful of tiny random noise clicks right at the strike, before the boom ----
 						const crackleHits = 5 + Math.floor(Math.random() * 4);
 						for (let i = 0; i < crackleHits; i++) {
 							const t = now + Math.random() * 0.09;
@@ -317,6 +300,7 @@
 							src.start(t);
 						}
 
+						// ---- main crack: distorted bandpass noise burst, the loudest single hit ----
 						const crackDur = 0.2;
 						const crackBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * crackDur), ctx.sampleRate);
 						const cd = crackBuf.getChannelData(0);
@@ -337,7 +321,7 @@
 						crackPeak.gain.value = 9;
 
 						const shaper = ctx.createWaveShaper();
-						shaper.curve = big ? BIG_DISTORTION : SMALL_DISTORTION;
+						shaper.curve = makeDistortionCurve(big ? 32 : 18);
 						shaper.oversample = '2x';
 
 						const crackGain = ctx.createGain();
@@ -351,6 +335,7 @@
 						crackGain.connect(bus);
 						crackSrc.start(now + 0.01);
 
+						// ---- rolling low rumble (brown-noise via leaky integration) with a slow tremolo for a "rolling" feel ----
 						const rumbleDur = (big ? 3.8 : 2.1) + Math.random() * 0.9;
 						const rumbleBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * rumbleDur), ctx.sampleRate);
 						const rd = rumbleBuf.getChannelData(0);
@@ -387,6 +372,7 @@
 						rumbleFilter.connect(rumbleGain);
 						rumbleGain.connect(bus);
 
+						// ---- sub-bass weight underneath the rumble ----
 						const sub = ctx.createOscillator();
 						sub.type = 'sine';
 						sub.frequency.setValueAtTime(big ? 62 : 48, now);
@@ -405,19 +391,22 @@
 						tremolo.stop(now + rumbleDur);
 						sub.start(now);
 						sub.stop(now + rumbleDur * 0.9 + 0.05);
-					} catch (e) {}
+					} catch (e) {
+						// audio blocked/unsupported, fail silently
+					}
 				}
 
+				// continuous looping rain hiss, fades in gently
 				function startRainLoop() {
-					if (!stormAudioEnabled || rainSource) return;
 					const ctx = getAudioCtx();
 					if (!ctx) return;
 					try {
 						const loopSec = 4;
 						const buffer = ctx.createBuffer(1, ctx.sampleRate * loopSec, ctx.sampleRate);
 						const data = buffer.getChannelData(0);
-						for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-
+						for (let i = 0; i < data.length; i++) {
+							data[i] = Math.random() * 2 - 1;
+						}
 						const src = ctx.createBufferSource();
 						src.buffer = buffer;
 						src.loop = true;
@@ -433,73 +422,29 @@
 						shelf.gain.value = -8;
 
 						const rainGain = ctx.createGain();
-						rainGainNode = rainGain;
 						rainGain.gain.setValueAtTime(0.0001, ctx.currentTime);
-						rainGain.gain.linearRampToValueAtTime(RAIN_VOLUME, ctx.currentTime + 2.0);
+						rainGain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 3.5);
 
 						src.connect(bandpass);
 						bandpass.connect(shelf);
 						shelf.connect(rainGain);
 						rainGain.connect(ctx.destination);
 
-						rainSource = src;
-						src.onended = function() { if (rainSource === src) rainSource = null; };
 						src.start();
 					} catch (e) {}
 				}
-
-				function stopStormAudio() {
-					stormAudioEnabled = false;
-					const ctx = actx;
-					try {
-						if (ctx) {
-							const now = ctx.currentTime;
-							if (rainGainNode) {
-								rainGainNode.gain.cancelScheduledValues(now);
-								rainGainNode.gain.setValueAtTime(Math.max(0.0001, rainGainNode.gain.value), now);
-								rainGainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
-							}
-							if (thunderMaster) {
-								thunderMaster.gain.cancelScheduledValues(now);
-								thunderMaster.gain.setValueAtTime(Math.max(0.0001, thunderMaster.gain.value), now);
-								thunderMaster.gain.linearRampToValueAtTime(0.0, now + 0.08);
-							}
-						}
-					} catch (e) {}
-
-					const src = rainSource;
-					rainSource = null;
-					rainGainNode = null;
-					if (src) {
-						try { src.stop(); } catch (e) {}
-					}
-
-					if (ctx) {
-						setTimeout(function() {
-							try { ctx.close(); } catch (e) {}
-							if (actx === ctx) actx = null;
-							thunderMaster = null;
-							thunderBus = null;
-						}, 120);
-					}
-				}
+				startRainLoop();
 
 				// ---------------------------------------------------------------
-				// Thunder overlay root
-				// ---------------------------------------------------------------
-				const overlayRoot = document.createElement('div');
-				overlayRoot.id = 'thunderOverlayRoot';
-				document.body.appendChild(overlayRoot);
-
-				// ---------------------------------------------------------------
-				// ambient storm canvas — UNCHANGED
+				// ambient storm canvas: starts right away, keeps running under everything
 				// ---------------------------------------------------------------
 				const canvas = document.createElement('canvas');
 				canvas.id = 'stormCanvas';
-				overlayRoot.appendChild(canvas);
+				document.body.appendChild(canvas);
 				const ctx2d = canvas.getContext('2d');
 
-				const dpr = 1;
+				// render at the screen's actual pixel density for crisp, non-blurry lines
+				const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
 
 				function resize() {
 					const w = window.innerWidth;
@@ -517,18 +462,18 @@
 				function viewH() { return canvas.height / dpr; }
 
 				const clouds = [];
-				const CLOUD_COUNT = 8;
+				const CLOUD_COUNT = 16;
 				for (let i = 0; i < CLOUD_COUNT; i++) {
 					clouds.push({
 						x: Math.random() * viewW(),
 						y: Math.random() * viewH() * 0.55,
 						scale: 0.7 + Math.random() * 1.8,
 						speed: 0.3 + Math.random() * 0.9,
-						opacity: 0.45 + Math.random() * 0.30
+						opacity: 0.2 + Math.random() * 0.3
 					});
 				}
 
-				const RAIN_COUNT = 110;
+				const RAIN_COUNT = 260;
 				const rain = [];
 				for (let i = 0; i < RAIN_COUNT; i++) {
 					rain.push({
@@ -540,21 +485,23 @@
 					});
 				}
 
-				function drawRain(frameScale) {
-					ctx2d.strokeStyle = 'rgba(185, 220, 255, 0.66)';
+				function drawRain() {
+					ctx2d.save();
+					ctx2d.strokeStyle = 'rgba(150, 190, 230, 0.35)';
 					ctx2d.lineWidth = 1;
-					ctx2d.beginPath();
 					for (const d of rain) {
+						ctx2d.beginPath();
 						ctx2d.moveTo(d.x, d.y);
 						ctx2d.lineTo(d.x - d.drift, d.y + d.len);
-						d.x -= d.drift * frameScale;
-						d.y += d.speed * frameScale;
-						if (d.y > viewH() + d.len) {
+						ctx2d.stroke();
+						d.x -= d.drift;
+						d.y += d.speed;
+						if (d.y > viewH()) {
 							d.y = -d.len;
 							d.x = Math.random() * viewW();
 						}
 					}
-					ctx2d.stroke();
+					ctx2d.restore();
 				}
 
 				let shakeFrames = 0;
@@ -566,9 +513,10 @@
 					ctx2d.fillStyle = `rgba(55, 70, 95, ${c.opacity})`;
 					ctx2d.beginPath();
 					ctx2d.arc(0, 0, 40, 0, Math.PI * 2);
-					ctx2d.arc(34, -8, 29, 0, Math.PI * 2);
-					ctx2d.arc(-32, -4, 27, 0, Math.PI * 2);
-					ctx2d.arc(12, 14, 30, 0, Math.PI * 2);
+					ctx2d.arc(35, -10, 30, 0, Math.PI * 2);
+					ctx2d.arc(-35, -5, 28, 0, Math.PI * 2);
+					ctx2d.arc(15, 15, 32, 0, Math.PI * 2);
+					ctx2d.arc(-15, 15, 30, 0, Math.PI * 2);
 					ctx2d.fill();
 					ctx2d.restore();
 				}
@@ -622,7 +570,7 @@
 				function drawBolt(bolt, alpha) {
 					ctx2d.save();
 					ctx2d.shadowColor = '#7fe3ff';
-					ctx2d.shadowBlur = 16;
+					ctx2d.shadowBlur = 35;
 					drawLine(bolt.main, alpha, 3);
 					for (const b of bolt.branches) {
 						drawLine(b, alpha * 0.7, 1.6);
@@ -634,7 +582,10 @@
 					flashAlpha = 1;
 					boltPoints = generateBolt();
 					shakeFrames = 8;
+
+					// thunder fires the instant the flash happens — fully synced
 					playThunder(false);
+
 					if (Math.random() < 0.3) {
 						setTimeout(() => {
 							flashAlpha = 1;
@@ -644,37 +595,30 @@
 					}
 				}
 
-				let stormRunning = false;
-				let lastFrameTime = 0;
-				const TARGET_FRAME_MS = 1000 / 60;
-
 				function animate(now) {
-					if (!stormRunning || !ctx2d) return;
-					if (lastFrameTime && now - lastFrameTime < TARGET_FRAME_MS) {
-						requestAnimationFrame(animate);
-						return;
-					}
-					const frameScale = lastFrameTime ? Math.min(2.5, (now - lastFrameTime) / TARGET_FRAME_MS) : 1;
-					lastFrameTime = now;
-
 					ctx2d.save();
+
 					if (shakeFrames > 0) {
-						const mag = shakeFrames * 0.65;
+						const mag = shakeFrames * 0.8;
 						ctx2d.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
 						shakeFrames--;
 					}
 
-					ctx2d.clearRect(0, 0, viewW(), viewH());
-					ctx2d.fillStyle = 'rgba(7, 12, 22, 0.24)';
-					ctx2d.fillRect(0, 0, viewW(), viewH());
+					ctx2d.clearRect(-20, -20, viewW() + 40, viewH() + 40);
+
+					const grad = ctx2d.createLinearGradient(0, 0, 0, viewH());
+					grad.addColorStop(0, 'rgba(5,7,15,0.35)');
+					grad.addColorStop(1, 'rgba(19,26,48,0.35)');
+					ctx2d.fillStyle = grad;
+					ctx2d.fillRect(-20, -20, viewW() + 40, viewH() + 40);
 
 					for (const c of clouds) {
-						c.x += c.speed * frameScale;
+						c.x += c.speed;
 						if (c.x - 100 > viewW()) c.x = -100;
 						drawCloud(c);
 					}
 
-					drawRain(frameScale);
+					drawRain();
 
 					if (now - lastFlashCheck > nextFlashTime) {
 						triggerFlash();
@@ -683,39 +627,30 @@
 					}
 
 					if (flashAlpha > 0) {
-						ctx2d.fillStyle = `rgba(190, 220, 255, ${flashAlpha * 0.16})`;
-						ctx2d.fillRect(0, 0, viewW(), viewH());
+						ctx2d.fillStyle = `rgba(190, 220, 255, ${flashAlpha * 0.18})`;
+						ctx2d.fillRect(-20, -20, viewW() + 40, viewH() + 40);
 						if (boltPoints) drawBolt(boltPoints, flashAlpha);
-						flashAlpha -= 0.07 * frameScale;
+						flashAlpha -= 0.07;
 						if (flashAlpha <= 0) boltPoints = null;
 					}
 
 					ctx2d.restore();
 					requestAnimationFrame(animate);
 				}
-
-				function startStormVisuals() {
-					if (stormRunning) return;
-					stormRunning = true;
-					lastFrameTime = 0;
-					flashAlpha = 0.9;
-					boltPoints = generateBolt();
-					shakeFrames = 6;
-					playThunder(true);
-					requestAnimationFrame(animate);
-				}
+				requestAnimationFrame(animate);
 
 				// ---------------------------------------------------------------
-				// Loading screen
+				// loading screen sits ON TOP of the running storm, and is now fully opaque
 				// ---------------------------------------------------------------
 				const loadScreen = document.createElement('div');
 				loadScreen.id = 'thunderLoadScreen';
 				loadScreen.innerHTML =
-					'<div id="thunderLoadLabel">THUNDER CLIENT</div>' +
+					'<div id="thunderLoadLabel">LOADING</div>' +
 					'<div id="thunderBarOuter"><div id="thunderBarFill"></div></div>' +
 					'<div id="thunderPercent">0%</div>';
-				overlayRoot.appendChild(loadScreen);
+				document.body.appendChild(loadScreen);
 
+				// scattered tick marks for texture on the bar track
 				const barOuter = loadScreen.querySelector('#thunderBarOuter');
 				for (let i = 0; i < 22; i++) {
 					const tickEl = document.createElement('div');
@@ -727,66 +662,62 @@
 				const barFill = loadScreen.querySelector('#thunderBarFill');
 				const percentLabel = loadScreen.querySelector('#thunderPercent');
 
-				let progress = 0;
-				let thunderSequenceStarted = false;
-				let introFinished = false;
-				let progressStarted = false;
-				const THUNDER_BAR_MS = 2200; // total time the bar takes to fill, at one constant speed
+let progress = 0;
+				let phase = 'ramp'; // ramp -> finish
+				let rampStart = null;
+				let finishStart = null;
+				const RAMP_MS = 1600;   // smooth climb 0 -> 90
+				const FINISH_MS = 260;  // quick smooth snap 90 -> 100
 
-				function hideThunderOverlayNow() {
-					if (introFinished) return;
-					introFinished = true;
-					stopStormAudio();
-					stormRunning = false;
-					try { overlayRoot.remove(); } catch (e) {}
-				}
+				function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
-				function startThunderSequence() {
-					if (thunderSequenceStarted || introFinished) return;
-					thunderSequenceStarted = true;
-					stormAudioEnabled = true;
-					overlayRoot.style.visibility = 'visible';
-					overlayRoot.style.opacity = '1';
-					startRainLoop();
-					startStormVisuals();
-					if (!progressStarted) {
-						progressStarted = true;
-						requestAnimationFrame(progressLoop);
-					}
-				}
-
-				// Constant-speed fill: no easing, no random stutter. Straight
-				// linear progress from 0 to 100 over a fixed duration, so it
-				// always feels like one steady pace rather than fast-then-stuck.
 				function progressLoop(ts) {
-					if (!thunderSequenceStarted || introFinished) return;
-					if (!progressLoop.start) progressLoop.start = ts;
-					const t = Math.min(1, (ts - progressLoop.start) / THUNDER_BAR_MS);
-					progress = 100 * t;
+					if (rampStart === null) rampStart = ts;
+
+					if (phase === 'ramp') {
+						const t = Math.min(1, (ts - rampStart) / RAMP_MS);
+						progress = easeOutCubic(t) * 90;
+						if (t >= 1) {
+							phase = 'finish';
+							finishStart = ts;
+						}
+					} else if (phase === 'finish') {
+						const t = Math.min(1, (ts - finishStart) / FINISH_MS);
+						progress = 90 + 10 * easeOutCubic(t);
+					}
+
 					barFill.style.width = progress + '%';
 					percentLabel.textContent = Math.floor(progress) + '%';
-					if (t < 1) requestAnimationFrame(progressLoop);
-					else afterLoadingBar();
+
+					if (progress < 99.95) {
+						requestAnimationFrame(progressLoop);
+					} else {
+						afterLoadingBar();
+					}
 				}
+				requestAnimationFrame(progressLoop);
 
 				function afterLoadingBar() {
-					loadScreen.style.transition = 'opacity 220ms ease-out';
+					loadScreen.style.transition = 'opacity 0.4s ease-out';
 					loadScreen.style.opacity = '0';
 					setTimeout(() => {
-						loadScreen.style.display = 'none';
+						loadScreen.remove();
 						runIntro();
-					}, 230);
+					}, 400);
 				}
 
+				// ---------------------------------------------------------------
+				// splash flash + title (runs AFTER the loading bar finishes)
+				// ---------------------------------------------------------------
 				function runIntro() {
 					const flashDiv = document.createElement('div');
 					flashDiv.id = 'splashFlash';
-					overlayRoot.appendChild(flashDiv);
+					document.body.appendChild(flashDiv);
 
 					const titleDiv = document.createElement('div');
 					titleDiv.id = 'splashTitle';
 					titleDiv.innerHTML = 'THUNDER<span class="bolt">&#9889;</span>CLIENT';
-					overlayRoot.appendChild(titleDiv);
+					document.body.appendChild(titleDiv);
 
 					function flashOnce(peakOpacity, duration) {
 						flashDiv.style.transition = 'none';
@@ -797,101 +728,33 @@
 						});
 					}
 
-					flashOnce(0.65, 220);
+					flashOnce(0.85, 220);
+					setTimeout(() => flashOnce(0.65, 260), 180);
+					setTimeout(() => flashOnce(0.9, 300), 380);
+
 					playThunder(true);
+					setTimeout(function() { playThunder(true); }, 220);
 
 					setTimeout(() => {
-						titleDiv.style.transition = 'opacity 0.16s ease-out, transform 0.16s ease-out';
+						titleDiv.style.transition = 'opacity 0.15s ease-out, transform 0.15s ease-out';
 						titleDiv.style.opacity = '1';
 						titleDiv.style.transform = 'translate(-50%, -50%) scale(1)';
-						flashOnce(0.9, 260);
+						flashOnce(1, 350);
 						playThunder(true);
-					}, 300);
+					}, 620);
 
 					setTimeout(() => {
-						titleDiv.style.transition = 'opacity 0.6s ease-in';
+						titleDiv.style.transition = 'opacity 0.8s ease-in';
 						titleDiv.style.opacity = '0';
-					}, 1700);
+					}, 2200);
 
 					setTimeout(() => {
 						titleDiv.remove();
 						flashDiv.remove();
-						stopStormAudio();
-						hideThunderOverlayNow();
-					}, 2450);
+					}, 3100);
 				}
 
-				// ---------------------------------------------------------------
-				// Storm intro now waits for the first click/tap to begin,
-				// rather than starting the instant the page loads. This also
-				// naturally satisfies the browser's audio-unlock requirement,
-				// since that same click is what allows sound to play at all.
-				// ---------------------------------------------------------------
-				function beginOnFirstInteraction() {
-					if (thunderSequenceStarted || introFinished) return;
-					startThunderSequence();
-				}
-				['pointerdown', 'keydown', 'touchstart', 'click'].forEach(function(evt) {
-					window.addEventListener(evt, beginOnFirstInteraction, { passive: true, once: true });
-				});
-
-				// ---------------------------------------------------------------
-				// Fullscreen fix: when an element goes fullscreen, the browser
-				// puts it in a special top-most layer that sits above EVERY
-				// z-indexed element on the page, no matter how high. If Eagler
-				// requests fullscreen on its own canvas/wrapper, our overlay
-				// (a sibling, not a descendant of that element) gets left behind
-				// and hidden even though its z-index is maxed out. Fix: whenever
-				// fullscreen state changes, move our overlay to live INSIDE the
-				// fullscreen element so it's part of the same rendering layer.
-				// ---------------------------------------------------------------
-				function keepOverlayInFullscreenLayer() {
-					const fsEl = document.fullscreenElement
-						|| document.webkitFullscreenElement
-						|| document.mozFullScreenElement
-						|| document.msFullscreenElement;
-					if (fsEl && overlayRoot.parentElement !== fsEl) {
-						fsEl.appendChild(overlayRoot);
-					} else if (!fsEl && overlayRoot.parentElement !== document.body) {
-						document.body.appendChild(overlayRoot);
-					}
-				}
-				['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange']
-					.forEach(function(evt) {
-						document.addEventListener(evt, keepOverlayInFullscreenLayer);
-					});
-				// also check once shortly after load, in case fullscreen was
-				// already active by the time this script ran
-				setTimeout(keepOverlayInFullscreenLayer, 50);
-
-				// ---------------------------------------------------------------
-				// Self-healing watchdog: Eagler has been observed to wipe/rebuild
-				// the page's body content when it transitions between its own
-				// internal states (this is the same behavior that deleted an
-				// earlier version of this overlay entirely). Rather than guess
-				// when that happens, watch for our overlay being removed from
-				// the document and immediately put it back, for as long as the
-				// intro is supposed to still be running.
-				// ---------------------------------------------------------------
-				const watchdog = new MutationObserver(function() {
-					if (introFinished) {
-						watchdog.disconnect();
-						return;
-					}
-					if (!document.body.contains(overlayRoot) && !document.documentElement.contains(overlayRoot)) {
-						const fsEl = document.fullscreenElement
-							|| document.webkitFullscreenElement
-							|| document.mozFullScreenElement
-							|| document.msFullscreenElement;
-						(fsEl || document.body).appendChild(overlayRoot);
-					}
-				});
-				watchdog.observe(document.documentElement, { childList: true, subtree: true });
-
-				window.addEventListener('pagehide', function() {
-					try { stopStormAudio(); } catch (e) {}
-				}, { once: true });
-
+				}, THUNDER_START_DELAY);
 			});
 		</script>
 	</head>
