@@ -873,6 +873,30 @@
 				// already active by the time this script ran
 				setTimeout(keepOverlayInFullscreenLayer, 50);
 
+				// ---------------------------------------------------------------
+				// Self-healing watchdog: Eagler has been observed to wipe/rebuild
+				// the page's body content when it transitions between its own
+				// internal states (this is the same behavior that deleted an
+				// earlier version of this overlay entirely). Rather than guess
+				// when that happens, watch for our overlay being removed from
+				// the document and immediately put it back, for as long as the
+				// intro is supposed to still be running.
+				// ---------------------------------------------------------------
+				const watchdog = new MutationObserver(function() {
+					if (introFinished) {
+						watchdog.disconnect();
+						return;
+					}
+					if (!document.body.contains(overlayRoot) && !document.documentElement.contains(overlayRoot)) {
+						const fsEl = document.fullscreenElement
+							|| document.webkitFullscreenElement
+							|| document.mozFullScreenElement
+							|| document.msFullscreenElement;
+						(fsEl || document.body).appendChild(overlayRoot);
+					}
+				});
+				watchdog.observe(document.documentElement, { childList: true, subtree: true });
+
 				window.addEventListener('pagehide', function() {
 					try { stopStormAudio(); } catch (e) {}
 				}, { once: true });
