@@ -147,19 +147,7 @@
 							{ addr: "wss://relay.deev.is/", comment: "lax1dude relay #1", primary: relayId == 0 },
 							{ addr: "wss://relay.lax1dude.net/", comment: "lax1dude relay #2", primary: relayId == 1 },
 							{ addr: "wss://relay.shhnowisnottheti.me/", comment: "ayunami relay #1", primary: relayId == 2 }
-						],
-						hooks: {
-							// This WASM-GC build expects every hook slot to be a JS function.
-							localStorageSaved: function(key, data) {},
-							localStorageLoaded: function(key) { return null; },
-							crashReportShow: function(report, customMessageCB) {},
-							screenChanged: function(screenName, scaledWidth, scaledHeight, realWidth, realHeight, scaleFactor) {
-								window.__thunderEaglerScreenName = screenName;
-								try {
-									window.dispatchEvent(new CustomEvent('thunder:eagler-screen', { detail: { screenName: screenName } }));
-								} catch (e) {}
-							}
-						}
+						]
 					};
 
 					// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -668,9 +656,10 @@
 				}
 
 				// ---------------------------------------------------------------
-				// IMPORTANT: Let Eagler's normal Mojang/Eagler loading screen
-				// stay fully visible FIRST. We only reveal Thunder's storm and
-				// custom loading animation once the real game frame is ready.
+				// Startup sequence without Eagler hooks.
+				// We wait for Eagler's OWN canvas inside #game_frame to appear.
+				// This avoids modifying eaglercraftXOpts, which is important for
+				// this WASM-GC u1 build.
 				// ---------------------------------------------------------------
 				const loadScreen = document.createElement('div');
 				loadScreen.id = 'thunderLoadScreen';
@@ -692,95 +681,50 @@
 				const percentLabel = loadScreen.querySelector('#thunderPercent');
 
 				let progress = 0;
-				let rampStart = null;
 				let thunderSequenceStarted = false;
 				let introFinished = false;
-				let currentScreenName = window.__thunderEaglerScreenName;
+				let progressStarted = false;
+				let canvasSeenAt = 0;
 				const THUNDER_BAR_MS = 1700;
-				const FALLBACK_BOOT_MS = 12000; // only used if the Eagler screen hook is unavailable
-				const bootStartedAt = performance.now();
 
-				function normalizeScreenName(name) {
-					return name == null ? '' : String(name).toLowerCase().replace(/[\s_.:-]+/g, '');
-				}
-
-				function isMenuScreen(name) {
-					const s = normalizeScreenName(name);
-					return s.indexOf('guimainmenu') !== -1 || s.indexOf('mainmenu') !== -1 || s.indexOf('titlescreen') !== -1;
-				}
-
-				function isWorldScreen(name) {
-					if (name == null || name === '' || String(name).toLowerCase() === 'null') return true;
-					const s = normalizeScreenName(name);
-					return s.indexOf('ingame') !== -1 && s.indexOf('mainmenu') === -1;
+				function hasEaglerCanvas() {
+					const game = document.getElementById('game_frame');
+					if (!game) return false;
+					const c = game.querySelector('canvas');
+					return !!(c && c.width > 0 && c.height > 0);
 				}
 
 				function hideThunderOverlayNow() {
 					if (introFinished) return;
-					if (!thunderSequenceStarted && overlayRoot.style.visibility !== 'visible') return;
 					introFinished = true;
 					stopStormAudio();
 					stormRunning = false;
 					try { overlayRoot.remove(); } catch (e) {}
 				}
 
-				function handleEaglerScreen(screenName) {
-					currentScreenName = screenName;
-					if (isWorldScreen(screenName)) {
-						hideThunderOverlayNow();
-						return;
-					}
-					if (!thunderSequenceStarted && isMenuScreen(screenName)) {
-						startThunderSequence();
-					}
-				}
-
-				window.addEventListener('thunder:eagler-screen', function(ev) {
-					const detail = ev && ev.detail ? ev.detail : {};
-					handleEaglerScreen(detail.screenName);
-				});
-
-				if (currentScreenName != null) handleEaglerScreen(currentScreenName);
-
-				function hasEaglerCanvas() {
-					return !!document.querySelector('#game_frame canvas');
-				}
-
-				function fallbackWaitForMenu() {
-					if (thunderSequenceStarted || introFinished) return;
-					const elapsed = performance.now() - bootStartedAt;
-					if (elapsed >= FALLBACK_BOOT_MS && hasEaglerCanvas()) {
-						startThunderSequence();
-						return;
-					}
-					setTimeout(fallbackWaitForMenu, 250);
-				}
-
 				function startThunderSequence() {
 					if (thunderSequenceStarted || introFinished) return;
 					thunderSequenceStarted = true;
 					stormAudioEnabled = true;
-					overlayRoot.style.visibility = 'visible';
-					overlayRoot.style.opacity = '1';
-					startRainLoop();
-					startStormVisuals();
-					progress = 0;
-					rampStart = null;
+				overlayRoot.style.visibility = 'visible';
+				overlayRoot.style.opacity = '1';
+				startRainLoop();
+				startStormVisuals();
+				if (!progressStarted) {
+					progressStarted = true;
 					requestAnimationFrame(progressLoop);
+				}
 				}
 
 				function progressLoop(ts) {
-					if (rampStart === null) rampStart = ts;
-					const t = Math.min(1, (ts - rampStart) / THUNDER_BAR_MS);
+					if (!thunderSequenceStarted || introFinished) return;
+					if (!progressLoop.start) progressLoop.start = ts;
+					const t = Math.min(1, (ts - progressLoop.start) / THUNDER_BAR_MS);
 					progress = 100 * easeOutCubic(t);
 					barFill.style.width = progress + '%';
 					percentLabel.textContent = Math.floor(progress) + '%';
-
-					if (t < 1) {
-						requestAnimationFrame(progressLoop);
-					} else {
-						afterLoadingBar();
-					}
+					if (t < 1) requestAnimationFrame(progressLoop);
+					else afterLoadingBar();
 				}
 
 				function afterLoadingBar() {
@@ -831,12 +775,26 @@
 						titleDiv.remove();
 						flashDiv.remove();
 						stopStormAudio();
-						stormRunning = false;
 						hideThunderOverlayNow();
 					}, 2450);
 				}
 
-				fallbackWaitForMenu();
+				// Poll only for Eagler's canvas inside #game_frame. No Eagler hooks are touched.
+				function waitForEaglerCanvas() {
+					if (thunderSequenceStarted || introFinished) return;
+					if (hasEaglerCanvas()) {
+						if (!canvasSeenAt) canvasSeenAt = performance.now();
+						// Require the canvas to remain present for 350ms so we don't fire on a transient loader canvas.
+						if (performance.now() - canvasSeenAt >= 350) {
+							startThunderSequence();
+							return;
+						}
+					} else {
+						canvasSeenAt = 0;
+					}
+					setTimeout(waitForEaglerCanvas, 100);
+				}
+				waitForEaglerCanvas();
 
 				window.addEventListener('pagehide', function() {
 					try { stopStormAudio(); } catch (e) {}
