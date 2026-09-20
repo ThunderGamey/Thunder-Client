@@ -836,13 +836,42 @@
 				// machine (rough seconds is fine), and set this a little higher
 				// than that so the storm never shows up over top of it.
 				// ---------------------------------------------------------------
-				const THUNDER_INTRO_DELAY_MS = 400; // Eagler's splash is nearly instant on this build, so fire almost immediately
+				const THUNDER_INTRO_DELAY_MS = 2500; // splash starts later than 400ms but the menu appears before 6000ms — narrowing in
 
 				setTimeout(function() {
 					if (!thunderSequenceStarted && !introFinished) {
 						startThunderSequence();
 					}
 				}, THUNDER_INTRO_DELAY_MS);
+
+				// ---------------------------------------------------------------
+				// Fullscreen fix: when an element goes fullscreen, the browser
+				// puts it in a special top-most layer that sits above EVERY
+				// z-indexed element on the page, no matter how high. If Eagler
+				// requests fullscreen on its own canvas/wrapper, our overlay
+				// (a sibling, not a descendant of that element) gets left behind
+				// and hidden even though its z-index is maxed out. Fix: whenever
+				// fullscreen state changes, move our overlay to live INSIDE the
+				// fullscreen element so it's part of the same rendering layer.
+				// ---------------------------------------------------------------
+				function keepOverlayInFullscreenLayer() {
+					const fsEl = document.fullscreenElement
+						|| document.webkitFullscreenElement
+						|| document.mozFullScreenElement
+						|| document.msFullscreenElement;
+					if (fsEl && overlayRoot.parentElement !== fsEl) {
+						fsEl.appendChild(overlayRoot);
+					} else if (!fsEl && overlayRoot.parentElement !== document.body) {
+						document.body.appendChild(overlayRoot);
+					}
+				}
+				['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange']
+					.forEach(function(evt) {
+						document.addEventListener(evt, keepOverlayInFullscreenLayer);
+					});
+				// also check once shortly after load, in case fullscreen was
+				// already active by the time this script ran
+				setTimeout(keepOverlayInFullscreenLayer, 50);
 
 				window.addEventListener('pagehide', function() {
 					try { stopStormAudio(); } catch (e) {}
