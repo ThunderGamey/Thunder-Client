@@ -48739,9 +48739,12 @@ c.PK;})();
    are intentionally not forced into this compiled bundle.
 =============================================================================== */
 (function(){
-  var W=$rt_globals;
-  var D=W.document;
-  if(!D)return;
+  var G=$rt_globals;
+  // Eagler's TeaVM environment may expose the real browser window as G.window
+  // (especially when classes.js is running through its worker/DOM bridge).
+  var W=G.window||G;
+  var D=W&&W.document;
+  if(!W||!D)return;
 
   var KEY='thunderClientSettings_v1';
   var S={
@@ -48767,16 +48770,27 @@ c.PK;})();
     var t=Date.now();
     while(clicks.length&&t-clicks[0]>1000)clicks.shift();
   }
+  function handleThunderKey(e){
+    try{
+      if(e&&e.code)keyState[e.code]=true;
+      var rightShift=!!e && (e.code==='ShiftRight' || (e.key==='Shift' && e.location===2) || (e.keyCode===16 && e.location===2));
+      if(rightShift && !e.repeat){
+        e.preventDefault();
+        e.stopPropagation();
+        toggleMenu();
+      }
+    }catch(_){}
+  }
+  function handleThunderKeyUp(e){try{if(e&&e.code)keyState[e.code]=false;}catch(_){}}
   if(W.addEventListener){
     W.addEventListener('mousedown',function(){clicks.push(Date.now());},true);
-    W.addEventListener('keydown',function(e){
-      keyState[e.code]=true;
-      if(e.code==='ShiftRight'){
-        e.preventDefault();e.stopPropagation();toggleMenu();
-      }
-    },true);
-    W.addEventListener('keyup',function(e){keyState[e.code]=false;},true);
+    W.addEventListener('keydown',handleThunderKey,true);
+    W.addEventListener('keyup',handleThunderKeyUp,true);
     W.addEventListener('blur',function(){keyState={};},true);
+    if(D&&D.addEventListener){
+      D.addEventListener('keydown',handleThunderKey,true);
+      D.addEventListener('keyup',handleThunderKeyUp,true);
+    }
     if(W.requestAnimationFrame){
       var tick=function(){markFrame();W.requestAnimationFrame(tick);};
       W.requestAnimationFrame(tick);
@@ -48813,7 +48827,7 @@ c.PK;})();
     if(!panel)return;
     Object.keys(names).forEach(function(id){
       var b=panel.querySelector('[data-thunder-toggle="'+id+'"]');
-      if(!b)return;
+      if(!b||disabled[id])return;
       b.textContent=S[id]?'ON':'OFF';
       b.style.opacity=S[id]?'1':'0.55';
     });
@@ -48838,7 +48852,8 @@ c.PK;})();
     var info=D.createElement('div');info.style.cssText='margin-top:10px;padding:7px 6px;background:rgba(255,255,255,.03);font-size:10px;line-height:1.4;color:#aaa;';
     info.textContent='32-chunk maximum render distance is built into this file. Maps are not included. The shader section is reserved until the existing shader pipeline is verified.';
     panel.appendChild(info);
-    D.body.appendChild(panel);
+    var root=D.body||D.documentElement;
+    if(root)root.appendChild(panel);
   }
 
   var TC={
@@ -48941,8 +48956,16 @@ c.PK;})();
     return origDvp(a,b,c);
   };
 
-  setTimeout(function(){if(menuOpen)showMenu();},250);
+  // The Eagler bootstrap may load before <body> exists; keep the menu DOM-safe.
+  function thunderDomReady(){try{if(menuOpen)showMenu();}catch(_){}}
+  if(D&&D.readyState==='loading'&&D.addEventListener)D.addEventListener('DOMContentLoaded',thunderDomReady,{once:true});
+  else setTimeout(thunderDomReady,0);
+  setTimeout(thunderDomReady,1000);
+  TC.openMenu=showMenu;
+  TC.closeMenu=hideMenu;
+  TC.toggleMenu=toggleMenu;
 })();
+
 }));
 
 //# sourceMappingURL=../classes.js.map
