@@ -32,6 +32,7 @@
 				justify-content: center;
 				pointer-events: none;
 			}
+			/* faint storm glow baked into the opaque backdrop so it doesn't look flat */
 			#thunderLoadScreen::before {
 				content: "";
 				position: absolute;
@@ -72,6 +73,7 @@
 				box-shadow: 0 0 20px 2px #4fd1ff;
 				position: relative;
 			}
+			/* jagged lightning notch that rides at the leading edge of the fill */
 			#thunderBarFill::after {
 				content: "";
 				position: absolute;
@@ -83,6 +85,7 @@
 				clip-path: polygon(60% 0%, 100% 0%, 40% 45%, 80% 45%, 20% 100%, 50% 55%, 0% 55%);
 				filter: drop-shadow(0 0 6px #ffffff);
 			}
+			/* subtle tick marks across the bar for texture */
 			#thunderBarOuter .tick {
 				position: absolute;
 				top: 0;
@@ -194,22 +197,13 @@
 				}
 			});
 
-			// ===== Thunder sequence: plays ONCE near the very start, then fully removes itself =====
+			// ===== Storm (starts immediately) + Thunder loading bar + lightning strikes + THUNDER[bolt]CLIENT =====
 			window.addEventListener("load", function() {
 
-				// Small delay only — just enough for the page to settle, NOT long
-				// enough to risk showing up after the player has already clicked
-				// into a world. This used to be 5000ms, which was long enough for
-				// the player to already be in-game by the time it fired.
-				const THUNDER_START_DELAY = 500;
-				setTimeout(function() {
-
 				// ---------------------------------------------------------------
-				// Shared audio engine
+				// Shared audio engine (real synthesized thunder/rain, not sfx clips)
 				// ---------------------------------------------------------------
 				let actx = null;
-				let rainGainNode = null;
-				let rainSource = null;
 				function getAudioCtx() {
 					try {
 						if (!actx) {
@@ -224,10 +218,12 @@
 						return null;
 					}
 				}
+				// browsers block audio until a user gesture; keep trying to unlock on every interaction
 				['pointerdown', 'keydown', 'touchstart'].forEach(function(evt) {
 					window.addEventListener(evt, function() { getAudioCtx(); }, { passive: true });
 				});
 
+				// shared distortion curve for a gritty, electric edge on the crack layer
 				function makeDistortionCurve(amount) {
 					const n = 44100;
 					const curve = new Float32Array(n);
@@ -238,9 +234,9 @@
 					return curve;
 				}
 
+				// a shared compressor + master volume gives every strike punch at a clear, consistent level
 				let thunderBus = null;
-				let thunderMaster = null;
-				const THUNDER_VOLUME = 0.38;
+				const THUNDER_VOLUME = 0.38; // 30%-45% requested range
 				function getThunderBus(ctx) {
 					if (!thunderBus) {
 						thunderBus = ctx.createDynamicsCompressor();
@@ -251,13 +247,13 @@
 						thunderBus.release.value = 0.25;
 						const master = ctx.createGain();
 						master.gain.value = THUNDER_VOLUME;
-						thunderMaster = master;
 						thunderBus.connect(master);
 						master.connect(ctx.destination);
 					}
 					return thunderBus;
 				}
 
+				// tuff, electric thunder: zap transient + crackle burst + distorted crack + tremolo rumble + sub-bass
 				function playThunder(big) {
 					const ctx = getAudioCtx();
 					if (!ctx) return;
@@ -265,6 +261,7 @@
 						const now = ctx.currentTime;
 						const bus = getThunderBus(ctx);
 
+						// ---- electric "zap" transient: fast-falling square/saw sweep, the initial spark of the strike ----
 						const zap = ctx.createOscillator();
 						zap.type = 'sawtooth';
 						zap.frequency.setValueAtTime(big ? 2600 : 1900, now);
@@ -277,6 +274,7 @@
 						zap.start(now);
 						zap.stop(now + 0.06);
 
+						// ---- crackle: a handful of tiny random noise clicks right at the strike, before the boom ----
 						const crackleHits = 5 + Math.floor(Math.random() * 4);
 						for (let i = 0; i < crackleHits; i++) {
 							const t = now + Math.random() * 0.09;
@@ -297,6 +295,7 @@
 							src.start(t);
 						}
 
+						// ---- main crack: distorted bandpass noise burst, the loudest single hit ----
 						const crackDur = 0.2;
 						const crackBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * crackDur), ctx.sampleRate);
 						const cd = crackBuf.getChannelData(0);
@@ -331,6 +330,7 @@
 						crackGain.connect(bus);
 						crackSrc.start(now + 0.01);
 
+						// ---- rolling low rumble (brown-noise via leaky integration) with a slow tremolo for a "rolling" feel ----
 						const rumbleDur = (big ? 3.8 : 2.1) + Math.random() * 0.9;
 						const rumbleBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * rumbleDur), ctx.sampleRate);
 						const rd = rumbleBuf.getChannelData(0);
@@ -367,6 +367,7 @@
 						rumbleFilter.connect(rumbleGain);
 						rumbleGain.connect(bus);
 
+						// ---- sub-bass weight underneath the rumble ----
 						const sub = ctx.createOscillator();
 						sub.type = 'sine';
 						sub.frequency.setValueAtTime(big ? 62 : 48, now);
@@ -385,9 +386,12 @@
 						tremolo.stop(now + rumbleDur);
 						sub.start(now);
 						sub.stop(now + rumbleDur * 0.9 + 0.05);
-					} catch (e) {}
+					} catch (e) {
+						// audio blocked/unsupported, fail silently
+					}
 				}
 
+				// continuous looping rain hiss, fades in gently
 				function startRainLoop() {
 					const ctx = getAudioCtx();
 					if (!ctx) return;
@@ -413,65 +417,28 @@
 						shelf.gain.value = -8;
 
 						const rainGain = ctx.createGain();
-						rainGainNode = rainGain;
 						rainGain.gain.setValueAtTime(0.0001, ctx.currentTime);
-						rainGain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 1.2);
+						rainGain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 3.5);
 
 						src.connect(bandpass);
 						bandpass.connect(shelf);
 						shelf.connect(rainGain);
 						rainGain.connect(ctx.destination);
 
-						rainSource = src;
 						src.start();
 					} catch (e) {}
 				}
 				startRainLoop();
 
-				// Fully stop and tear down all Thunder audio for good. Called once
-				// the intro finishes, so nothing carries into actual gameplay.
-				function stopAllThunderAudio() {
-					const ctx = actx;
-					try {
-						if (ctx) {
-							const now = ctx.currentTime;
-							if (rainGainNode) {
-								rainGainNode.gain.cancelScheduledValues(now);
-								rainGainNode.gain.setValueAtTime(Math.max(0.0001, rainGainNode.gain.value), now);
-								rainGainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
-							}
-							if (thunderMaster) {
-								thunderMaster.gain.cancelScheduledValues(now);
-								thunderMaster.gain.setValueAtTime(Math.max(0.0001, thunderMaster.gain.value), now);
-								thunderMaster.gain.linearRampToValueAtTime(0.0, now + 0.3);
-							}
-						}
-					} catch (e) {}
-
-					const src = rainSource;
-					rainSource = null;
-					if (src) {
-						try { src.stop(); } catch (e) {}
-					}
-
-					if (ctx) {
-						setTimeout(function() {
-							try { ctx.close(); } catch (e) {}
-							if (actx === ctx) actx = null;
-							thunderMaster = null;
-							thunderBus = null;
-						}, 400);
-					}
-				}
-
 				// ---------------------------------------------------------------
-				// ambient storm canvas
+				// ambient storm canvas: starts right away, keeps running under everything
 				// ---------------------------------------------------------------
 				const canvas = document.createElement('canvas');
 				canvas.id = 'stormCanvas';
 				document.body.appendChild(canvas);
 				const ctx2d = canvas.getContext('2d');
 
+				// render at the screen's actual pixel density for crisp, non-blurry lines
 				const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
 
 				function resize() {
@@ -610,7 +577,10 @@
 					flashAlpha = 1;
 					boltPoints = generateBolt();
 					shakeFrames = 8;
+
+					// thunder fires the instant the flash happens — fully synced
 					playThunder(false);
+
 					if (Math.random() < 0.3) {
 						setTimeout(() => {
 							flashAlpha = 1;
@@ -620,7 +590,6 @@
 					}
 				}
 
-				let stormAnimFrameId = null;
 				function animate(now) {
 					ctx2d.save();
 
@@ -661,24 +630,12 @@
 					}
 
 					ctx2d.restore();
-					stormAnimFrameId = requestAnimationFrame(animate);
+					requestAnimationFrame(animate);
 				}
-				stormAnimFrameId = requestAnimationFrame(animate);
-
-				// Permanently stops and removes the storm canvas. Called once the
-				// intro finishes, so the storm never carries into actual gameplay,
-				// worlds, or servers.
-				function removeStormForGood() {
-					if (stormAnimFrameId !== null) {
-						cancelAnimationFrame(stormAnimFrameId);
-						stormAnimFrameId = null;
-					}
-					window.removeEventListener('resize', resize);
-					try { canvas.remove(); } catch (e) {}
-				}
+				requestAnimationFrame(animate);
 
 				// ---------------------------------------------------------------
-				// loading screen
+				// loading screen sits ON TOP of the running storm, and is now fully opaque
 				// ---------------------------------------------------------------
 				const loadScreen = document.createElement('div');
 				loadScreen.id = 'thunderLoadScreen';
@@ -688,6 +645,7 @@
 					'<div id="thunderPercent">0%</div>';
 				document.body.appendChild(loadScreen);
 
+				// scattered tick marks for texture on the bar track
 				const barOuter = loadScreen.querySelector('#thunderBarOuter');
 				for (let i = 0; i < 22; i++) {
 					const tickEl = document.createElement('div');
@@ -699,12 +657,12 @@
 				const barFill = loadScreen.querySelector('#thunderBarFill');
 				const percentLabel = loadScreen.querySelector('#thunderPercent');
 
-				let progress = 0;
-				let phase = 'ramp';
+let progress = 0;
+				let phase = 'ramp'; // ramp -> finish
 				let rampStart = null;
 				let finishStart = null;
-				const RAMP_MS = 1600;
-				const FINISH_MS = 260;
+				const RAMP_MS = 1600;   // smooth climb 0 -> 90
+				const FINISH_MS = 260;  // quick smooth snap 90 -> 100
 
 				function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
@@ -743,6 +701,9 @@
 					}, 400);
 				}
 
+				// ---------------------------------------------------------------
+				// splash flash + title (runs AFTER the loading bar finishes)
+				// ---------------------------------------------------------------
 				function runIntro() {
 					const flashDiv = document.createElement('div');
 					flashDiv.id = 'splashFlash';
@@ -782,18 +743,12 @@
 						titleDiv.style.opacity = '0';
 					}, 2200);
 
-					// The intro is fully over here — this is the moment the storm
-					// must stop existing entirely, so it can never carry into
-					// worlds/servers no matter how the player got there.
 					setTimeout(() => {
 						titleDiv.remove();
 						flashDiv.remove();
-						removeStormForGood();
-						stopAllThunderAudio();
 					}, 3100);
 				}
 
-				}, THUNDER_START_DELAY);
 			});
 		</script>
 	</head>
