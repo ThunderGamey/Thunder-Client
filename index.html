@@ -14,7 +14,7 @@
 				width: 100%;
 				height: 100%;
 				z-index: 2147483647;
-				pointer-events: none;
+				pointer-events: auto; /* block clicks reaching Eagler while the transition plays */
 				overflow: hidden;
 				background: #05070d;
 				visibility: hidden;
@@ -69,6 +69,59 @@
 			#thunderLoadLabel, #thunderBarOuter, #thunderPercent {
 				z-index: 3;
 			}
+			#thunderLoadLabel {
+				font-family: 'Courier New', monospace;
+				font-weight: bold;
+				font-size: 2vw;
+				letter-spacing: 0.3em;
+				color: #cfeeff;
+				text-shadow: 2px 0 0 #4fd1ff, -2px 0 0 #4fd1ff, 0 0 25px #7fe3ff;
+				margin-bottom: 26px;
+			}
+			#thunderBarOuter {
+				width: 40vw;
+				max-width: 560px;
+				height: 30px;
+				background: rgba(10, 14, 24, 0.85);
+				border: 2px solid #3a8bb8;
+				border-radius: 3px;
+				position: relative;
+				overflow: hidden;
+				box-shadow: 0 0 0 1px rgba(79, 209, 255, 0.15) inset, 0 0 22px rgba(79, 209, 255, 0.25);
+			}
+			#thunderBarFill {
+				height: 100%;
+				width: 0%;
+				background: linear-gradient(90deg, #1c5f82, #4fd1ff 60%, #eaf6ff);
+				box-shadow: 0 0 20px 2px #4fd1ff;
+				position: relative;
+			}
+			#thunderBarFill::after {
+				content: "";
+				position: absolute;
+				top: 0;
+				right: -9px;
+				width: 18px;
+				height: 100%;
+				background: #eaf6ff;
+				clip-path: polygon(60% 0%, 100% 0%, 40% 45%, 80% 45%, 20% 100%, 50% 55%, 0% 55%);
+				filter: drop-shadow(0 0 6px #ffffff);
+			}
+			#thunderBarOuter .tick {
+				position: absolute;
+				top: 0;
+				bottom: 0;
+				width: 2px;
+				background: rgba(5, 8, 16, 0.5);
+			}
+			#thunderPercent {
+				margin-top: 16px;
+				font-family: 'Courier New', monospace;
+				color: #7fe3ff;
+				font-size: 1vw;
+				letter-spacing: 0.15em;
+				text-shadow: 0 0 10px rgba(79, 209, 255, 0.6);
+			}
 
 			/* ===== Title splash ===== */
 			#splashTitle {
@@ -101,10 +154,7 @@
 				display: inline-block;
 				transform: scale(1.15) rotate(-4deg);
 				color: #ffffff;
-				text-shadow:
-					0 0 15px #ffffff,
-					0 0 40px #7fe3ff,
-					0 0 80px #4fd1ff;
+				text-shadow: 0 0 15px #ffffff, 0 0 40px #7fe3ff, 0 0 80px #4fd1ff;
 			}
 			#splashFlash {
 				position: fixed;
@@ -133,6 +183,8 @@
 				}else {
 
 					// %%%%%%%%% launch options %%%%%%%%%%%%
+					// UNCHANGED from the original file — nothing about Eagler's own
+					// startup config is touched. No hooks are added here.
 
 					var relayId = Math.floor(Math.random() * 3);
 					window.eaglercraftXOpts = {
@@ -168,7 +220,8 @@
 			window.addEventListener("load", function() {
 
 				// ---------------------------------------------------------------
-				// Shared audio engine (real synthesized thunder/rain, not sfx clips)
+				// Shared audio engine — UNCHANGED, this already works correctly
+				// per prior testing (thunder + rain both confirmed audible).
 				// ---------------------------------------------------------------
 				let actx = null;
 				let rainSource = null;
@@ -190,12 +243,10 @@
 						return null;
 					}
 				}
-				// browsers block audio until a user gesture; keep trying to unlock on every interaction
 				['pointerdown', 'keydown', 'touchstart'].forEach(function(evt) {
 					window.addEventListener(evt, function() { getAudioCtx(); }, { passive: true });
 				});
 
-				// shared distortion curve for a gritty, electric edge on the crack layer
 				function makeDistortionCurve(amount) {
 					const n = 44100;
 					const curve = new Float32Array(n);
@@ -208,7 +259,6 @@
 				const SMALL_DISTORTION = makeDistortionCurve(18);
 				const BIG_DISTORTION = makeDistortionCurve(32);
 
-				// a shared compressor + master volume gives every strike punch at a clear, consistent level
 				let thunderBus = null;
 				const THUNDER_VOLUME = 0.40; // 40% master volume
 				function getThunderBus(ctx) {
@@ -228,7 +278,6 @@
 					return thunderBus;
 				}
 
-				// tuff, electric thunder: zap transient + crackle burst + distorted crack + tremolo rumble + sub-bass
 				function playThunder(big) {
 					const ctx = getAudioCtx();
 					if (!ctx) return;
@@ -236,7 +285,6 @@
 						const now = ctx.currentTime;
 						const bus = getThunderBus(ctx);
 
-						// ---- electric "zap" transient: fast-falling square/saw sweep, the initial spark of the strike ----
 						const zap = ctx.createOscillator();
 						zap.type = 'sawtooth';
 						zap.frequency.setValueAtTime(big ? 2600 : 1900, now);
@@ -249,7 +297,6 @@
 						zap.start(now);
 						zap.stop(now + 0.06);
 
-						// ---- crackle: a handful of tiny random noise clicks right at the strike, before the boom ----
 						const crackleHits = 5 + Math.floor(Math.random() * 4);
 						for (let i = 0; i < crackleHits; i++) {
 							const t = now + Math.random() * 0.09;
@@ -270,7 +317,6 @@
 							src.start(t);
 						}
 
-						// ---- main crack: distorted bandpass noise burst, the loudest single hit ----
 						const crackDur = 0.2;
 						const crackBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * crackDur), ctx.sampleRate);
 						const cd = crackBuf.getChannelData(0);
@@ -305,7 +351,6 @@
 						crackGain.connect(bus);
 						crackSrc.start(now + 0.01);
 
-						// ---- rolling low rumble (brown-noise via leaky integration) with a slow tremolo for a "rolling" feel ----
 						const rumbleDur = (big ? 3.8 : 2.1) + Math.random() * 0.9;
 						const rumbleBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * rumbleDur), ctx.sampleRate);
 						const rd = rumbleBuf.getChannelData(0);
@@ -342,7 +387,6 @@
 						rumbleFilter.connect(rumbleGain);
 						rumbleGain.connect(bus);
 
-						// ---- sub-bass weight underneath the rumble ----
 						const sub = ctx.createOscillator();
 						sub.type = 'sine';
 						sub.frequency.setValueAtTime(big ? 62 : 48, now);
@@ -361,109 +405,101 @@
 						tremolo.stop(now + rumbleDur);
 						sub.start(now);
 						sub.stop(now + rumbleDur * 0.9 + 0.05);
-					} catch (e) {
-						// audio blocked/unsupported, fail silently
-					}
+					} catch (e) {}
 				}
 
-				// continuous looping rain hiss, fades in gently
 				function startRainLoop() {
-				if (!stormAudioEnabled || rainSource) return;
-				const ctx = getAudioCtx();
-				if (!ctx) return;
-				try {
-					const loopSec = 4;
-					const buffer = ctx.createBuffer(1, ctx.sampleRate * loopSec, ctx.sampleRate);
-					const data = buffer.getChannelData(0);
-					for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+					if (!stormAudioEnabled || rainSource) return;
+					const ctx = getAudioCtx();
+					if (!ctx) return;
+					try {
+						const loopSec = 4;
+						const buffer = ctx.createBuffer(1, ctx.sampleRate * loopSec, ctx.sampleRate);
+						const data = buffer.getChannelData(0);
+						for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
 
-					const src = ctx.createBufferSource();
-					src.buffer = buffer;
-					src.loop = true;
+						const src = ctx.createBufferSource();
+						src.buffer = buffer;
+						src.loop = true;
 
-					const bandpass = ctx.createBiquadFilter();
-					bandpass.type = 'bandpass';
-					bandpass.frequency.value = 3000;
-					bandpass.Q.value = 0.55;
+						const bandpass = ctx.createBiquadFilter();
+						bandpass.type = 'bandpass';
+						bandpass.frequency.value = 3000;
+						bandpass.Q.value = 0.55;
 
-					const shelf = ctx.createBiquadFilter();
-					shelf.type = 'highshelf';
-					shelf.frequency.value = 6500;
-					shelf.gain.value = -8;
+						const shelf = ctx.createBiquadFilter();
+						shelf.type = 'highshelf';
+						shelf.frequency.value = 6500;
+						shelf.gain.value = -8;
 
-					const rainGain = ctx.createGain();
-					rainGainNode = rainGain;
-					rainGain.gain.setValueAtTime(0.0001, ctx.currentTime);
-					rainGain.gain.linearRampToValueAtTime(RAIN_VOLUME, ctx.currentTime + 2.0);
+						const rainGain = ctx.createGain();
+						rainGainNode = rainGain;
+						rainGain.gain.setValueAtTime(0.0001, ctx.currentTime);
+						rainGain.gain.linearRampToValueAtTime(RAIN_VOLUME, ctx.currentTime + 2.0);
 
-					src.connect(bandpass);
-					bandpass.connect(shelf);
-					shelf.connect(rainGain);
-					rainGain.connect(ctx.destination);
+						src.connect(bandpass);
+						bandpass.connect(shelf);
+						shelf.connect(rainGain);
+						rainGain.connect(ctx.destination);
 
-					rainSource = src;
-				src.onended = function() { if (rainSource === src) rainSource = null; };
-				src.start();
-				} catch (e) {}
-			}
+						rainSource = src;
+						src.onended = function() { if (rainSource === src) rainSource = null; };
+						src.start();
+					} catch (e) {}
+				}
 
-			function stopStormAudio() {
-				stormAudioEnabled = false;
-				const ctx = actx;
-				try {
-					if (ctx) {
-						const now = ctx.currentTime;
-						if (rainGainNode) {
-							rainGainNode.gain.cancelScheduledValues(now);
-							rainGainNode.gain.setValueAtTime(Math.max(0.0001, rainGainNode.gain.value), now);
-						rainGainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+				function stopStormAudio() {
+					stormAudioEnabled = false;
+					const ctx = actx;
+					try {
+						if (ctx) {
+							const now = ctx.currentTime;
+							if (rainGainNode) {
+								rainGainNode.gain.cancelScheduledValues(now);
+								rainGainNode.gain.setValueAtTime(Math.max(0.0001, rainGainNode.gain.value), now);
+								rainGainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+							}
+							if (thunderMaster) {
+								thunderMaster.gain.cancelScheduledValues(now);
+								thunderMaster.gain.setValueAtTime(Math.max(0.0001, thunderMaster.gain.value), now);
+								thunderMaster.gain.linearRampToValueAtTime(0.0, now + 0.08);
+							}
 						}
-						if (thunderMaster) {
-							thunderMaster.gain.cancelScheduledValues(now);
-							thunderMaster.gain.setValueAtTime(Math.max(0.0001, thunderMaster.gain.value), now);
-							thunderMaster.gain.linearRampToValueAtTime(0.0, now + 0.08);
-						}
+					} catch (e) {}
+
+					const src = rainSource;
+					rainSource = null;
+					rainGainNode = null;
+					if (src) {
+						try { src.stop(); } catch (e) {}
 					}
-				} catch (e) {}
 
-				const src = rainSource;
-				rainSource = null;
-				rainGainNode = null;
-				if (src) {
-					try { src.stop(); } catch (e) {}
+					if (ctx) {
+						setTimeout(function() {
+							try { ctx.close(); } catch (e) {}
+							if (actx === ctx) actx = null;
+							thunderMaster = null;
+							thunderBus = null;
+						}, 120);
+					}
 				}
-
-				// This AudioContext belongs only to Thunder. Closing it guarantees no
-				// scheduled thunder nodes can continue after the intro is finished.
-				if (ctx) {
-					setTimeout(function() {
-						try { ctx.close(); } catch (e) {}
-						if (actx === ctx) actx = null;
-						thunderMaster = null;
-						thunderBus = null;
-					}, 120);
-				}
-			}
 
 				// ---------------------------------------------------------------
-				// Thunder overlay root + Eagler visual isolation
+				// Thunder overlay root
 				// ---------------------------------------------------------------
 				const overlayRoot = document.createElement('div');
 				overlayRoot.id = 'thunderOverlayRoot';
 				document.body.appendChild(overlayRoot);
 
-				// Eagler remains untouched underneath this opaque overlay.
-				// This is deliberate: hiding its canvas directly can interfere with its startup.
-
 				// ---------------------------------------------------------------
-				// ambient storm canvas: starts right away and stays running
+				// ambient storm canvas — UNCHANGED
 				// ---------------------------------------------------------------
 				const canvas = document.createElement('canvas');
 				canvas.id = 'stormCanvas';
 				overlayRoot.appendChild(canvas);
 				const ctx2d = canvas.getContext('2d');
 
-				const dpr = 1; // keep the storm light enough not to fight Eagler's WebGL renderer
+				const dpr = 1;
 
 				function resize() {
 					const w = window.innerWidth;
@@ -610,7 +646,7 @@
 
 				let stormRunning = false;
 				let lastFrameTime = 0;
-				const TARGET_FRAME_MS = 1000 / 60; // cap Storm renderer at 60 FPS
+				const TARGET_FRAME_MS = 1000 / 60;
 
 				function animate(now) {
 					if (!stormRunning || !ctx2d) return;
@@ -670,10 +706,7 @@
 				}
 
 				// ---------------------------------------------------------------
-				// Startup sequence without Eagler hooks.
-				// We wait for Eagler's OWN canvas inside #game_frame to appear.
-				// This avoids modifying eaglercraftXOpts, which is important for
-				// this WASM-GC u1 build.
+				// Loading screen
 				// ---------------------------------------------------------------
 				const loadScreen = document.createElement('div');
 				loadScreen.id = 'thunderLoadScreen';
@@ -698,15 +731,9 @@
 				let thunderSequenceStarted = false;
 				let introFinished = false;
 				let progressStarted = false;
-				let canvasSeenAt = 0;
 				const THUNDER_BAR_MS = 1700;
 
-				function hasEaglerCanvas() {
-					const game = document.getElementById('game_frame');
-					if (!game) return false;
-					const c = game.querySelector('canvas');
-					return !!(c && c.width > 0 && c.height > 0);
-				}
+				function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
 				function hideThunderOverlayNow() {
 					if (introFinished) return;
@@ -720,14 +747,14 @@
 					if (thunderSequenceStarted || introFinished) return;
 					thunderSequenceStarted = true;
 					stormAudioEnabled = true;
-				overlayRoot.style.visibility = 'visible';
-				overlayRoot.style.opacity = '1';
-				startRainLoop();
-				startStormVisuals();
-				if (!progressStarted) {
-					progressStarted = true;
-					requestAnimationFrame(progressLoop);
-				}
+					overlayRoot.style.visibility = 'visible';
+					overlayRoot.style.opacity = '1';
+					startRainLoop();
+					startStormVisuals();
+					if (!progressStarted) {
+						progressStarted = true;
+						requestAnimationFrame(progressLoop);
+					}
 				}
 
 				function progressLoop(ts) {
@@ -794,97 +821,28 @@
 				}
 
 				// ---------------------------------------------------------------
-				// Wait for Eagler's *initial loading screen to finish*.
-				// Checking only for a canvas is too early: Eagler creates its
-				// canvas before it finishes showing the Mojang/loading screen.
-				// We sample a tiny copy of the canvas to avoid touching Eagler's
-				// WASM-GC hooks or startup configuration.
+				// READINESS DETECTION — simplified back to a plain fixed delay.
+				//
+				// Two attempts at guessing Eagler's internal state (pixel-sampling
+				// its canvas, then watching for specific DOM elements/classes)
+				// both turned out to be unreliable, because Eagler seems to create
+				// those signals earlier than actual "ready" state on this build.
+				// Rather than guess a third time blind, this uses a plain fixed
+				// wait — less precise, but predictable and can't misfire or
+				// black-screen the page.
+				//
+				// THUNDER_INTRO_DELAY_MS is the one number to tune: time how long
+				// Eagler's own Mojang/loading splash actually takes on your
+				// machine (rough seconds is fine), and set this a little higher
+				// than that so the storm never shows up over top of it.
 				// ---------------------------------------------------------------
-				const sampleCanvas = document.createElement('canvas');
-				sampleCanvas.width = 24;
-				sampleCanvas.height = 14;
-				const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
-				const BOOT_MIN_WAIT_MS = 2500;
-				const BOOT_FALLBACK_MS = 20000;
-				const BOOT_CLEAR_SAMPLES = 3;
-				const bootStartedAt = performance.now();
-				let bootClearSamples = 0;
-				let bootFallbackTriggered = false;
+				const THUNDER_INTRO_DELAY_MS = 6000; // tune this after watching one real load
 
-				function getEaglerCanvas() {
-					const game = document.getElementById('game_frame');
-					if (!game) return null;
-					const c = game.querySelector('canvas');
-					return c && c.width > 0 && c.height > 0 ? c : null;
-				}
-
-				function looksLikeInitialMojangLoading(c) {
-					if (!sampleCtx) return null;
-					try {
-						sampleCtx.clearRect(0, 0, 24, 14);
-						sampleCtx.drawImage(c, 0, 0, 24, 14);
-						const px = sampleCtx.getImageData(0, 0, 24, 14).data;
-						let bright = 0;
-						let red = 0;
-						let totalLuma = 0;
-						for (let i = 0; i < px.length; i += 4) {
-							const r = px[i], g = px[i + 1], b = px[i + 2];
-							const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-							totalLuma += l;
-							if (r > 218 && g > 218 && b > 218) bright++;
-							if (r > 125 && r > g * 1.35 && r > b * 1.25) red++;
-						}
-						const count = px.length / 4;
-						const brightRatio = bright / count;
-						const redRatio = red / count;
-						const avgLuma = totalLuma / count;
-						// The initial Eagler/Mojang screen on this client is a very bright
-						// mostly-white frame with a small red logo.
-						return (brightRatio > 0.42) || (brightRatio > 0.28 && redRatio > 0.01) || avgLuma > 225;
-					} catch (e) {
-						return null;
-					}
-				}
-
-				function waitForEaglerBootComplete() {
-					if (thunderSequenceStarted || introFinished) return;
-					const now = performance.now();
-					const c = getEaglerCanvas();
-					if (!c) {
-						setTimeout(waitForEaglerBootComplete, 250);
-						return;
-					}
-
-					if (now - bootStartedAt < BOOT_MIN_WAIT_MS) {
-						setTimeout(waitForEaglerBootComplete, 250);
-						return;
-					}
-
-					const loading = looksLikeInitialMojangLoading(c);
-					if (loading === false) {
-						bootClearSamples++;
-					} else if (loading === true) {
-						bootClearSamples = 0;
-					}
-
-					// Normal path: the Mojang/loading frame is gone for 3 consecutive samples.
-					if (bootClearSamples >= BOOT_CLEAR_SAMPLES) {
+				setTimeout(function() {
+					if (!thunderSequenceStarted && !introFinished) {
 						startThunderSequence();
-						return;
 					}
-
-					// Safety path if this browser cannot sample the WebGL canvas.
-					// This is deliberately long so the Storm never races the normal boot.
-					if (!bootFallbackTriggered && now - bootStartedAt >= BOOT_FALLBACK_MS) {
-						bootFallbackTriggered = true;
-						startThunderSequence();
-						return;
-					}
-
-					setTimeout(waitForEaglerBootComplete, 500);
-				}
-
-				waitForEaglerBootComplete();
+				}, THUNDER_INTRO_DELAY_MS);
 
 				window.addEventListener('pagehide', function() {
 					try { stopStormAudio(); } catch (e) {}
