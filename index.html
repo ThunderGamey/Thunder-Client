@@ -150,6 +150,78 @@
 				z-index: 1000;
 				pointer-events: none;
 			}
+
+			/* ===== Thunder Client vanilla-style Right Shift menu ===== */
+			#thunderClientMenu {
+				position: fixed;
+				top: 50%;
+				left: 50%;
+				transform: translate(-50%, -50%);
+				width: min(760px, 92vw);
+				max-height: 82vh;
+				overflow: auto;
+				background: rgba(18, 18, 18, 0.97);
+				border: 2px solid #3f3f3f;
+				box-shadow: 0 10px 40px rgba(0,0,0,0.65);
+				color: #f2f2f2;
+				font-family: Arial, sans-serif;
+				z-index: 10000;
+				display: none;
+				box-sizing: border-box;
+			}
+			#thunderClientMenu.thunder-open { display: block; }
+			#thunderClientMenu .thunder-head {
+				display:flex;
+				align-items:center;
+				justify-content:space-between;
+				padding:14px 16px;
+				background:#242424;
+				border-bottom:1px solid #444;
+				position:sticky;
+				top:0;
+				z-index:2;
+			}
+			#thunderClientMenu .thunder-title { font-size:20px; font-weight:700; }
+			#thunderClientMenu .thunder-sub { font-size:12px; color:#aaa; margin-top:3px; }
+			#thunderClientMenu .thunder-body { padding: 10px 14px 16px; }
+			#thunderClientMenu .thunder-section { margin-top:10px; }
+			#thunderClientMenu .thunder-section-title {
+				font-size:12px;
+				font-weight:700;
+				color:#aaa;
+				letter-spacing:.08em;
+				padding:9px 8px;
+				border-bottom:1px solid #333;
+				text-transform:uppercase;
+			}
+			#thunderClientMenu .thunder-row {
+				display:flex;
+				align-items:center;
+				justify-content:space-between;
+				min-height:42px;
+				padding:6px 8px;
+				box-sizing:border-box;
+				border-bottom:1px solid rgba(70,70,70,.45);
+			}
+			#thunderClientMenu .thunder-name { font-size:14px; }
+			#thunderClientMenu button.thunder-toggle,
+			#thunderClientMenu button.thunder-close {
+				border:1px solid #555;
+				background:#2b2b2b;
+				color:#ddd;
+				font:inherit;
+				cursor:pointer;
+			}
+			#thunderClientMenu button.thunder-toggle {
+				min-width:58px;
+				padding:5px 10px;
+				font-size:12px;
+				font-weight:700;
+			}
+			#thunderClientMenu button.thunder-toggle.on { background:#555; color:#fff; }
+			#thunderClientMenu button.thunder-toggle:disabled { opacity:.55; cursor:default; }
+			#thunderClientMenu button.thunder-close { padding:5px 9px; }
+			#thunderClientMenu .thunder-footer { color:#888; font-size:11px; padding:12px 8px 2px; }
 		</style>
 		<meta property="og:locale" content="en-US" />
 		<meta property="og:type" content="website" />
@@ -158,6 +230,42 @@
 		<meta property="og:image" content="favicon.png" />
 		<link type="image/png" rel="shortcut icon" href="favicon.png" />
 		<script type="text/javascript" src="bootstrap.js"></script>
+		<script type="text/javascript">
+			"use strict";
+			// Thunder Client menu: DOM-only test layer. Uses capture mode so the game canvas cannot swallow Right Shift.
+			window.addEventListener("load", function() {
+				if (document.getElementById("thunderClientMenu")) return;
+				var menu = document.createElement("div");
+				menu.id = "thunderClientMenu";
+				menu.innerHTML = ''+
+					'<div class="thunder-head"><div><div class="thunder-title">THUNDER CLIENT</div><div class="thunder-sub">Right Shift to toggle</div></div><button class="thunder-close" type="button">×</button></div>'+
+					'<div class="thunder-body">'+
+						'<div class="thunder-section"><div class="thunder-section-title">HUD</div>'+['Armor Status','FPS','CPS','Keystrokes','Health','Hunger','Ping','Coordinates','Potion Status','Direction','Held Item','Shield Status'].map(function(n){return '<div class="thunder-row"><span class="thunder-name">'+n+'</span><button class="thunder-toggle" type="button" data-name="'+n+'">OFF</button></div>';}).join('')+'</div>'+ 
+						'<div class="thunder-section"><div class="thunder-section-title">PVP</div>'+['Toggle Sprint','Toggle Sneak','No FOV Change','Damage Tilt','Hit Color','Crosshair Hit Color','Attack Indicator'].map(function(n){return '<div class="thunder-row"><span class="thunder-name">'+n+'</span><button class="thunder-toggle" type="button" data-name="'+n+'">OFF</button></div>';}).join('')+'</div>'+ 
+						'<div class="thunder-section"><div class="thunder-section-title">MOVEMENT</div>'+['Sprint FOV'].map(function(n){return '<div class="thunder-row"><span class="thunder-name">'+n+'</span><button class="thunder-toggle" type="button" data-name="'+n+'">OFF</button></div>';}).join('')+'</div>'+ 
+						'<div class="thunder-section"><div class="thunder-section-title">UTILITY</div>'+['Item Information','Container Preview','Shulker Box Tooltip','Potion Information'].map(function(n){return '<div class="thunder-row"><span class="thunder-name">'+n+'</span><button class="thunder-toggle" type="button" data-name="'+n+'">OFF</button></div>';}).join('')+'</div>'+ 
+						'<div class="thunder-section"><div class="thunder-section-title">OPTIMIZATION</div>'+['Reduced Particles','Reduced Animations','Entity Optimization'].map(function(n){return '<div class="thunder-row"><span class="thunder-name">'+n+'</span><button class="thunder-toggle" type="button" data-name="'+n+'">OFF</button></div>';}).join('')+'</div>'+ 
+						'<div class="thunder-section"><div class="thunder-section-title">VISUAL</div>'+['Fullbright','Custom Crosshair','Held Item HUD'].map(function(n){return '<div class="thunder-row"><span class="thunder-name">'+n+'</span><button class="thunder-toggle" type="button" data-name="'+n+'">OFF</button></div>';}).join('')+'</div>'+ 
+						'<div class="thunder-section"><div class="thunder-section-title">SHADERS</div><div class="thunder-row"><span class="thunder-name">Shaders</span><button class="thunder-toggle" type="button" disabled>CHECKING</button></div></div>'+ 
+						'<div class="thunder-footer">Vanilla style • Experimental modules only</div>'+ 
+					'</div>';
+				document.body.appendChild(menu);
+				menu.querySelector('.thunder-close').addEventListener('click', function(){ menu.classList.remove('thunder-open'); });
+				menu.querySelectorAll('.thunder-toggle:not(:disabled)').forEach(function(btn){
+					var key='thunder-toggle-'+btn.getAttribute('data-name');
+					var on=localStorage.getItem(key)==='1';
+					btn.textContent=on?'ON':'OFF';
+					if(on) btn.classList.add('on');
+					btn.addEventListener('click', function(){
+						on=!on; btn.textContent=on?'ON':'OFF'; btn.classList.toggle('on',on); localStorage.setItem(key,on?'1':'0');
+					});
+				});
+				document.addEventListener('keydown', function(e){
+					var rightShift = e.code === 'ShiftRight' || (e.key === 'Shift' && e.location === 2);
+					if(rightShift && !e.repeat){ e.preventDefault(); e.stopPropagation(); menu.classList.toggle('thunder-open'); }
+				}, true);
+			});
+		</script>
 		<script type="text/javascript">
 			"use strict";
 			window.addEventListener("load", function() {
@@ -197,13 +305,12 @@
 				}
 			});
 
-			// ===== Thunder sequence (Mojang/Eagler first, then Thunder) =====
+			// ===== Storm (starts immediately) + Thunder loading bar + lightning strikes + THUNDER[bolt]CLIENT =====
 			window.addEventListener("load", function() {
 
-				// Let Eagler show its normal Mojang/loading screen first.
-				// The existing Thunder storm/loading sequence starts only after this delay.
-				const THUNDER_START_DELAY = 5000;
-				setTimeout(function() {
+				let thunderStormActive = true;
+				let rainSource = null;
+				let stormCanvas = null;
 
 				// ---------------------------------------------------------------
 				// Shared audio engine (real synthesized thunder/rain, not sfx clips)
@@ -260,6 +367,7 @@
 
 				// tuff, electric thunder: zap transient + crackle burst + distorted crack + tremolo rumble + sub-bass
 				function playThunder(big) {
+					if (!thunderStormActive) return;
 					const ctx = getAudioCtx();
 					if (!ctx) return;
 					try {
@@ -398,6 +506,7 @@
 
 				// continuous looping rain hiss, fades in gently
 				function startRainLoop() {
+					if (!thunderStormActive) return;
 					const ctx = getAudioCtx();
 					if (!ctx) return;
 					try {
@@ -408,6 +517,7 @@
 							data[i] = Math.random() * 2 - 1;
 						}
 						const src = ctx.createBufferSource();
+						rainSource = src;
 						src.buffer = buffer;
 						src.loop = true;
 
@@ -439,6 +549,7 @@
 				// ambient storm canvas: starts right away, keeps running under everything
 				// ---------------------------------------------------------------
 				const canvas = document.createElement('canvas');
+				stormCanvas = canvas;
 				canvas.id = 'stormCanvas';
 				document.body.appendChild(canvas);
 				const ctx2d = canvas.getContext('2d');
@@ -579,6 +690,7 @@
 				}
 
 				function triggerFlash() {
+					if (!thunderStormActive) return;
 					flashAlpha = 1;
 					boltPoints = generateBolt();
 					shakeFrames = 8;
@@ -596,6 +708,10 @@
 				}
 
 				function animate(now) {
+					if (!thunderStormActive) {
+						ctx2d.clearRect(0, 0, viewW(), viewH());
+						return;
+					}
 					ctx2d.save();
 
 					if (shakeFrames > 0) {
@@ -697,6 +813,18 @@ let progress = 0;
 				}
 				requestAnimationFrame(progressLoop);
 
+
+				function stopStorm() {
+					if (!thunderStormActive) return;
+					thunderStormActive = false;
+					try { if (rainSource) rainSource.stop(); } catch (e) {}
+					rainSource = null;
+					if (stormCanvas) {
+						try { stormCanvas.remove(); } catch (e) {}
+						stormCanvas = null;
+					}
+				}
+
 				function afterLoadingBar() {
 					loadScreen.style.transition = 'opacity 0.4s ease-out';
 					loadScreen.style.opacity = '0';
@@ -751,10 +879,10 @@ let progress = 0;
 					setTimeout(() => {
 						titleDiv.remove();
 						flashDiv.remove();
+						stopStorm();
 					}, 3100);
 				}
 
-				}, THUNDER_START_DELAY);
 			});
 		</script>
 	</head>
