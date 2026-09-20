@@ -731,9 +731,7 @@
 				let thunderSequenceStarted = false;
 				let introFinished = false;
 				let progressStarted = false;
-				const THUNDER_BAR_MS = 1700;
-
-				function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+				const THUNDER_BAR_MS = 2200; // total time the bar takes to fill, at one constant speed
 
 				function hideThunderOverlayNow() {
 					if (introFinished) return;
@@ -757,11 +755,14 @@
 					}
 				}
 
+				// Constant-speed fill: no easing, no random stutter. Straight
+				// linear progress from 0 to 100 over a fixed duration, so it
+				// always feels like one steady pace rather than fast-then-stuck.
 				function progressLoop(ts) {
 					if (!thunderSequenceStarted || introFinished) return;
 					if (!progressLoop.start) progressLoop.start = ts;
 					const t = Math.min(1, (ts - progressLoop.start) / THUNDER_BAR_MS);
-					progress = 100 * easeOutCubic(t);
+					progress = 100 * t;
 					barFill.style.width = progress + '%';
 					percentLabel.textContent = Math.floor(progress) + '%';
 					if (t < 1) requestAnimationFrame(progressLoop);
@@ -821,28 +822,18 @@
 				}
 
 				// ---------------------------------------------------------------
-				// READINESS DETECTION — simplified back to a plain fixed delay.
-				//
-				// Two attempts at guessing Eagler's internal state (pixel-sampling
-				// its canvas, then watching for specific DOM elements/classes)
-				// both turned out to be unreliable, because Eagler seems to create
-				// those signals earlier than actual "ready" state on this build.
-				// Rather than guess a third time blind, this uses a plain fixed
-				// wait — less precise, but predictable and can't misfire or
-				// black-screen the page.
-				//
-				// THUNDER_INTRO_DELAY_MS is the one number to tune: time how long
-				// Eagler's own Mojang/loading splash actually takes on your
-				// machine (rough seconds is fine), and set this a little higher
-				// than that so the storm never shows up over top of it.
+				// Storm intro now waits for the first click/tap to begin,
+				// rather than starting the instant the page loads. This also
+				// naturally satisfies the browser's audio-unlock requirement,
+				// since that same click is what allows sound to play at all.
 				// ---------------------------------------------------------------
-				const THUNDER_INTRO_DELAY_MS = 2500; // splash starts later than 400ms but the menu appears before 6000ms — narrowing in
-
-				setTimeout(function() {
-					if (!thunderSequenceStarted && !introFinished) {
-						startThunderSequence();
-					}
-				}, THUNDER_INTRO_DELAY_MS);
+				function beginOnFirstInteraction() {
+					if (thunderSequenceStarted || introFinished) return;
+					startThunderSequence();
+				}
+				['pointerdown', 'keydown', 'touchstart', 'click'].forEach(function(evt) {
+					window.addEventListener(evt, beginOnFirstInteraction, { passive: true, once: true });
+				});
 
 				// ---------------------------------------------------------------
 				// Fullscreen fix: when an element goes fullscreen, the browser
