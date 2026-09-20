@@ -48726,245 +48726,1044 @@ c.epQ});Object.defineProperty(c,"tabIndex",{get:c.eqU,set:c.fn9});Object.defineP
 =c.emS;c.dispatchEvent=c.ecf;c.addEventListener=c.fqa;c=A2F.prototype;c[HC3]=true;c.handleEvent=c.i3;c=A0Y.prototype;c[HC3]=true;c.onMessage=c.egn;c=EPF.prototype;c[HC3]=true;c.handleEvent=c.i3;c=EPE.prototype;c[HC3]=true;c.handleEvent=c.i3;c=A0K.prototype;c[HC3]=true;c.handleEvent=c.i3;c=A0J.prototype;c[HC3]=true;c.handleEvent=c.i3;c=BO4.prototype;c[HC3]=true;c.handleEvent=c.i3;c=B01.prototype;c[HC3]=true;c.call=c.cvG;c=BCw.prototype;c[HC3]=true;c.handleEvent=c.PK;c=B7k.prototype;c[HC3]=true;c.handleEvent=
 c.PK;})();
 
-/* ========================= THUNDER CLIENT ALL-IN-ONE =========================
-   Safe compiled-bundle additions:
-   - 32 chunk render-distance cap (already patched in this build)
-   - Right Shift Thunder menu
-   - Vanilla-style HUD toggles
-   - Armor Status HUD with durability percentages
-   - FPS / CPS / Keystrokes / Health / Hunger / Sprint Indicator
-   - Toggle Sprint
-   - No FOV Change (removes sprint/movement FOV interpolation)
-   The more invasive features (true minimap/world-map renderer, shaders, etc.)
-   are intentionally not forced into this compiled bundle.
-=============================================================================== */
+/* ========================= THUNDER CLIENT NATIVE (HUD + Right Shift menu) =========================
+   Drawn inside the game by hooking renderGameOverlay (Ewc). Every game function used below was
+   checked against the compiled code in this file:
+     CBg isSprinting, FPB setSprinting, ENU getHealth, Crp getMaxHealth, CkW getAbsorptionAmount,
+     FAU getFoodStats, ZP getFoodLevel, A1i getSaturationLevel, F9v getActivePotionEffects,
+     EZ6 getHeldItemMainhand, EJu getDisplayName, CRD getCount, EjU getMaxDamage, EHa getItemDamage,
+     CCI isEmpty, Ctr isActiveItemStackBlocking, A4G isHandActive, Fch isSneaking,
+     Chf getFontRenderer, CC getStringWidth, AIz/ASe scaled width/height, Dvp getFOVModifier,
+     FN3 hurtCameraEffect, Cyx setupViewBobbing, CFi GlStateManager.color(r,g,b,a).
+   Entity fields: b/f/c = posX/posY/posZ, C = yaw, bc = pitch. Minecraft: v = player, nZ = scaled
+   resolution, G = game settings (bCx = gamma). Java Strings in this build are objects, so every string
+   handed to the font renderer goes through $rt_str().
+=================================================================================================== */
 (function(){
   var G=$rt_globals;
-  // Eagler's TeaVM environment may expose the real browser window as G.window
-  // (especially when classes.js is running through its worker/DOM bridge).
   var W=G.window||G;
   var D=W&&W.document;
   if(!W||!D)return;
 
-  var KEY='thunderClientSettings_v1';
-  var S={
-    armor:true,fps:true,cps:false,keystrokes:true,health:false,hunger:false,potionStatus:false,
-    sprintIndicator:true,toggleSprint:false,noFov:true,damageTilt:false
+  // ------------------------------------------------------------------
+  // Settings
+  // ------------------------------------------------------------------
+  var KEY='thunderClientSettings_v2';
+  var GAMMA_KEY='thunderSavedGamma_v1';
+  var DEFAULTS={
+    armor:true,heldItem:true,coords:true,direction:true,speed:false,health:true,hunger:true,
+    effects:true,sprintStatus:true,shield:false,clock:false,memory:false,
+    fps:false,cps:false,keystrokes:false,
+    noHurtCam:false,noFov:false,
+    toggleSprint:false,noBob:false,
+    blockF3:true,
+    fullbright:false
   };
-  try{var saved=W.localStorage.getItem(KEY);if(saved){saved=JSON.parse(saved);for(var k in saved)if(Object.prototype.hasOwnProperty.call(S,k))S[k]=!!saved[k];}}catch(_){ }
+  var S={},k;
+  for(k in DEFAULTS)S[k]=DEFAULTS[k];
+  try{
+    var saved=W.localStorage.getItem(KEY);
+    if(saved){saved=JSON.parse(saved);for(k in saved)if(Object.prototype.hasOwnProperty.call(DEFAULTS,k))S[k]=!!saved[k];}
+  }catch(_){}
   function save(){try{W.localStorage.setItem(KEY,JSON.stringify(S));}catch(_){}}
 
+  // Menu layout: [category, [[id, label, description], ...]]
+  var CATS=[
+    ['HUD',[
+      ['armor','Armor Status','Durability % of worn armor'],
+      ['heldItem','Held Item','Name, stack size and durability'],
+      ['coords','Coordinates','XYZ position'],
+      ['direction','Direction','Facing (N/E/S/W) and axis'],
+      ['speed','Speed','Horizontal speed in blocks/second'],
+      ['health','Health','Hearts, max health and absorption'],
+      ['hunger','Hunger','Food level and saturation'],
+      ['effects','Potion Effects','Active effects with time left (top right)'],
+      ['sprintStatus','Sprint Status','Shows whether you are sprinting'],
+      ['shield','Blocking Indicator','Shows while you are blocking'],
+      ['clock','Clock','Real-world time (top right)'],
+      ['memory','Memory','JS memory in use (Chrome only, top right)'],
+      ['fps','FPS','Frames per second'],
+      ['cps','CPS','Left clicks per second'],
+      ['keystrokes','Keystrokes','WASD, mouse buttons (bottom right)']
+    ]],
+    ['PVP',[
+      ['noHurtCam','No Hurt Camera','Removes the camera shake when you take damage'],
+      ['noFov','No FOV Change','Keeps FOV fixed while sprinting, speed effects and bows']
+    ]],
+    ['MOVEMENT',[
+      ['toggleSprint','Toggle Sprint','Sprints automatically while you hold forward'],
+      ['noBob','No View Bobbing','Removes camera bobbing while walking']
+    ]],
+    ['UTILITY',[
+      ['blockF3','Block F3 Screen','Stops the built-in F3 debug screen from opening']
+    ]],
+    ['VISUAL',[
+      ['fullbright','Fullbright','Maximum brightness everywhere']
+    ]]
+  ];
+
+  // ------------------------------------------------------------------
+  // Input tracking
+  // ------------------------------------------------------------------
   var keyState={};
+  var mouseState={};
   var clicks=[];
   var menuOpen=false;
-  var fpsFrames=0, fpsValue=0, fpsLast=(W.performance?W.performance.now():Date.now());
-  var heldKeyNames={KeyW:'W',KeyA:'A',KeyS:'S',KeyD:'D',Space:'SPC',ShiftLeft:'SHIFT',ShiftRight:'SHIFT'};
+  var seenLock=false;
+  var TC={settings:S,defaults:DEFAULTS,lastError:null,
+    isMenuOpen:function(){return menuOpen;}};
+  W.ThunderClient=TC;
 
   function now(){return W.performance?W.performance.now():Date.now();}
+  function locked(){return !seenLock||!!D.pointerLockElement;}
+  function kill(e){e.preventDefault();e.stopImmediatePropagation();}
+
+  function onKeyDown(e){
+    try{
+      var code=e&&e.code;
+      if(code)keyState[code]=true;
+      if(S.blockF3&&(code==='F3'||e.key==='F3')){kill(e);return;}
+      if(code==='ShiftRight'||(e.key==='Shift'&&e.location===2)){
+        kill(e);
+        if(!e.repeat)toggleMenu();
+        return;
+      }
+      if(menuOpen){
+        if(code==='Escape'){kill(e);hideMenu();return;}
+        if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&!/^F\d+$/.test(code||''))kill(e);
+      }
+    }catch(_){}
+  }
+  function onKeyUp(e){
+    try{
+      var code=e&&e.code;
+      if(code)keyState[code]=false;
+      if(S.blockF3&&(code==='F3'||e.key==='F3')){kill(e);return;}
+      if(code==='ShiftRight'||(e.key==='Shift'&&e.location===2))kill(e);
+    }catch(_){}
+  }
+  function isGameTarget(e){var t=e&&e.target;return !!t&&t.tagName==='CANVAS';}
+  if(W.addEventListener){
+    W.addEventListener('keydown',onKeyDown,true);
+    W.addEventListener('keyup',onKeyUp,true);
+    W.addEventListener('blur',function(){keyState={};mouseState={};},true);
+    W.addEventListener('mousedown',function(e){
+      if(menuOpen||!isGameTarget(e))return;
+      mouseState[e.button]=true;
+      if(e.button===0)clicks.push(Date.now());
+    },true);
+    W.addEventListener('mouseup',function(e){mouseState[e.button]=false;},true);
+  }
+  if(D.addEventListener){
+    D.addEventListener('pointerlockchange',function(){if(D.pointerLockElement)seenLock=true;});
+  }
+
+  // FPS counter
+  var fpsFrames=0,fpsValue=0,fpsLast=now();
   function markFrame(){
     fpsFrames++;
     var t=now();
     if(t-fpsLast>=500){fpsValue=Math.round(fpsFrames*1000/(t-fpsLast));fpsFrames=0;fpsLast=t;}
   }
+  if(W.requestAnimationFrame){
+    var tick=function(){markFrame();W.requestAnimationFrame(tick);};
+    W.requestAnimationFrame(tick);
+  }
   function trimClicks(){
     var t=Date.now();
     while(clicks.length&&t-clicks[0]>1000)clicks.shift();
   }
-  function handleThunderKey(e){
-    try{
-      if(e&&e.code)keyState[e.code]=true;
-      var rightShift=!!e && (e.code==='ShiftRight' || (e.key==='Shift' && e.location===2) || (e.keyCode===16 && e.location===2));
-      if(rightShift && !e.repeat){
-        e.preventDefault();
-        e.stopPropagation();
-        toggleMenu();
-      }
-    }catch(_){}
-  }
-  function handleThunderKeyUp(e){try{if(e&&e.code)keyState[e.code]=false;}catch(_){}}
-  if(W.addEventListener){
-    W.addEventListener('mousedown',function(){clicks.push(Date.now());},true);
-    W.addEventListener('keydown',handleThunderKey,true);
-    W.addEventListener('keyup',handleThunderKeyUp,true);
-    W.addEventListener('blur',function(){keyState={};},true);
-    if(D&&D.addEventListener){
-      D.addEventListener('keydown',handleThunderKey,true);
-      D.addEventListener('keyup',handleThunderKeyUp,true);
-    }
-    if(W.requestAnimationFrame){
-      var tick=function(){markFrame();W.requestAnimationFrame(tick);};
-      W.requestAnimationFrame(tick);
-    }
-  }
 
-  var panel=null;
-  var sections={
-    HUD:['armor','fps','cps','keystrokes','health','hunger','potionStatus','sprintIndicator'],
-    PVP:['toggleSprint','noFov','damageTilt'],
-    UTILITY:[],
-    OPTIMIZATION:[],
-    VISUAL:[],
-    SHADERS:['shaderPlaceholder']
-  };
-  var names={
-    armor:'Armor Status %',fps:'FPS',cps:'CPS',keystrokes:'Keystrokes',health:'Health',
-    hunger:'Hunger',potionStatus:'Potion Status',sprintIndicator:'Sprint Indicator',toggleSprint:'Toggle Sprint',noFov:'No FOV Change',damageTilt:'Damage Tilt',
-    shaderPlaceholder:'Shaders (test later)'
-  };
-  var disabled={shaderPlaceholder:true};
+  // ------------------------------------------------------------------
+  // Menu (Right Shift)
+  // ------------------------------------------------------------------
+  var backdrop=null,panel=null,tabsEl=null,listEl=null,currentTab=0;
 
-  function toggleMenu(){
-    menuOpen=!menuOpen;
-    if(menuOpen)showMenu();else hideMenu();
+  function toggleMenu(){if(menuOpen)hideMenu();else showMenu();}
+  function hideMenu(){
+    menuOpen=false;
+    if(backdrop)backdrop.style.display='none';
   }
-  function hideMenu(){if(panel)panel.style.display='none';}
   function showMenu(){
-    if(!panel)buildMenu();
-    syncMenu();
-    panel.style.display='block';
+    if(!backdrop)buildMenu();
+    menuOpen=true;
+    renderTabs();
+    renderList();
+    backdrop.style.display='flex';
+    try{if(D.exitPointerLock&&D.pointerLockElement)D.exitPointerLock();}catch(_){}
   }
-  function syncMenu(){
-    if(!panel)return;
-    Object.keys(names).forEach(function(id){
-      var b=panel.querySelector('[data-thunder-toggle="'+id+'"]');
-      if(!b||disabled[id])return;
-      b.textContent=S[id]?'ON':'OFF';
-      b.style.opacity=S[id]?'1':'0.55';
-    });
+  function el(tag,css,text){
+    var n=D.createElement(tag);
+    if(css)n.style.cssText=css;
+    if(text!==undefined)n.textContent=text;
+    return n;
   }
   function buildMenu(){
-    panel=D.createElement('div');
-    panel.id='thunder-client-menu';
-    panel.style.cssText='position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2147483646;width:430px;max-height:80vh;overflow:auto;padding:12px;background:rgba(18,18,18,.96);border:2px solid #6f6f6f;box-shadow:0 6px 24px rgba(0,0,0,.65);font-family:Arial,sans-serif;color:#eee;display:none;user-select:none;';
-    var h=D.createElement('div');h.textContent='THUNDER CLIENT';h.style.cssText='font-weight:700;font-size:18px;margin-bottom:3px;';panel.appendChild(h);
-    var sub=D.createElement('div');sub.textContent='Right Shift • vanilla-style settings';sub.style.cssText='font-size:11px;color:#aaa;margin-bottom:10px;';panel.appendChild(sub);
-    Object.keys(sections).forEach(function(sec){
-      var t=D.createElement('div');t.textContent=sec;t.style.cssText='font-size:12px;font-weight:700;margin:10px 0 5px;color:#fff;';panel.appendChild(t);
-      sections[sec].forEach(function(id){
-        var row=D.createElement('div');row.style.cssText='display:flex;align-items:center;justify-content:space-between;padding:5px 6px;margin:2px 0;background:rgba(255,255,255,.04);';
-        var label=D.createElement('span');label.textContent=names[id];label.style.cssText='font-size:12px;';row.appendChild(label);
-        var btn=D.createElement('button');btn.type='button';btn.setAttribute('data-thunder-toggle',id);btn.style.cssText='border:1px solid #777;background:#202020;color:#fff;padding:2px 9px;font:11px Arial;cursor:pointer;';
-        if(disabled[id]){btn.textContent='CHECKING';btn.disabled=true;btn.style.opacity='0.5';btn.style.cursor='default';}
-        else{btn.onclick=function(){S[id]=!S[id];save();syncMenu();};}
-        row.appendChild(btn);panel.appendChild(row);
-      });
+    backdrop=el('div','position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483646;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;font-family:Arial,sans-serif;');
+    backdrop.id='thunder-client-menu';
+    backdrop.addEventListener('mousedown',function(e){if(e.target===backdrop)hideMenu();});
+    panel=el('div','width:480px;max-width:94vw;max-height:82vh;display:flex;flex-direction:column;background:rgba(16,18,24,.97);border:2px solid #3a8bb8;box-shadow:0 8px 30px rgba(0,0,0,.7),0 0 24px rgba(79,209,255,.25);color:#eaf6ff;user-select:none;');
+    var head=el('div','padding:12px 14px 8px;');
+    head.appendChild(el('div','font-weight:700;font-size:18px;letter-spacing:.12em;','THUNDER CLIENT'));
+    head.appendChild(el('div','font-size:11px;color:#8fb4c8;margin-top:3px;','Right Shift or Esc closes. Changes apply instantly and are saved.'));
+    panel.appendChild(head);
+    tabsEl=el('div','display:flex;flex-wrap:wrap;gap:4px;padding:0 14px 8px;');
+    panel.appendChild(tabsEl);
+    listEl=el('div','overflow-y:auto;padding:0 14px 8px;flex:1 1 auto;');
+    panel.appendChild(listEl);
+    var foot=el('div','display:flex;justify-content:space-between;align-items:center;padding:8px 14px 12px;border-top:1px solid rgba(79,209,255,.2);');
+    foot.appendChild(el('span','font-size:10px;color:#8fb4c8;','Opening this menu unlocks the mouse. Click the game to resume.'));
+    var reset=el('button','border:1px solid #3a8bb8;background:#101a24;color:#eaf6ff;padding:4px 10px;font:11px Arial;cursor:pointer;','Reset all');
+    reset.type='button';
+    reset.onclick=function(){for(var id in DEFAULTS)S[id]=DEFAULTS[id];save();renderList();};
+    foot.appendChild(reset);
+    panel.appendChild(foot);
+    backdrop.appendChild(panel);
+    (D.body||D.documentElement).appendChild(backdrop);
+  }
+  function renderTabs(){
+    while(tabsEl.firstChild)tabsEl.removeChild(tabsEl.firstChild);
+    CATS.forEach(function(cat,i){
+      var on=i===currentTab;
+      var b=el('button','border:1px solid '+(on?'#4fd1ff':'#3a5568')+';background:'+(on?'#1c5f82':'#101a24')+';color:#eaf6ff;padding:5px 12px;font:bold 11px Arial;letter-spacing:.06em;cursor:pointer;',cat[0]);
+      b.type='button';
+      b.onclick=function(){currentTab=i;renderTabs();renderList();};
+      tabsEl.appendChild(b);
     });
-    var info=D.createElement('div');info.style.cssText='margin-top:10px;padding:7px 6px;background:rgba(255,255,255,.03);font-size:10px;line-height:1.4;color:#aaa;';
-    info.textContent='32-chunk maximum render distance is built into this file. Maps are not included. The shader section is reserved until the existing shader pipeline is verified.';
-    panel.appendChild(info);
-    var root=D.body||D.documentElement;
-    if(root)root.appendChild(panel);
   }
+  function renderList(){
+    while(listEl.firstChild)listEl.removeChild(listEl.firstChild);
+    CATS[currentTab][1].forEach(function(m){
+      var id=m[0];
+      var row=el('div','display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 8px;margin:3px 0;background:rgba(255,255,255,.04);');
+      var txt=el('div','');
+      txt.appendChild(el('div','font-size:13px;',m[1]));
+      txt.appendChild(el('div','font-size:10px;color:#8fb4c8;margin-top:1px;',m[2]));
+      row.appendChild(txt);
+      var btn=el('button','');
+      btn.type='button';
+      function paint(){
+        btn.textContent=S[id]?'ON':'OFF';
+        btn.style.cssText='min-width:46px;border:1px solid '+(S[id]?'#55ff55':'#666')+';background:'+(S[id]?'#1f4d2a':'#1b1b1b')+';color:'+(S[id]?'#b8ffb8':'#aaa')+';padding:3px 8px;font:bold 11px Arial;cursor:pointer;';
+      }
+      paint();
+      btn.onclick=function(){S[id]=!S[id];save();paint();};
+      row.appendChild(btn);
+      listEl.appendChild(row);
+    });
+  }
+  TC.openMenu=showMenu;TC.closeMenu=hideMenu;TC.toggleMenu=toggleMenu;
+  TC.reset=function(){for(var id in DEFAULTS)S[id]=DEFAULTS[id];save();if(menuOpen)renderList();};
 
-  var TC={
-    render:function(gui){},
-    settings:S,
-    isMenuOpen:function(){return menuOpen;}
-  };
-  W.ThunderClient=TC;
-
+  // ------------------------------------------------------------------
+  // In-game drawing helpers
+  // ------------------------------------------------------------------
   function draw(font,text,x,y,color){
-    if(!font||!font.eiX)return;
-    font.eiX(text,x|0,y|0,color|0,true);
+    font.eiX($rt_str(String(text)),x|0,y|0,color|0,1);
   }
-  function pctColor(p){return p<=25?0xE74C3C:(p<=50?0xF1C40F:0xFFFFFF);}
-  function itemPct(player,slot){
+  function textWidth(font,text){return CC(font,$rt_str(String(text)));}
+  function pctColor(p){return p<=25?0xFF5555:(p<=50?0xFFFF55:0xFFFFFF);}
+  function fmt1(n){return (Math.round(n*10)/10).toFixed(1);}
+  function pad2(n){return n<10?'0'+n:''+n;}
+
+  function armorPct(player,slot){
     try{
-      if(!player||!player.yE)return null;
       var st=player.yE(slot);
       if(st===null||st===undefined)return null;
       if(CCI(st))return null;
       var max=EjU(st);
       if(max<=0)return null;
-      var dmg=EHa(st);
-      var p=Math.round((max-dmg)*100/max);
-      if(p<0)p=0;if(p>100)p=100;
-      return p;
+      var p=Math.round((max-EHa(st))*100/max);
+      return p<0?0:(p>100?100:p);
     }catch(_){return null;}
   }
-  function drawHud(gui,partial){
-    try{
-      if(!gui||!gui.dk||!gui.dk.v)return;
-      if(menuOpen)return;
-      var player=gui.dk.v;
-      var scaled=gui.dk.nZ;
-      var width=AIz(scaled),height=ASe(scaled);
-      var font=Chf(gui);
-      if(!font)return;
-      var x=5,y=5,dy=10;
-      trimClicks();
 
-      if(S.armor){
-        try{Dt();}catch(_){ }
-        var vals=[itemPct(player,HHM),itemPct(player,HIj),itemPct(player,HJs),itemPct(player,HJt)];
+  var EFFECT_NAMES={
+    moveSpeed:'Speed',moveSlowdown:'Slowness',digSpeed:'Haste',digSlowDown:'Mining Fatigue',
+    damageBoost:'Strength',heal:'Instant Health',harm:'Instant Damage',jump:'Jump Boost',
+    confusion:'Nausea',regeneration:'Regeneration',resistance:'Resistance',fireResistance:'Fire Resistance',
+    waterBreathing:'Water Breathing',invisibility:'Invisibility',blindness:'Blindness',nightVision:'Night Vision',
+    hunger:'Hunger',weakness:'Weakness',poison:'Poison',wither:'Wither',healthBoost:'Health Boost',
+    absorption:'Absorption',saturation:'Saturation',glowing:'Glowing',levitation:'Levitation',luck:'Luck',unluck:'Bad Luck'
+  };
+  var ROMAN=['I','II','III','IV','V','VI','VII','VIII','IX','X'];
+  function effectLine(ef){
+    var key=$rt_ustr(CSt(ef));
+    key=String(key||'').replace(/^effect\./,'');
+    var name=EFFECT_NAMES[key]||(key.charAt(0).toUpperCase()+key.slice(1));
+    var amp=ELx(ef);
+    var lvl=amp>=0&&amp<ROMAN.length?ROMAN[amp]:String(amp+1);
+    var ticks=D8_(ef);
+    var t;
+    if(ticks>=32767)t='**';
+    else{var s=Math.ceil(ticks/20);t=Math.floor(s/60)+':'+pad2(s%60);}
+    return name+' '+lvl+' '+t;
+  }
+
+  // speed tracking
+  var lastX=null,lastZ=null,lastT=0,speed=0;
+  function updateSpeed(px,pz){
+    var t=now();
+    if(lastX!==null){
+      var dt=(t-lastT)/1000;
+      if(dt>0&&dt<0.5){
+        var v=Math.sqrt((px-lastX)*(px-lastX)+(pz-lastZ)*(pz-lastZ))/dt;
+        if(v<100)speed=speed*0.85+v*0.15;
+      }
+    }
+    lastX=px;lastZ=pz;lastT=t;
+  }
+
+  // fullbright (gamma) handling
+  var savedGamma=null;
+  function readStoredGamma(){
+    try{var v=W.localStorage.getItem(GAMMA_KEY);if(v!==null){v=parseFloat(v);if(isFinite(v))return v;}}catch(_){}
+    return null;
+  }
+  function writeStoredGamma(v){try{if(v===null)W.localStorage.removeItem(GAMMA_KEY);else W.localStorage.setItem(GAMMA_KEY,String(v));}catch(_){}}
+  function fullbrightTick(mc){
+    var gs=mc&&mc.G;
+    if(!gs||typeof gs.bCx!=='number')return;
+    if(S.fullbright){
+      if(savedGamma===null){
+        var st=readStoredGamma();
+        savedGamma=gs.bCx<100?gs.bCx:(st!==null?st:1.0);
+        writeStoredGamma(savedGamma);
+      }
+      if(gs.bCx!==1000)gs.bCx=1000.0;
+    }else if(savedGamma!==null){
+      gs.bCx=savedGamma;savedGamma=null;writeStoredGamma(null);
+    }else if(gs.bCx>=100){
+      var st2=readStoredGamma();
+      gs.bCx=st2!==null?st2:1.0;
+      writeStoredGamma(null);
+    }
+  }
+
+  // toggle sprint
+  function sprintTick(player){
+    var forward=!!(keyState.KeyW||keyState.ArrowUp);
+    var want=forward&&!menuOpen&&locked()&&!Fch(player)&&!A4G(player)&&!Ctr(player)&&ZP(FAU(player))>6;
+    var cur=!!CBg(player);
+    if(want&&!cur)FPB(player,1);
+    else if(!want&&cur&&!forward)FPB(player,0);
+  }
+
+  // ------------------------------------------------------------------
+  // HUD
+  // ------------------------------------------------------------------
+  function drawHud(gui){
+    var mc=gui&&gui.dk;
+    if(!mc)return;
+    fullbrightTick(mc);
+    var player=mc.v;
+    if(!player)return;
+    if(S.toggleSprint)sprintTick(player);
+
+    var scaled=mc.nZ;
+    var width=AIz(scaled),height=ASe(scaled);
+    var font=Chf(gui);
+    if(!font)return;
+    trimClicks();
+
+    var left=[],right=[];
+    var px=player.b,py=player.f,pz=player.c;
+    var havePos=typeof px==='number'&&typeof py==='number'&&typeof pz==='number';
+    if(havePos)updateSpeed(px,pz);
+
+    if(S.armor){
+      try{
+        Dt();
+        var vals=[armorPct(player,HHM),armorPct(player,HIj),armorPct(player,HJs),armorPct(player,HJt)];
         var labs=['Helmet','Chest','Legs','Boots'];
-        for(var i=0;i<4;i++){
-          if(vals[i]!==null){draw(font,labs[i]+' '+vals[i]+'%',x,y,pctColor(vals[i]));y+=dy;}
+        for(var i=0;i<4;i++)if(vals[i]!==null)left.push([labs[i]+' '+vals[i]+'%',pctColor(vals[i])]);
+      }catch(_){}
+    }
+    if(S.heldItem){
+      try{
+        var st=EZ6(player);
+        if(st&&!CCI(st)){
+          var txt=$rt_ustr(EJu(st));
+          var cnt=CRD(st);
+          if(cnt>1)txt+=' x'+cnt;
+          var mx=EjU(st),col=0xFFFFFF;
+          if(mx>0){
+            var leftDur=mx-EHa(st);
+            txt+=' ('+leftDur+'/'+mx+')';
+            col=pctColor(Math.round(leftDur*100/mx));
+          }
+          left.push([txt,col]);
         }
-      }
-      if(S.fps){draw(font,'FPS '+fpsValue,x,y,0xFFFFFF);y+=dy;}
-      if(S.cps){draw(font,'CPS '+clicks.length,x,y,0xFFFFFF);y+=dy;}
-      if(S.health){
-        var hp=Math.round(Eq5(player)*10)/10, mhp=Math.round(Crp(player)*10)/10;
-        draw(font,'HP '+hp+'/'+mhp,x,y,0xFFFFFF);y+=dy;
-      }
-      if(S.hunger){
-        var fs=FAU(player),food=ZP(fs);
-        draw(font,'Hunger '+Math.round(food),x,y,0xFFFFFF);y+=dy;
-      }
-      if(S.potionStatus){
-        try{
-          var pc=0,eff=F9v(player);
-          if(eff!==null&&eff!==undefined){var it=eff.O();while(it&&!it.B()&&pc<32){pc++;it.z();}}
-          draw(font,'Potions '+pc,x,y,0xFFFFFF);y+=dy;
-        }catch(_){draw(font,'Potions ?',x,y,0xAAAAAA);y+=dy;}
-      }
-      if(S.sprintIndicator){draw(font,'Sprint '+(CBg(player)?'ON':'OFF'),x,y,CBg(player)?0x55FF55:0xAAAAAA);y+=dy;}
-      if(S.keystrokes){
-        var ky=height-34,kx=width-51;
-        var keys=[['W',keyState.KeyW,kx+16,ky],['A',keyState.KeyA,kx,ky+12],['S',keyState.KeyS,kx+16,ky+12],['D',keyState.KeyD,kx+32,ky+12]];
-        for(var z=0;z<keys.length;z++){
-          var pressed=!!keys[z][1];
-          draw(font,keys[z][0],keys[z][2],keys[z][3],pressed?0x55FF55:0xFFFFFF);
+      }catch(_){}
+    }
+    if(S.fps)left.push(['FPS '+fpsValue,0xFFFFFF]);
+    if(S.cps)left.push(['CPS '+clicks.length,0xFFFFFF]);
+    if(S.coords&&havePos)left.push(['XYZ '+fmt1(px)+' / '+fmt1(py)+' / '+fmt1(pz),0xFFFFFF]);
+    if(S.direction&&typeof player.C==='number'){
+      var f=Math.floor(player.C*4/360+0.5)&3;
+      var dirs=['South (+Z)','West (-X)','North (-Z)','East (+X)'];
+      left.push(['Facing '+dirs[f],0xFFFFFF]);
+    }
+    if(S.speed)left.push(['Speed '+fmt1(speed)+' b/s',0xFFFFFF]);
+    if(S.health){
+      try{
+        var hp=ENU(player),mhp=Crp(player),ab=CkW(player);
+        var ht='HP '+fmt1(hp)+'/'+fmt1(mhp);
+        if(ab>0)ht+=' +'+fmt1(ab);
+        left.push([ht,0xFF5555]);
+      }catch(_){}
+    }
+    if(S.hunger){
+      try{
+        var fs=FAU(player);
+        left.push(['Food '+ZP(fs)+' (sat '+fmt1(A1i(fs))+')',0xFFAA00]);
+      }catch(_){}
+    }
+    if(S.sprintStatus){
+      var sp=!!CBg(player);
+      left.push(['Sprint '+(sp?'ON':'OFF'),sp?0x55FF55:0xAAAAAA]);
+    }
+    if(S.shield){
+      try{if(Ctr(player))left.push(['Blocking',0x55FFFF]);}catch(_){}
+    }
+
+    if(S.clock){
+      var d=new Date();
+      right.push([pad2(d.getHours())+':'+pad2(d.getMinutes())+':'+pad2(d.getSeconds()),0xFFFFFF]);
+    }
+    if(S.memory){
+      try{
+        var pm=W.performance&&W.performance.memory;
+        if(pm&&pm.usedJSHeapSize)right.push(['Mem '+Math.round(pm.usedJSHeapSize/1048576)+' MB',0xFFFFFF]);
+      }catch(_){}
+    }
+    if(S.effects){
+      try{
+        var it=F9v(player).O(),n=0;
+        while(it.B()&&n<24){
+          right.push([effectLine(it.z()),0xFFFFFF]);
+          n++;
         }
-      }
-      if(S.toggleSprint&&!menuOpen){
-        var moving=!!(keyState.KeyW||keyState.ArrowUp||keyState.KeyA||keyState.KeyS||keyState.KeyD||keyState.ArrowDown||keyState.ArrowLeft||keyState.ArrowRight);
-        if(moving){FPB(player,1);}else{FPB(player,0);}
-      }
-    }catch(_){ }
+      }catch(_){}
+    }
+
+    var x=5,y=5,dy=10,j;
+    for(j=0;j<left.length;j++){draw(font,left[j][0],x,y,left[j][1]);y+=dy;}
+    y=5;
+    for(j=0;j<right.length;j++){
+      draw(font,right[j][0],width-textWidth(font,right[j][0])-5,y,right[j][1]);
+      y+=dy;
+    }
+
+    if(S.keystrokes){
+      var ky=height-46,kx=width-51;
+      var keys=[
+        ['W',keyState.KeyW||keyState.ArrowUp,kx+16,ky],
+        ['A',keyState.KeyA||keyState.ArrowLeft,kx,ky+12],
+        ['S',keyState.KeyS||keyState.ArrowDown,kx+16,ky+12],
+        ['D',keyState.KeyD||keyState.ArrowRight,kx+32,ky+12],
+        ['LMB',mouseState[0],kx-2,ky+24],
+        ['RMB',mouseState[2],kx+26,ky+24]
+      ];
+      for(var q=0;q<keys.length;q++)draw(font,keys[q][0],keys[q][2],keys[q][3],keys[q][1]?0x55FF55:0xFFFFFF);
+    }
+    // the font renderer leaves the GL color tinted; put it back so later GUI drawing is unaffected
+    try{CFi(1.0,1.0,1.0,1.0);}catch(_){}
   }
   TC.render=drawHud;
 
+  // ------------------------------------------------------------------
+  // Hooks (each wrapper falls through to the original game code)
+  // ------------------------------------------------------------------
   var origEwc=Ewc;
-  Ewc=function(a,b){var r=origEwc(a,b);try{TC.render(a,b);}catch(_){ }return r;};
+  var errCount=0;
+  Ewc=function(a,b){
+    var r=origEwc(a,b);
+    if(!$rt_suspending()){
+      try{drawHud(a,b);}
+      catch(e){
+        TC.lastError=e;
+        if(errCount++<3&&W.console&&W.console.warn)W.console.warn('[Thunder] HUD error',e);
+      }
+    }
+    return r;
+  };
+
+  var origFN3=FN3;
+  FN3=function(a,b){
+    if(S.noHurtCam&&!$rt_resuming())return;
+    return origFN3(a,b);
+  };
 
   var origCyx=Cyx;
-  Cyx=function(a,b){if(!S.damageTilt)return;return origCyx(a,b);};
+  Cyx=function(a,b){
+    if(S.noBob&&!$rt_resuming())return;
+    return origCyx(a,b);
+  };
 
   var origDvp=Dvp;
   Dvp=function(a,b,c){
-    if(S.noFov){
-      try{
-        if(a&&c&&typeof a.US==='number'&&typeof a.cQr==='number'){
-          var old=a.US;
-          a.US=a.cQr;
-          try{return origDvp(a,b,c);}finally{a.US=old;}
-        }
-      }catch(_){ }
+    if(S.noFov&&c&&!$rt_resuming()&&a&&typeof a.US==='number'&&typeof a.cQr==='number'){
+      var o1=a.US,o2=a.cQr;
+      a.US=1.0;a.cQr=1.0;
+      try{return origDvp(a,b,c);}
+      finally{a.US=o1;a.cQr=o2;}
     }
     return origDvp(a,b,c);
   };
-
-  // The Eagler bootstrap may load before <body> exists; keep the menu DOM-safe.
-  function thunderDomReady(){try{if(menuOpen)showMenu();}catch(_){}}
-  if(D&&D.readyState==='loading'&&D.addEventListener)D.addEventListener('DOMContentLoaded',thunderDomReady,{once:true});
-  else setTimeout(thunderDomReady,0);
-  setTimeout(thunderDomReady,1000);
-  TC.openMenu=showMenu;
-  TC.closeMenu=hideMenu;
-  TC.toggleMenu=toggleMenu;
 })();
+
+/* ===== THUNDER STORM INTRO (loading bar + title). The HUD itself is drawn natively by the block above. ===== */
+;(function() {
+	var G = $rt_globals;
+	var W = G.window || G;
+	var D = W && W.document;
+	if (!W || !D) return;
+	if (W.__thunderIntroLoaded) return;
+	W.__thunderIntroLoaded = true;
+	var THUNDER_INTRO = true; // set to false to disable the storm intro
+
+	// ------------------------------------------------------------------
+	// Settings
+	// ------------------------------------------------------------------
+	var THUNDER_START_DELAY = 5000;  // ms after page load before the storm intro starts
+	var THUNDER_VOLUME = 0.38;
+
+	// ------------------------------------------------------------------
+	// Styles (injected so index.html doesn't need any Thunder CSS)
+	// ------------------------------------------------------------------
+	var THUNDER_CSS = `
+#stormCanvas{position:fixed;top:0;left:0;width:100%;height:100%;z-index:999;pointer-events:none}
+#thunderLoadScreen{position:fixed;top:0;left:0;width:100%;height:100%;background:#05070d;z-index:2000;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+#thunderLoadScreen::before{content:"";position:absolute;top:0;left:0;right:0;bottom:0;background:radial-gradient(ellipse at 50% 40%,rgba(30,60,90,.35),rgba(5,7,13,0) 65%);pointer-events:none}
+#thunderLoadLabel{font-family:'Courier New',monospace;font-weight:bold;font-size:2vw;letter-spacing:.3em;color:#cfeeff;text-shadow:2px 0 0 #4fd1ff,-2px 0 0 #4fd1ff,0 0 25px #7fe3ff;margin-bottom:26px;position:relative}
+#thunderBarOuter{width:40vw;max-width:560px;height:30px;background:rgba(10,14,24,.85);border:2px solid #3a8bb8;border-radius:3px;position:relative;overflow:hidden;box-shadow:0 0 0 1px rgba(79,209,255,.15) inset,0 0 22px rgba(79,209,255,.25)}
+#thunderBarFill{height:100%;width:0%;background:linear-gradient(90deg,#1c5f82,#4fd1ff 60%,#eaf6ff);box-shadow:0 0 20px 2px #4fd1ff;position:relative}
+#thunderBarFill::after{content:"";position:absolute;top:0;right:-9px;width:18px;height:100%;background:#eaf6ff;clip-path:polygon(60% 0%,100% 0%,40% 45%,80% 45%,20% 100%,50% 55%,0% 55%);filter:drop-shadow(0 0 6px #fff)}
+#thunderBarOuter .tick{position:absolute;top:0;bottom:0;width:2px;background:rgba(5,8,16,.5)}
+#thunderPercent{margin-top:16px;font-family:'Courier New',monospace;color:#7fe3ff;font-size:1vw;letter-spacing:.15em;text-shadow:0 0 10px rgba(79,209,255,.6);position:relative}
+#splashTitle{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(.85);font-family:'Courier New',monospace;font-weight:bold;font-size:6vw;letter-spacing:.12em;color:#eaf6ff;text-shadow:3px 0 0 #4fd1ff,-3px 0 0 #4fd1ff,0 0 25px #7fe3ff,0 0 55px #4fd1ff,0 0 90px #2b7ba3;z-index:1001;opacity:0;pointer-events:none;white-space:nowrap;clip-path:polygon(0% 10%,3% 0%,97% 0%,100% 10%,100% 90%,97% 100%,3% 100%,0% 90%);padding:6px 18px}
+#splashTitle .bolt{display:inline-block;transform:scale(1.15) rotate(-4deg);color:#fff;text-shadow:0 0 15px #fff,0 0 40px #7fe3ff,0 0 80px #4fd1ff}
+#splashFlash{position:fixed;top:0;left:0;width:100%;height:100%;background:#fff;opacity:0;z-index:1000;pointer-events:none}
+`;
+
+	// ------------------------------------------------------------------
+	// Audio
+	// ------------------------------------------------------------------
+	var actx = null;
+	function getAudioCtx() {
+		try {
+			if (!actx) {
+				var AudioCtx = W.AudioContext || W.webkitAudioContext;
+				actx = new AudioCtx();
+			}
+			if (actx.state === 'suspended') actx.resume().catch(function() {});
+			return actx;
+		} catch (e) { return null; }
+	}
+	['pointerdown', 'keydown', 'touchstart'].forEach(function(evt) {
+		W.addEventListener(evt, function() { getAudioCtx(); }, { passive: true });
+	});
+
+	function makeDistortionCurve(amount) {
+		var n = 44100, curve = new Float32Array(n);
+		for (var i = 0; i < n; i++) {
+			var x = (i * 2) / n - 1;
+			curve[i] = ((3 + amount) * x * 20 * (Math.PI / 180)) / (Math.PI + amount * Math.abs(x));
+		}
+		return curve;
+	}
+
+	var thunderBus = null;
+	function getThunderBus(ctx) {
+		if (!thunderBus) {
+			thunderBus = ctx.createDynamicsCompressor();
+			thunderBus.threshold.value = -18;
+			thunderBus.knee.value = 12;
+			thunderBus.ratio.value = 6;
+			thunderBus.attack.value = 0.003;
+			thunderBus.release.value = 0.25;
+			var master = ctx.createGain();
+			master.gain.value = THUNDER_VOLUME;
+			thunderBus.connect(master);
+			master.connect(ctx.destination);
+		}
+		return thunderBus;
+	}
+
+	function playThunder(big) {
+		var ctx = getAudioCtx();
+		if (!ctx) return;
+		try {
+			var now = ctx.currentTime;
+			var bus = getThunderBus(ctx);
+
+			// electric zap transient
+			var zap = ctx.createOscillator();
+			zap.type = 'sawtooth';
+			zap.frequency.setValueAtTime(big ? 2600 : 1900, now);
+			zap.frequency.exponentialRampToValueAtTime(140, now + 0.045);
+			var zapGain = ctx.createGain();
+			zapGain.gain.setValueAtTime(big ? 0.5 : 0.35, now);
+			zapGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+			zap.connect(zapGain);
+			zapGain.connect(bus);
+			zap.start(now);
+			zap.stop(now + 0.06);
+
+			// crackle clicks
+			var crackleHits = 5 + Math.floor(Math.random() * 4);
+			for (var i = 0; i < crackleHits; i++) {
+				var t = now + Math.random() * 0.09;
+				var dur = 0.006 + Math.random() * 0.01;
+				var buf = ctx.createBuffer(1, Math.max(1, Math.floor(ctx.sampleRate * dur)), ctx.sampleRate);
+				var d = buf.getChannelData(0);
+				for (var j = 0; j < d.length; j++) d[j] = (Math.random() * 2 - 1);
+				var src = ctx.createBufferSource();
+				src.buffer = buf;
+				var hp = ctx.createBiquadFilter();
+				hp.type = 'highpass';
+				hp.frequency.value = 2500;
+				var g = ctx.createGain();
+				g.gain.value = (big ? 0.5 : 0.35) * (0.5 + Math.random() * 0.5);
+				src.connect(hp);
+				hp.connect(g);
+				g.connect(bus);
+				src.start(t);
+			}
+
+			// main distorted crack
+			var crackDur = 0.2;
+			var crackBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * crackDur), ctx.sampleRate);
+			var cd = crackBuf.getChannelData(0);
+			for (var k = 0; k < cd.length; k++) cd[k] = (Math.random() * 2 - 1) * Math.pow(1 - k / cd.length, 0.28);
+			var crackSrc = ctx.createBufferSource();
+			crackSrc.buffer = crackBuf;
+			var crackHP = ctx.createBiquadFilter();
+			crackHP.type = 'highpass';
+			crackHP.frequency.value = 700;
+			var crackPeak = ctx.createBiquadFilter();
+			crackPeak.type = 'peaking';
+			crackPeak.frequency.value = 2200 + Math.random() * 900;
+			crackPeak.Q.value = 1.3;
+			crackPeak.gain.value = 9;
+			var shaper = ctx.createWaveShaper();
+			shaper.curve = makeDistortionCurve(big ? 32 : 18);
+			shaper.oversample = '2x';
+			var crackGain = ctx.createGain();
+			crackGain.gain.setValueAtTime(big ? 1.1 : 0.8, now + 0.005);
+			crackGain.gain.exponentialRampToValueAtTime(0.001, now + crackDur);
+			crackSrc.connect(crackHP);
+			crackHP.connect(crackPeak);
+			crackPeak.connect(shaper);
+			shaper.connect(crackGain);
+			crackGain.connect(bus);
+			crackSrc.start(now + 0.01);
+
+			// rolling rumble with tremolo
+			var rumbleDur = (big ? 3.8 : 2.1) + Math.random() * 0.9;
+			var rumbleBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * rumbleDur), ctx.sampleRate);
+			var rd = rumbleBuf.getChannelData(0);
+			var last = 0;
+			for (var m = 0; m < rd.length; m++) {
+				var white = Math.random() * 2 - 1;
+				last = (last + 0.018 * white) / 1.018;
+				rd[m] = last * Math.pow(1 - m / rd.length, 1.1);
+			}
+			var rumbleSrc = ctx.createBufferSource();
+			rumbleSrc.buffer = rumbleBuf;
+			var rumbleFilter = ctx.createBiquadFilter();
+			rumbleFilter.type = 'lowpass';
+			rumbleFilter.frequency.setValueAtTime(big ? 260 : 170, now);
+			rumbleFilter.frequency.exponentialRampToValueAtTime(50, now + rumbleDur);
+			rumbleFilter.Q.value = 0.9;
+			var tremolo = ctx.createOscillator();
+			tremolo.type = 'sine';
+			tremolo.frequency.value = 3.5 + Math.random() * 2;
+			var tremoloDepth = ctx.createGain();
+			tremoloDepth.gain.value = big ? 0.35 : 0.25;
+			var rumbleGain = ctx.createGain();
+			rumbleGain.gain.setValueAtTime(0.0001, now);
+			rumbleGain.gain.linearRampToValueAtTime(big ? 1.1 : 0.7, now + 0.2);
+			rumbleGain.gain.exponentialRampToValueAtTime(0.001, now + rumbleDur);
+			tremolo.connect(tremoloDepth);
+			tremoloDepth.connect(rumbleGain.gain);
+			rumbleSrc.connect(rumbleFilter);
+			rumbleFilter.connect(rumbleGain);
+			rumbleGain.connect(bus);
+
+			// sub-bass
+			var sub = ctx.createOscillator();
+			sub.type = 'sine';
+			sub.frequency.setValueAtTime(big ? 62 : 48, now);
+			sub.frequency.exponentialRampToValueAtTime(24, now + rumbleDur * 0.85);
+			var subGain = ctx.createGain();
+			subGain.gain.setValueAtTime(0.0001, now);
+			subGain.gain.linearRampToValueAtTime(big ? 0.4 : 0.22, now + 0.08);
+			subGain.gain.exponentialRampToValueAtTime(0.001, now + rumbleDur * 0.9);
+			sub.connect(subGain);
+			subGain.connect(bus);
+
+			rumbleSrc.start(now);
+			tremolo.start(now);
+			tremolo.stop(now + rumbleDur);
+			sub.start(now);
+			sub.stop(now + rumbleDur * 0.9 + 0.05);
+		} catch (e) {}
+	}
+
+	var rainSource = null, rainGainRef = null;
+	function startRainLoop() {
+		var ctx = getAudioCtx();
+		if (!ctx) return;
+		try {
+			var buffer = ctx.createBuffer(1, ctx.sampleRate * 4, ctx.sampleRate);
+			var data = buffer.getChannelData(0);
+			for (var i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+			var src = ctx.createBufferSource();
+			src.buffer = buffer;
+			src.loop = true;
+			var bandpass = ctx.createBiquadFilter();
+			bandpass.type = 'bandpass';
+			bandpass.frequency.value = 3000;
+			bandpass.Q.value = 0.55;
+			var shelf = ctx.createBiquadFilter();
+			shelf.type = 'highshelf';
+			shelf.frequency.value = 6500;
+			shelf.gain.value = -8;
+			var rainGain = ctx.createGain();
+			rainGain.gain.setValueAtTime(0.0001, ctx.currentTime);
+			rainGain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 3.5);
+			src.connect(bandpass);
+			bandpass.connect(shelf);
+			shelf.connect(rainGain);
+			rainGain.connect(ctx.destination);
+			src.start();
+			rainSource = src;
+			rainGainRef = rainGain;
+		} catch (e) {}
+	}
+
+	// ------------------------------------------------------------------
+	// Storm intro + HUD. Starts THUNDER_START_DELAY ms after the page has fully loaded.
+	// ------------------------------------------------------------------
+	function startThunder() {
+		try {
+			var styleEl = D.createElement('style');
+			styleEl.id = 'thunderStyles';
+			styleEl.textContent = THUNDER_CSS;
+			D.head.appendChild(styleEl);
+		} catch (e) {}
+
+		startRainLoop();
+
+		var stormActive = true;
+		var canvas = D.createElement('canvas');
+		canvas.id = 'stormCanvas';
+		D.body.appendChild(canvas);
+		var ctx2d = canvas.getContext('2d');
+		var dpr = Math.max(1, Math.min(W.devicePixelRatio || 1, 3));
+
+		function resize() {
+			var w = W.innerWidth, h = W.innerHeight;
+			canvas.style.width = w + 'px';
+			canvas.style.height = h + 'px';
+			canvas.width = Math.round(w * dpr);
+			canvas.height = Math.round(h * dpr);
+			ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+		}
+		W.addEventListener('resize', resize);
+		resize();
+
+		// ---- storm ----
+		function viewW() { return canvas.width / dpr; }
+		function viewH() { return canvas.height / dpr; }
+
+		var clouds = [];
+		for (var i = 0; i < 16; i++) {
+			clouds.push({
+				x: Math.random() * viewW(),
+				y: Math.random() * viewH() * 0.55,
+				scale: 0.7 + Math.random() * 1.8,
+				speed: 0.3 + Math.random() * 0.9,
+				opacity: 0.2 + Math.random() * 0.3
+			});
+		}
+		var rain = [];
+		for (var r = 0; r < 260; r++) {
+			rain.push({
+				x: Math.random() * viewW(),
+				y: Math.random() * viewH(),
+				len: 10 + Math.random() * 20,
+				speed: 8 + Math.random() * 10,
+				drift: 2 + Math.random() * 2
+			});
+		}
+
+		function drawRain() {
+			ctx2d.save();
+			ctx2d.strokeStyle = 'rgba(150, 190, 230, 0.35)';
+			ctx2d.lineWidth = 1;
+			for (var n = 0; n < rain.length; n++) {
+				var d = rain[n];
+				ctx2d.beginPath();
+				ctx2d.moveTo(d.x, d.y);
+				ctx2d.lineTo(d.x - d.drift, d.y + d.len);
+				ctx2d.stroke();
+				d.x -= d.drift;
+				d.y += d.speed;
+				if (d.y > viewH()) {
+					d.y = -d.len;
+					d.x = Math.random() * viewW();
+				}
+			}
+			ctx2d.restore();
+		}
+
+		function drawCloud(c) {
+			ctx2d.save();
+			ctx2d.translate(c.x, c.y);
+			ctx2d.scale(c.scale, c.scale);
+			ctx2d.fillStyle = 'rgba(55, 70, 95, ' + c.opacity + ')';
+			ctx2d.beginPath();
+			ctx2d.arc(0, 0, 40, 0, Math.PI * 2);
+			ctx2d.arc(35, -10, 30, 0, Math.PI * 2);
+			ctx2d.arc(-35, -5, 28, 0, Math.PI * 2);
+			ctx2d.arc(15, 15, 32, 0, Math.PI * 2);
+			ctx2d.arc(-15, 15, 30, 0, Math.PI * 2);
+			ctx2d.fill();
+			ctx2d.restore();
+		}
+
+		var shakeFrames = 0;
+		var flashAlpha = 0;
+		var lastFlashCheck = performance.now();
+		var boltPoints = null;
+		function randomFlashDelay() { return 700 + Math.random() * 1800; }
+		var nextFlashTime = randomFlashDelay();
+
+		function generateBolt() {
+			var points = [];
+			var x = Math.random() * viewW();
+			var y = 0;
+			points.push({ x: x, y: y });
+			var segments = 10 + Math.floor(Math.random() * 8);
+			var branches = [];
+			for (var s = 0; s < segments; s++) {
+				x += (Math.random() - 0.5) * 90;
+				y += viewH() / segments;
+				points.push({ x: x, y: y });
+				if (Math.random() < 0.35 && s > 2) {
+					var bx = x, by = y;
+					var branch = [{ x: bx, y: by }];
+					var bSegs = 2 + Math.floor(Math.random() * 3);
+					for (var b = 0; b < bSegs; b++) {
+						bx += (Math.random() - 0.5) * 80 + 30;
+						by += 25 + Math.random() * 20;
+						branch.push({ x: bx, y: by });
+					}
+					branches.push(branch);
+				}
+			}
+			return { main: points, branches: branches };
+		}
+
+		function drawLine(points, alpha, width) {
+			ctx2d.beginPath();
+			ctx2d.moveTo(points[0].x, points[0].y);
+			for (var p = 1; p < points.length; p++) ctx2d.lineTo(points[p].x, points[p].y);
+			ctx2d.strokeStyle = 'rgba(210, 235, 255, ' + alpha + ')';
+			ctx2d.lineWidth = width;
+			ctx2d.stroke();
+		}
+
+		function drawBolt(bolt, alpha) {
+			ctx2d.save();
+			ctx2d.shadowColor = '#7fe3ff';
+			ctx2d.shadowBlur = 35;
+			drawLine(bolt.main, alpha, 3);
+			for (var q = 0; q < bolt.branches.length; q++) drawLine(bolt.branches[q], alpha * 0.7, 1.6);
+			ctx2d.restore();
+		}
+
+		function triggerFlash() {
+			flashAlpha = 1;
+			boltPoints = generateBolt();
+			shakeFrames = 8;
+			playThunder(false);
+			if (Math.random() < 0.3) {
+				setTimeout(function() {
+					if (!stormActive) return;
+					flashAlpha = 1;
+					boltPoints = generateBolt();
+					shakeFrames = 6;
+				}, 90);
+			}
+		}
+
+		function stormLoop(now) {
+			if (!stormActive) return;
+			ctx2d.save();
+			if (shakeFrames > 0) {
+				var mag = shakeFrames * 0.8;
+				ctx2d.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
+				shakeFrames--;
+			}
+			ctx2d.clearRect(-20, -20, viewW() + 40, viewH() + 40);
+			var grad = ctx2d.createLinearGradient(0, 0, 0, viewH());
+			grad.addColorStop(0, 'rgba(5,7,15,0.35)');
+			grad.addColorStop(1, 'rgba(19,26,48,0.35)');
+			ctx2d.fillStyle = grad;
+			ctx2d.fillRect(-20, -20, viewW() + 40, viewH() + 40);
+
+			for (var c = 0; c < clouds.length; c++) {
+				clouds[c].x += clouds[c].speed;
+				if (clouds[c].x - 100 > viewW()) clouds[c].x = -100;
+				drawCloud(clouds[c]);
+			}
+			drawRain();
+
+			if (now - lastFlashCheck > nextFlashTime) {
+				triggerFlash();
+				lastFlashCheck = now;
+				nextFlashTime = randomFlashDelay();
+			}
+			if (flashAlpha > 0) {
+				ctx2d.fillStyle = 'rgba(190, 220, 255, ' + (flashAlpha * 0.18) + ')';
+				ctx2d.fillRect(-20, -20, viewW() + 40, viewH() + 40);
+				if (boltPoints) drawBolt(boltPoints, flashAlpha);
+				flashAlpha -= 0.07;
+				if (flashAlpha <= 0) boltPoints = null;
+			}
+			ctx2d.restore();
+			requestAnimationFrame(stormLoop);
+		}
+		requestAnimationFrame(stormLoop);
+
+		function stopStorm() {
+			stormActive = false;
+			canvas.style.transition = 'opacity 0.6s ease-out';
+			canvas.style.opacity = '0';
+			setTimeout(function() { canvas.remove(); }, 650);
+			if (rainGainRef && actx) {
+				try {
+					rainGainRef.gain.cancelScheduledValues(actx.currentTime);
+					rainGainRef.gain.setValueAtTime(rainGainRef.gain.value, actx.currentTime);
+					rainGainRef.gain.linearRampToValueAtTime(0.0001, actx.currentTime + 1);
+				} catch (e) {}
+			}
+			if (rainSource) {
+				setTimeout(function() { try { rainSource.stop(); } catch (e) {} }, 1050);
+			}
+		}
+
+		// ---- loading screen ----
+		var loadScreen = D.createElement('div');
+		loadScreen.id = 'thunderLoadScreen';
+		loadScreen.innerHTML =
+			'<div id="thunderLoadLabel">LOADING</div>' +
+			'<div id="thunderBarOuter"><div id="thunderBarFill"></div></div>' +
+			'<div id="thunderPercent">0%</div>';
+		D.body.appendChild(loadScreen);
+
+		var barOuter = loadScreen.querySelector('#thunderBarOuter');
+		for (var tk = 0; tk < 22; tk++) {
+			var tickEl = D.createElement('div');
+			tickEl.className = 'tick';
+			tickEl.style.left = (tk * (100 / 22)) + '%';
+			barOuter.appendChild(tickEl);
+		}
+		var barFill = loadScreen.querySelector('#thunderBarFill');
+		var percentLabel = loadScreen.querySelector('#thunderPercent');
+
+		var progress = 0, phase = 'ramp', rampStart = null, finishStart = null;
+		var RAMP_MS = 1600, FINISH_MS = 260;
+		function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+		function progressLoop(ts) {
+			if (rampStart === null) rampStart = ts;
+			if (phase === 'ramp') {
+				var t = Math.min(1, (ts - rampStart) / RAMP_MS);
+				progress = easeOutCubic(t) * 90;
+				if (t >= 1) { phase = 'finish'; finishStart = ts; }
+			} else {
+				var t2 = Math.min(1, (ts - finishStart) / FINISH_MS);
+				progress = 90 + 10 * easeOutCubic(t2);
+			}
+			barFill.style.width = progress + '%';
+			percentLabel.textContent = Math.floor(progress) + '%';
+			if (progress < 99.95) requestAnimationFrame(progressLoop);
+			else afterLoadingBar();
+		}
+		requestAnimationFrame(progressLoop);
+
+		function afterLoadingBar() {
+			loadScreen.style.transition = 'opacity 0.4s ease-out';
+			loadScreen.style.opacity = '0';
+			setTimeout(function() {
+				loadScreen.remove();
+				runIntro();
+			}, 400);
+		}
+
+		function runIntro() {
+			var flashDiv = D.createElement('div');
+			flashDiv.id = 'splashFlash';
+			D.body.appendChild(flashDiv);
+
+			var titleDiv = D.createElement('div');
+			titleDiv.id = 'splashTitle';
+			titleDiv.innerHTML = 'THUNDER<span class="bolt">&#9889;</span>CLIENT';
+			D.body.appendChild(titleDiv);
+
+			function flashOnce(peakOpacity, duration) {
+				flashDiv.style.transition = 'none';
+				flashDiv.style.opacity = String(peakOpacity);
+				requestAnimationFrame(function() {
+					flashDiv.style.transition = 'opacity ' + duration + 'ms ease-out';
+					flashDiv.style.opacity = '0';
+				});
+			}
+
+			flashOnce(0.85, 220);
+			setTimeout(function() { flashOnce(0.65, 260); }, 180);
+			setTimeout(function() { flashOnce(0.9, 300); }, 380);
+			playThunder(true);
+			setTimeout(function() { playThunder(true); }, 220);
+
+			setTimeout(function() {
+				titleDiv.style.transition = 'opacity 0.15s ease-out, transform 0.15s ease-out';
+				titleDiv.style.opacity = '1';
+				titleDiv.style.transform = 'translate(-50%, -50%) scale(1)';
+				flashOnce(1, 350);
+				playThunder(true);
+			}, 620);
+
+			setTimeout(function() {
+				titleDiv.style.transition = 'opacity 0.8s ease-in';
+				titleDiv.style.opacity = '0';
+			}, 2200);
+
+			setTimeout(function() {
+				titleDiv.remove();
+				flashDiv.remove();
+				stopStorm();
+			}, 3100);
+		}
+	}
+
+	// Wait for the page to be fully loaded (works whether this runs before or after the load event),
+	// then give Eagler its normal Mojang/click-to-continue W before the storm starts.
+	function scheduleStart() {
+		if (!THUNDER_INTRO) return;
+		setTimeout(function() {
+			try { startThunder(); } catch (e) { console.error('[Thunder] failed to start', e); }
+		}, THUNDER_START_DELAY);
+	}
+	if (D.readyState === 'complete') scheduleStart();
+	else W.addEventListener('load', scheduleStart);
+})();
+
 
 }));
 
