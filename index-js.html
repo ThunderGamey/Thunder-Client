@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html style="width:100%;height:100%;background-color:black;">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0" />
+		<meta name="description" content="Play minecraft 1.12 in your browser" />
+		<meta name="keywords" content="eaglercraft, minecraft, 1.12, 1.12.2" />
+		<title>Thunder Client - Eaglercraft 1.12</title>
+		<style>
+			#stormCanvas {
+				position: fixed;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
+				z-index: 999;
+				pointer-events: none;
+			}
+
+			/* ===== Loading screen (fully opaque so nothing underneath shows through) ===== */
+			#thunderLoadScreen {
+				position: fixed;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
+				background: #05070d;
+				z-index: 2000;
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				justify-content: center;
+				pointer-events: none;
+			}
+			/* faint storm glow baked into the opaque backdrop so it doesn't look flat */
+			#thunderLoadScreen::before {
+				content: "";
+				position: absolute;
+				top: 0; left: 0; right: 0; bottom: 0;
+				background: radial-gradient(ellipse at 50% 40%, rgba(30, 60, 90, 0.35), rgba(5, 7, 13, 0) 65%);
+				pointer-events: none;
+			}
+			#thunderLoadLabel {
+				font-family: 'Courier New', monospace;
+				font-weight: bold;
+				font-size: 2vw;
+				letter-spacing: 0.3em;
+				color: #cfeeff;
+				text-shadow:
+					2px 0 0 #4fd1ff,
+					-2px 0 0 #4fd1ff,
+					0 0 25px #7fe3ff;
+				margin-bottom: 26px;
+				position: relative;
+			}
+			#thunderBarOuter {
+				width: 40vw;
+				max-width: 560px;
+				height: 30px;
+				background: rgba(10, 14, 24, 0.85);
+				border: 2px solid #3a8bb8;
+				border-radius: 3px;
+				position: relative;
+				overflow: hidden;
+				box-shadow:
+					0 0 0 1px rgba(79, 209, 255, 0.15) inset,
+					0 0 22px rgba(79, 209, 255, 0.25);
+			}
+			#thunderBarFill {
+				height: 100%;
+				width: 0%;
+				background: linear-gradient(90deg, #1c5f82, #4fd1ff 60%, #eaf6ff);
+				box-shadow: 0 0 20px 2px #4fd1ff;
+				position: relative;
+			}
+			/* jagged lightning notch that rides at the leading edge of the fill */
+			#thunderBarFill::after {
+				content: "";
+				position: absolute;
+				top: 0;
+				right: -9px;
+				width: 18px;
+				height: 100%;
+				background: #eaf6ff;
+				clip-path: polygon(60% 0%, 100% 0%, 40% 45%, 80% 45%, 20% 100%, 50% 55%, 0% 55%);
+				filter: drop-shadow(0 0 6px #ffffff);
+			}
+			/* subtle tick marks across the bar for texture */
+			#thunderBarOuter .tick {
+				position: absolute;
+				top: 0;
+				bottom: 0;
+				width: 2px;
+				background: rgba(5, 8, 16, 0.5);
+			}
+			#thunderPercent {
+				margin-top: 16px;
+				font-family: 'Courier New', monospace;
+				color: #7fe3ff;
+				font-size: 1vw;
+				letter-spacing: 0.15em;
+				text-shadow: 0 0 10px rgba(79, 209, 255, 0.6);
+				position: relative;
+			}
+
+			/* ===== Title splash ===== */
+			#splashTitle {
+				position: fixed;
+				top: 50%;
+				left: 50%;
+				transform: translate(-50%, -50%) scale(0.85);
+				font-family: 'Courier New', monospace;
+				font-weight: bold;
+				font-size: 6vw;
+				letter-spacing: 0.12em;
+				color: #eaf6ff;
+				text-shadow:
+					3px 0 0 #4fd1ff,
+					-3px 0 0 #4fd1ff,
+					0 0 25px #7fe3ff,
+					0 0 55px #4fd1ff,
+					0 0 90px #2b7ba3;
+				z-index: 1001;
+				opacity: 0;
+				pointer-events: none;
+				white-space: nowrap;
+				clip-path: polygon(
+					0% 10%, 3% 0%, 97% 0%, 100% 10%,
+					100% 90%, 97% 100%, 3% 100%, 0% 90%
+				);
+				padding: 6px 18px;
+			}
+			#splashTitle .bolt {
+				display: inline-block;
+				transform: scale(1.15) rotate(-4deg);
+				color: #ffffff;
+				text-shadow:
+					0 0 15px #ffffff,
+					0 0 40px #7fe3ff,
+					0 0 80px #4fd1ff;
+			}
+			#splashFlash {
+				position: fixed;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
+				background: white;
+				opacity: 0;
+				z-index: 1000;
+				pointer-events: none;
+			}
+
+			/* ===== In-game HUD: FPS, then WASD+CPS group right below it, then coordinates ===== */
+			#thunderHud {
+				position: fixed;
+				top: 10px;
+				left: 10px;
+				z-index: 1500;
+				pointer-events: none;
+				font-family: 'Courier New', monospace;
+				color: #cfeeff;
+				display: flex;
+				flex-direction: column;
+				align-items: flex-start;
+				gap: 6px;
+				opacity: 0;
+				transition: opacity 0.5s ease-in;
+			}
+			#thunderHud.visible {
+				opacity: 1;
+			}
+			.thunder-hud-line {
+				font-size: 13px;
+				letter-spacing: 0.05em;
+				background: rgba(5, 7, 13, 0.4);
+				border: 1px solid rgba(79, 209, 255, 0.3);
+				border-radius: 4px;
+				padding: 3px 8px;
+				text-shadow: 0 0 8px rgba(79, 209, 255, 0.6);
+			}
+			#thunderKeysCps {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+			}
+			#thunderKeys {
+				display: grid;
+				grid-template-columns: repeat(3, 26px);
+				grid-template-rows: repeat(2, 26px);
+				gap: 3px;
+			}
+			.key-btn {
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				font-size: 12px;
+				font-weight: bold;
+				border: 1px solid rgba(79, 209, 255, 0.35);
+				border-radius: 4px;
+				background: rgba(10, 14, 24, 0.55);
+				transition: background 0.05s ease-out, box-shadow 0.05s ease-out;
+			}
+			.key-spacer {
+				border: none;
+				background: transparent;
+			}
+			.key-btn.active {
+				background: rgba(79, 209, 255, 0.6);
+				box-shadow: 0 0 14px 3px rgba(79, 209, 255, 0.7);
+			}
+		</style>
+		<meta property="og:locale" content="en-US" />
+		<meta property="og:type" content="website" />
+		<meta property="og:title" content="Thunder Client" />
+		<meta property="og:description" content="Thunder Client - Minecraft 1.12 in your browser" />
+		<meta property="og:image" content="favicon.png" />
+		<link type="image/png" rel="shortcut icon" href="favicon.png" />
+		<script type="text/javascript">window.__thunderIntroLoaded = true;</script>
+		<script type="text/javascript" src="classes.js"></script>
+		<script type="text/javascript">
+			"use strict";
+			window.addEventListener("load", function() {
+				if(window.location.href.indexOf("file:") === 0) {
+					alert("HTTP please, do not open this file locally, run a local HTTP server and load it via HTTP");
+				}else {
+
+					// %%%%%%%%% launch options %%%%%%%%%%%%
+
+					var relayId = Math.floor(Math.random() * 3);
+					window.eaglercraftXOpts = {
+						demoMode: false,
+						container: "game_frame",
+						assetsURI: "assets.epk",
+						localesURI: "lang/",
+						worldsDB: "worlds",
+						servers: [
+							{ addr: "wss://play.zelz.net", name: "ZelzNet" },
+							{ addr: "wss://mc.arch.lol", name: "ArchMC" },
+							{ addr: "wss://beta.arch.lol", name: "§r §r §r §r §4§lArchMC Beta" }
+						],
+						relays: [
+							{ addr: "wss://relay.deev.is/", comment: "lax1dude relay #1", primary: relayId == 0 },
+							{ addr: "wss://relay.lax1dude.net/", comment: "lax1dude relay #2", primary: relayId == 1 },
+							{ addr: "wss://relay.shhnowisnottheti.me/", comment: "ayunami relay #1", primary: relayId == 2 }
+						]
+					};
+
+					// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+					var q = window.location.search;
+					if((typeof q === "string") && q[0] === "?" && (typeof window.URLSearchParams !== "undefined")) {
+						q = new window.URLSearchParams(q);
+						var s = q.get("server");
+						if(s) window.eaglercraftXOpts.joinServer = s;
+					}
+
+					main();
+
+				}
+			});
+
+			// ===== Thunder sequence (Mojang/Eagler first, then Thunder) =====
+			window.addEventListener("load", function() {
+
+				// ---------------------------------------------------------------
+				// Shared audio engine — set up immediately so a click on Eagler's own
+				// "click to continue" screen (which happens during the delay below)
+				// still unlocks audio in time for the storm later.
+				// ---------------------------------------------------------------
+				let actx = null;
+				function getAudioCtx() {
+					try {
+						if (!actx) {
+							const AudioCtx = window.AudioContext || window.webkitAudioContext;
+							actx = new AudioCtx();
+						}
+						if (actx.state === 'suspended') {
+							actx.resume().catch(function(){});
+						}
+						return actx;
+					} catch (e) {
+						return null;
+					}
+				}
+				['pointerdown', 'keydown', 'touchstart'].forEach(function(evt) {
+					window.addEventListener(evt, function() { getAudioCtx(); }, { passive: true });
+				});
+
+				// shared distortion curve for a gritty, electric edge on the crack layer
+				function makeDistortionCurve(amount) {
+					const n = 44100;
+					const curve = new Float32Array(n);
+					for (let i = 0; i < n; i++) {
+						const x = (i * 2) / n - 1;
+						curve[i] = ((3 + amount) * x * 20 * (Math.PI / 180)) / (Math.PI + amount * Math.abs(x));
+					}
+					return curve;
+				}
+
+				// a shared compressor + master volume gives every strike punch at a clear, consistent level
+				let thunderBus = null;
+				const THUNDER_VOLUME = 0.38; // 30%-45% requested range
+				function getThunderBus(ctx) {
+					if (!thunderBus) {
+						thunderBus = ctx.createDynamicsCompressor();
+						thunderBus.threshold.value = -18;
+						thunderBus.knee.value = 12;
+						thunderBus.ratio.value = 6;
+						thunderBus.attack.value = 0.003;
+						thunderBus.release.value = 0.25;
+						const master = ctx.createGain();
+						master.gain.value = THUNDER_VOLUME;
+						thunderBus.connect(master);
+						master.connect(ctx.destination);
+					}
+					return thunderBus;
+				}
+
+				// tuff, electric thunder: zap transient + crackle burst + distorted crack + tremolo rumble + sub-bass
+				function playThunder(big) {
+					const ctx = getAudioCtx();
+					if (!ctx) return;
+					try {
+						const now = ctx.currentTime;
+						const bus = getThunderBus(ctx);
+
+						// ---- electric "zap" transient: fast-falling square/saw sweep, the initial spark of the strike ----
+						const zap = ctx.createOscillator();
+						zap.type = 'sawtooth';
+						zap.frequency.setValueAtTime(big ? 2600 : 1900, now);
+						zap.frequency.exponentialRampToValueAtTime(140, now + 0.045);
+						const zapGain = ctx.createGain();
+						zapGain.gain.setValueAtTime(big ? 0.5 : 0.35, now);
+						zapGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+						zap.connect(zapGain);
+						zapGain.connect(bus);
+						zap.start(now);
+						zap.stop(now + 0.06);
+
+						// ---- crackle: a handful of tiny random noise clicks right at the strike, before the boom ----
+						const crackleHits = 5 + Math.floor(Math.random() * 4);
+						for (let i = 0; i < crackleHits; i++) {
+							const t = now + Math.random() * 0.09;
+							const dur = 0.006 + Math.random() * 0.01;
+							const buf = ctx.createBuffer(1, Math.max(1, Math.floor(ctx.sampleRate * dur)), ctx.sampleRate);
+							const d = buf.getChannelData(0);
+							for (let j = 0; j < d.length; j++) d[j] = (Math.random() * 2 - 1);
+							const src = ctx.createBufferSource();
+							src.buffer = buf;
+							const hp = ctx.createBiquadFilter();
+							hp.type = 'highpass';
+							hp.frequency.value = 2500;
+							const g = ctx.createGain();
+							g.gain.value = (big ? 0.5 : 0.35) * (0.5 + Math.random() * 0.5);
+							src.connect(hp);
+							hp.connect(g);
+							g.connect(bus);
+							src.start(t);
+						}
+
+						// ---- main crack: distorted bandpass noise burst, the loudest single hit ----
+						const crackDur = 0.2;
+						const crackBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * crackDur), ctx.sampleRate);
+						const cd = crackBuf.getChannelData(0);
+						for (let i = 0; i < cd.length; i++) {
+							cd[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / cd.length, 0.28);
+						}
+						const crackSrc = ctx.createBufferSource();
+						crackSrc.buffer = crackBuf;
+
+						const crackHP = ctx.createBiquadFilter();
+						crackHP.type = 'highpass';
+						crackHP.frequency.value = 700;
+
+						const crackPeak = ctx.createBiquadFilter();
+						crackPeak.type = 'peaking';
+						crackPeak.frequency.value = 2200 + Math.random() * 900;
+						crackPeak.Q.value = 1.3;
+						crackPeak.gain.value = 9;
+
+						const shaper = ctx.createWaveShaper();
+						shaper.curve = makeDistortionCurve(big ? 32 : 18);
+						shaper.oversample = '2x';
+
+						const crackGain = ctx.createGain();
+						crackGain.gain.setValueAtTime(big ? 1.1 : 0.8, now + 0.005);
+						crackGain.gain.exponentialRampToValueAtTime(0.001, now + crackDur);
+
+						crackSrc.connect(crackHP);
+						crackHP.connect(crackPeak);
+						crackPeak.connect(shaper);
+						shaper.connect(crackGain);
+						crackGain.connect(bus);
+						crackSrc.start(now + 0.01);
+
+						// ---- rolling low rumble (brown-noise via leaky integration) with a slow tremolo for a "rolling" feel ----
+						const rumbleDur = (big ? 3.8 : 2.1) + Math.random() * 0.9;
+						const rumbleBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * rumbleDur), ctx.sampleRate);
+						const rd = rumbleBuf.getChannelData(0);
+						let last = 0;
+						for (let i = 0; i < rd.length; i++) {
+							const white = Math.random() * 2 - 1;
+							last = (last + 0.018 * white) / 1.018;
+							rd[i] = last * Math.pow(1 - i / rd.length, 1.1);
+						}
+						const rumbleSrc = ctx.createBufferSource();
+						rumbleSrc.buffer = rumbleBuf;
+
+						const rumbleFilter = ctx.createBiquadFilter();
+						rumbleFilter.type = 'lowpass';
+						rumbleFilter.frequency.setValueAtTime(big ? 260 : 170, now);
+						rumbleFilter.frequency.exponentialRampToValueAtTime(50, now + rumbleDur);
+						rumbleFilter.Q.value = 0.9;
+
+						const tremolo = ctx.createOscillator();
+						tremolo.type = 'sine';
+						tremolo.frequency.value = 3.5 + Math.random() * 2;
+						const tremoloDepth = ctx.createGain();
+						tremoloDepth.gain.value = big ? 0.35 : 0.25;
+
+						const rumbleGain = ctx.createGain();
+						rumbleGain.gain.setValueAtTime(0.0001, now);
+						rumbleGain.gain.linearRampToValueAtTime(big ? 1.1 : 0.7, now + 0.2);
+						rumbleGain.gain.exponentialRampToValueAtTime(0.001, now + rumbleDur);
+
+						tremolo.connect(tremoloDepth);
+						tremoloDepth.connect(rumbleGain.gain);
+
+						rumbleSrc.connect(rumbleFilter);
+						rumbleFilter.connect(rumbleGain);
+						rumbleGain.connect(bus);
+
+						// ---- sub-bass weight underneath the rumble ----
+						const sub = ctx.createOscillator();
+						sub.type = 'sine';
+						sub.frequency.setValueAtTime(big ? 62 : 48, now);
+						sub.frequency.exponentialRampToValueAtTime(24, now + rumbleDur * 0.85);
+
+						const subGain = ctx.createGain();
+						subGain.gain.setValueAtTime(0.0001, now);
+						subGain.gain.linearRampToValueAtTime(big ? 0.4 : 0.22, now + 0.08);
+						subGain.gain.exponentialRampToValueAtTime(0.001, now + rumbleDur * 0.9);
+
+						sub.connect(subGain);
+						subGain.connect(bus);
+
+						rumbleSrc.start(now);
+						tremolo.start(now);
+						tremolo.stop(now + rumbleDur);
+						sub.start(now);
+						sub.stop(now + rumbleDur * 0.9 + 0.05);
+					} catch (e) {
+						// audio blocked/unsupported, fail silently
+					}
+				}
+
+				// continuous looping rain hiss, fades in gently
+				let rainSource = null;
+				let rainGainRef = null;
+				function startRainLoop() {
+					const ctx = getAudioCtx();
+					if (!ctx) return;
+					try {
+						const loopSec = 4;
+						const buffer = ctx.createBuffer(1, ctx.sampleRate * loopSec, ctx.sampleRate);
+						const data = buffer.getChannelData(0);
+						for (let i = 0; i < data.length; i++) {
+							data[i] = Math.random() * 2 - 1;
+						}
+						const src = ctx.createBufferSource();
+						src.buffer = buffer;
+						src.loop = true;
+
+						const bandpass = ctx.createBiquadFilter();
+						bandpass.type = 'bandpass';
+						bandpass.frequency.value = 3000;
+						bandpass.Q.value = 0.55;
+
+						const shelf = ctx.createBiquadFilter();
+						shelf.type = 'highshelf';
+						shelf.frequency.value = 6500;
+						shelf.gain.value = -8;
+
+						const rainGain = ctx.createGain();
+						rainGain.gain.setValueAtTime(0.0001, ctx.currentTime);
+						rainGain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 3.5);
+
+						src.connect(bandpass);
+						bandpass.connect(shelf);
+						shelf.connect(rainGain);
+						rainGain.connect(ctx.destination);
+
+						src.start();
+						rainSource = src;
+						rainGainRef = rainGain;
+					} catch (e) {}
+				}
+
+				// Let Eagler show its normal Mojang/loading screen and click-to-continue first.
+				// The Thunder storm/loading sequence starts only after this delay.
+				const THUNDER_START_DELAY = 5000;
+				setTimeout(function() {
+
+				startRainLoop();
+
+
+				// ---------------------------------------------------------------
+				// ambient storm canvas: starts right away, stops when the intro ends
+				// ---------------------------------------------------------------
+				let stormActive = true;
+				const canvas = document.createElement('canvas');
+				canvas.id = 'stormCanvas';
+				document.body.appendChild(canvas);
+				const ctx2d = canvas.getContext('2d');
+
+				// render at the screen's actual pixel density for crisp, non-blurry lines
+				const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
+
+				function resize() {
+					const w = window.innerWidth;
+					const h = window.innerHeight;
+					canvas.style.width = w + 'px';
+					canvas.style.height = h + 'px';
+					canvas.width = Math.round(w * dpr);
+					canvas.height = Math.round(h * dpr);
+					ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+				}
+				window.addEventListener('resize', resize);
+				resize();
+
+				// ---------------------------------------------------------------
+				// FPS + keystrokes + CPS + coordinates HUD — created now but stays
+				// invisible (opacity 0) until stopStorm() reveals it post-intro,
+				// so it's never visible during Eagler/Mojang/click/storm.
+				// ---------------------------------------------------------------
+				const hud = document.createElement('div');
+				hud.id = 'thunderHud';
+				hud.innerHTML =
+					'<div class="thunder-hud-line" id="thunderFps">FPS: 0</div>' +
+					'<div id="thunderKeysCps">' +
+						'<div id="thunderKeys">' +
+							'<div class="key-btn key-spacer"></div><div class="key-btn" id="keyW">W</div><div class="key-btn key-spacer"></div>' +
+							'<div class="key-btn" id="keyA">A</div><div class="key-btn" id="keyS">S</div><div class="key-btn" id="keyD">D</div>' +
+						'</div>' +
+						'<div class="thunder-hud-line" id="thunderCps">CPS: 0</div>' +
+					'</div>' +
+					'<div class="thunder-hud-line" id="thunderCoords">XYZ: —</div>';
+				document.body.appendChild(hud);
+				// NOTE: coordinates are a placeholder for now — real X/Y/Z needs a hook into
+				// classes.js's live player position, which is the native-GUI work planned next.
+
+				const fpsLabel = document.getElementById('thunderFps');
+				const cpsLabel = document.getElementById('thunderCps');
+				let fpsFrames = 0;
+				let fpsLastUpdate = performance.now();
+				let clickTimestamps = [];
+
+				const keyEls = {
+					KeyW: document.getElementById('keyW'),
+					KeyA: document.getElementById('keyA'),
+					KeyS: document.getElementById('keyS'),
+					KeyD: document.getElementById('keyD')
+				};
+				window.addEventListener('keydown', function(e) {
+					const el = keyEls[e.code];
+					if (el) el.classList.add('active');
+				});
+				window.addEventListener('keyup', function(e) {
+					const el = keyEls[e.code];
+					if (el) el.classList.remove('active');
+				});
+				window.addEventListener('blur', function() {
+					Object.keys(keyEls).forEach(function(k) { keyEls[k].classList.remove('active'); });
+				});
+				window.addEventListener('mousedown', function() {
+					clickTimestamps.push(performance.now());
+				});
+
+				function viewW() { return canvas.width / dpr; }
+				function viewH() { return canvas.height / dpr; }
+
+				const clouds = [];
+				const CLOUD_COUNT = 16;
+				for (let i = 0; i < CLOUD_COUNT; i++) {
+					clouds.push({
+						x: Math.random() * viewW(),
+						y: Math.random() * viewH() * 0.55,
+						scale: 0.7 + Math.random() * 1.8,
+						speed: 0.3 + Math.random() * 0.9,
+						opacity: 0.2 + Math.random() * 0.3
+					});
+				}
+
+				const RAIN_COUNT = 260;
+				const rain = [];
+				for (let i = 0; i < RAIN_COUNT; i++) {
+					rain.push({
+						x: Math.random() * viewW(),
+						y: Math.random() * viewH(),
+						len: 10 + Math.random() * 20,
+						speed: 8 + Math.random() * 10,
+						drift: 2 + Math.random() * 2
+					});
+				}
+
+				function drawRain() {
+					ctx2d.save();
+					ctx2d.strokeStyle = 'rgba(150, 190, 230, 0.35)';
+					ctx2d.lineWidth = 1;
+					for (const d of rain) {
+						ctx2d.beginPath();
+						ctx2d.moveTo(d.x, d.y);
+						ctx2d.lineTo(d.x - d.drift, d.y + d.len);
+						ctx2d.stroke();
+						d.x -= d.drift;
+						d.y += d.speed;
+						if (d.y > viewH()) {
+							d.y = -d.len;
+							d.x = Math.random() * viewW();
+						}
+					}
+					ctx2d.restore();
+				}
+
+				let shakeFrames = 0;
+
+				function drawCloud(c) {
+					ctx2d.save();
+					ctx2d.translate(c.x, c.y);
+					ctx2d.scale(c.scale, c.scale);
+					ctx2d.fillStyle = `rgba(55, 70, 95, ${c.opacity})`;
+					ctx2d.beginPath();
+					ctx2d.arc(0, 0, 40, 0, Math.PI * 2);
+					ctx2d.arc(35, -10, 30, 0, Math.PI * 2);
+					ctx2d.arc(-35, -5, 28, 0, Math.PI * 2);
+					ctx2d.arc(15, 15, 32, 0, Math.PI * 2);
+					ctx2d.arc(-15, 15, 30, 0, Math.PI * 2);
+					ctx2d.fill();
+					ctx2d.restore();
+				}
+
+				let flashAlpha = 0;
+				let nextFlashTime = randomFlashDelay();
+				let lastFlashCheck = performance.now();
+				let boltPoints = null;
+
+				function randomFlashDelay() {
+					return 700 + Math.random() * 1800;
+				}
+
+				function generateBolt() {
+					const points = [];
+					let x = Math.random() * viewW();
+					let y = 0;
+					points.push({ x, y });
+					const segments = 10 + Math.floor(Math.random() * 8);
+					const branches = [];
+					for (let i = 0; i < segments; i++) {
+						x += (Math.random() - 0.5) * 90;
+						y += viewH() / segments;
+						points.push({ x, y });
+						if (Math.random() < 0.35 && i > 2) {
+							let bx = x, by = y;
+							const branch = [{ x: bx, y: by }];
+							const bSegs = 2 + Math.floor(Math.random() * 3);
+							for (let j = 0; j < bSegs; j++) {
+								bx += (Math.random() - 0.5) * 80 + 30;
+								by += 25 + Math.random() * 20;
+								branch.push({ x: bx, y: by });
+							}
+							branches.push(branch);
+						}
+					}
+					return { main: points, branches: branches };
+				}
+
+				function drawLine(points, alpha, width) {
+					ctx2d.beginPath();
+					ctx2d.moveTo(points[0].x, points[0].y);
+					for (let i = 1; i < points.length; i++) {
+						ctx2d.lineTo(points[i].x, points[i].y);
+					}
+					ctx2d.strokeStyle = `rgba(210, 235, 255, ${alpha})`;
+					ctx2d.lineWidth = width;
+					ctx2d.stroke();
+				}
+
+				function drawBolt(bolt, alpha) {
+					ctx2d.save();
+					ctx2d.shadowColor = '#7fe3ff';
+					ctx2d.shadowBlur = 35;
+					drawLine(bolt.main, alpha, 3);
+					for (const b of bolt.branches) {
+						drawLine(b, alpha * 0.7, 1.6);
+					}
+					ctx2d.restore();
+				}
+
+				function triggerFlash() {
+					flashAlpha = 1;
+					boltPoints = generateBolt();
+					shakeFrames = 8;
+
+					// thunder fires the instant the flash happens — fully synced
+					playThunder(false);
+
+					if (Math.random() < 0.3) {
+						setTimeout(() => {
+							flashAlpha = 1;
+							boltPoints = generateBolt();
+							shakeFrames = 6;
+						}, 90);
+					}
+				}
+
+				function animate(now) {
+					ctx2d.save();
+
+					fpsFrames++;
+					if (now - fpsLastUpdate >= 500) {
+						const fps = Math.round((fpsFrames * 1000) / (now - fpsLastUpdate));
+						fpsLabel.textContent = 'FPS: ' + fps;
+						fpsFrames = 0;
+						fpsLastUpdate = now;
+
+						clickTimestamps = clickTimestamps.filter(function(t) { return now - t <= 1000; });
+						cpsLabel.textContent = 'CPS: ' + clickTimestamps.length;
+					}
+
+					if (shakeFrames > 0) {
+						const mag = shakeFrames * 0.8;
+						ctx2d.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
+						shakeFrames--;
+					}
+
+					if (stormActive) {
+						ctx2d.clearRect(-20, -20, viewW() + 40, viewH() + 40);
+
+						const grad = ctx2d.createLinearGradient(0, 0, 0, viewH());
+						grad.addColorStop(0, 'rgba(5,7,15,0.35)');
+						grad.addColorStop(1, 'rgba(19,26,48,0.35)');
+						ctx2d.fillStyle = grad;
+						ctx2d.fillRect(-20, -20, viewW() + 40, viewH() + 40);
+
+						for (const c of clouds) {
+							c.x += c.speed;
+							if (c.x - 100 > viewW()) c.x = -100;
+							drawCloud(c);
+						}
+
+						drawRain();
+
+						if (now - lastFlashCheck > nextFlashTime) {
+							triggerFlash();
+							lastFlashCheck = now;
+							nextFlashTime = randomFlashDelay();
+						}
+
+						if (flashAlpha > 0) {
+							ctx2d.fillStyle = `rgba(190, 220, 255, ${flashAlpha * 0.18})`;
+							ctx2d.fillRect(-20, -20, viewW() + 40, viewH() + 40);
+							if (boltPoints) drawBolt(boltPoints, flashAlpha);
+							flashAlpha -= 0.07;
+							if (flashAlpha <= 0) boltPoints = null;
+						}
+					}
+
+					ctx2d.restore();
+					requestAnimationFrame(animate);
+				}
+				requestAnimationFrame(animate);
+
+				// stops the storm visuals + rain/thunder audio once the intro finishes —
+				// this is the fix that keeps the storm from following you into worlds/servers
+				function stopStorm() {
+					stormActive = false;
+					canvas.style.transition = 'opacity 0.6s ease-out';
+					canvas.style.opacity = '0';
+					setTimeout(function() { canvas.remove(); }, 650);
+					hud.style.display = 'none';
+
+					if (rainGainRef && actx) {
+						try {
+							rainGainRef.gain.cancelScheduledValues(actx.currentTime);
+							rainGainRef.gain.setValueAtTime(rainGainRef.gain.value, actx.currentTime);
+							rainGainRef.gain.linearRampToValueAtTime(0.0001, actx.currentTime + 1);
+						} catch (e) {}
+					}
+					if (rainSource) {
+						setTimeout(function() {
+							try { rainSource.stop(); } catch (e) {}
+						}, 1050);
+					}
+				}
+
+				// ---------------------------------------------------------------
+				// loading screen sits ON TOP of the running storm, and is now fully opaque
+				// ---------------------------------------------------------------
+				const loadScreen = document.createElement('div');
+				loadScreen.id = 'thunderLoadScreen';
+				loadScreen.innerHTML =
+					'<div id="thunderLoadLabel">LOADING</div>' +
+					'<div id="thunderBarOuter"><div id="thunderBarFill"></div></div>' +
+					'<div id="thunderPercent">0%</div>';
+				document.body.appendChild(loadScreen);
+
+				// scattered tick marks for texture on the bar track
+				const barOuter = loadScreen.querySelector('#thunderBarOuter');
+				for (let i = 0; i < 22; i++) {
+					const tickEl = document.createElement('div');
+					tickEl.className = 'tick';
+					tickEl.style.left = (i * (100 / 22)) + '%';
+					barOuter.appendChild(tickEl);
+				}
+
+				const barFill = loadScreen.querySelector('#thunderBarFill');
+				const percentLabel = loadScreen.querySelector('#thunderPercent');
+
+let progress = 0;
+				let phase = 'ramp'; // ramp -> finish
+				let rampStart = null;
+				let finishStart = null;
+				const RAMP_MS = 1600;   // smooth climb 0 -> 90
+				const FINISH_MS = 260;  // quick smooth snap 90 -> 100
+
+				function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+				function progressLoop(ts) {
+					if (rampStart === null) rampStart = ts;
+
+					if (phase === 'ramp') {
+						const t = Math.min(1, (ts - rampStart) / RAMP_MS);
+						progress = easeOutCubic(t) * 90;
+						if (t >= 1) {
+							phase = 'finish';
+							finishStart = ts;
+						}
+					} else if (phase === 'finish') {
+						const t = Math.min(1, (ts - finishStart) / FINISH_MS);
+						progress = 90 + 10 * easeOutCubic(t);
+					}
+
+					barFill.style.width = progress + '%';
+					percentLabel.textContent = Math.floor(progress) + '%';
+
+					if (progress < 99.95) {
+						requestAnimationFrame(progressLoop);
+					} else {
+						afterLoadingBar();
+					}
+				}
+				requestAnimationFrame(progressLoop);
+
+				function afterLoadingBar() {
+					loadScreen.style.transition = 'opacity 0.4s ease-out';
+					loadScreen.style.opacity = '0';
+					setTimeout(() => {
+						loadScreen.remove();
+						runIntro();
+					}, 400);
+				}
+
+				// ---------------------------------------------------------------
+				// splash flash + title (runs AFTER the loading bar finishes)
+				// ---------------------------------------------------------------
+				function runIntro() {
+					const flashDiv = document.createElement('div');
+					flashDiv.id = 'splashFlash';
+					document.body.appendChild(flashDiv);
+
+					const titleDiv = document.createElement('div');
+					titleDiv.id = 'splashTitle';
+					titleDiv.innerHTML = 'THUNDER<span class="bolt">&#9889;</span>CLIENT';
+					document.body.appendChild(titleDiv);
+
+					function flashOnce(peakOpacity, duration) {
+						flashDiv.style.transition = 'none';
+						flashDiv.style.opacity = String(peakOpacity);
+						requestAnimationFrame(() => {
+							flashDiv.style.transition = `opacity ${duration}ms ease-out`;
+							flashDiv.style.opacity = '0';
+						});
+					}
+
+					flashOnce(0.85, 220);
+					setTimeout(() => flashOnce(0.65, 260), 180);
+					setTimeout(() => flashOnce(0.9, 300), 380);
+
+					playThunder(true);
+					setTimeout(function() { playThunder(true); }, 220);
+
+					setTimeout(() => {
+						titleDiv.style.transition = 'opacity 0.15s ease-out, transform 0.15s ease-out';
+						titleDiv.style.opacity = '1';
+						titleDiv.style.transform = 'translate(-50%, -50%) scale(1)';
+						flashOnce(1, 350);
+						playThunder(true);
+					}, 620);
+
+					setTimeout(() => {
+						titleDiv.style.transition = 'opacity 0.8s ease-in';
+						titleDiv.style.opacity = '0';
+					}, 2200);
+
+					setTimeout(() => {
+						titleDiv.remove();
+						flashDiv.remove();
+						stopStorm();
+					}, 3100);
+				}
+
+				}, THUNDER_START_DELAY);
+			});
+		</script>
+	</head>
+	<body style="margin:0px;width:100%;height:100%;overflow:hidden;background-color:black;" id="game_frame"></body>
+</html>
