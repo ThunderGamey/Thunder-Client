@@ -48757,9 +48757,11 @@ c.PK;})();
     toggleSprint:false,noBob:false,
     blockF3:true,
     fullbright:false,
-    fireOffset:-0.35,
+    fireOffset:0,
     shieldY:0,
-    heldScale:0.85
+    heldScale:1.0,
+    menuFx:true,
+    menuFxIntensity:0.70
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -48790,7 +48792,7 @@ c.PK;})();
       ['saturation','Saturation','ModernClient-style yellow saturation pips'],
       ['effects','Potion Effects','Active effects with time left'],
       ['sprintStatus','Sprint Status','Shows whether you are sprinting'],
-      ['shield','Shield HUD','Shield icon + durability'],
+      ['shield','Shield / Blocking','Compact blocking indicator'],
       ['clock','Clock','Real-world time'],
       ['memory','Memory','JS memory in use'],
       ['fps','FPS','Frames per second'],
@@ -48810,15 +48812,18 @@ c.PK;})();
     ]],
     ['VISUAL',[
       ['fullbright','Fullbright','Maximum brightness everywhere'],
-      ['fireOffset','Fire Height','Vertical fire-overlay offset (0 = vanilla)'],
-      ['shieldY','Shield Height','Moves the blocking indicator higher/lower'],
-      ['heldScale','Held Item Size','Scale the compact held-item display']
+      ['fireOffset','Fire Height','Moves the first-person fire overlay higher or lower'],
+      ['shieldY','Shield Height','Moves the shield icon higher or lower'],
+      ['heldScale','Held Item Size','Scales the held-item icon and label'],
+      ['menuFx','Thunder Menu FX','Animated lightning and mouse parallax'],
+      ['menuFxIntensity','Menu FX Intensity','Controls Thunder menu animation strength']
     ]]
   ];
   var NUMERIC_RANGES={
-    fireOffset:{min:-0.90,max:0.90,step:0.05,unit:'',format:function(v){return (v===0?'0.00':(v>0?'+':'')+v.toFixed(2));}},
-    shieldY:{min:-45,max:45,step:1,unit:' px',format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}},
-    heldScale:{min:0.50,max:1.50,step:0.05,unit:'x',format:function(v){return v.toFixed(2)+'x';}}
+    fireOffset:{min:-0.65,max:0.65,step:0.05,unit:'',format:function(v){return (v>0?'+':'')+v.toFixed(2);}},
+    shieldY:{min:-60,max:60,step:1,unit:' px',format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}},
+    heldScale:{min:0.50,max:1.75,step:0.05,unit:'x',format:function(v){return v.toFixed(2)+'x';}},
+    menuFxIntensity:{min:0,max:1,step:0.05,unit:'',format:function(v){return Math.round(v*100)+'%';}}
   };
 
   // ------------------------------------------------------------------
@@ -48904,13 +48909,10 @@ c.PK;})();
   function hideMenu(){
     menuOpen=false;
     if(backdrop)backdrop.style.display='none';
-    if(domHudRoot)domHudRoot.style.display='block';
   }
   function showMenu(){
     if(!backdrop)buildMenu();
     menuOpen=true;
-    ensureDomHud();
-    domHudRoot.style.display='block';
     renderTabs();
     renderList();
     backdrop.style.display='flex';
@@ -48925,8 +48927,21 @@ c.PK;})();
   function buildMenu(){
     backdrop=el('div','position:fixed;inset:0;z-index:2147483646;background:rgba(2,6,12,.66);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;font-family:Arial,sans-serif;');
     backdrop.id='thunder-client-menu';
-    backdrop.addEventListener('mousedown',function(e){if(e.target===backdrop)hideMenu();});
-    panel=el('div','width:820px;max-width:94vw;height:78vh;max-height:720px;display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(18,23,34,.985),rgba(9,13,21,.99));border:1px solid rgba(79,209,255,.7);border-radius:12px;box-shadow:0 20px 70px rgba(0,0,0,.72),0 0 30px rgba(79,209,255,.12),inset 0 1px 0 rgba(255,255,255,.03);color:#ecf7ff;user-select:none;overflow:hidden;');
+    backdrop.addEventListener('mousedown',function(e){if(e.target===backdrop||e.target.getAttribute('data-thunder-wall')==='1')hideMenu();});
+    var tcWall=el('div','position:absolute;inset:-10%;z-index:0;pointer-events:none;overflow:hidden;background:radial-gradient(circle at 18% 30%,rgba(79,209,255,.14),transparent 32%),radial-gradient(circle at 82% 70%,rgba(40,120,170,.10),transparent 36%),linear-gradient(135deg,#02040a,#07111c 50%,#02060c);transition:transform .08s linear;');
+    tcWall.setAttribute('data-thunder-wall','1');
+    tcWall.innerHTML='<div style="position:absolute;left:4%;top:5%;font-weight:900;font-size:16vw;letter-spacing:.12em;color:rgba(207,240,255,.055);white-space:nowrap;text-shadow:0 0 50px rgba(79,209,255,.08);">THUNDER</div><div id="tcBolt" style="position:absolute;right:8%;top:8%;font-size:9vw;color:rgba(127,227,255,.14);transform:rotate(-10deg);">⚡</div><div style="position:absolute;left:7%;top:28%;width:72%;height:1px;background:linear-gradient(90deg,transparent,rgba(79,209,255,.36),transparent);"></div>';
+    backdrop.appendChild(tcWall);
+    backdrop.addEventListener('mousemove',function(e){
+      if(!S.menuFx)return;
+      var r=backdrop.getBoundingClientRect();
+      var nx=((e.clientX-r.left)/Math.max(1,r.width)-.5), ny=((e.clientY-r.top)/Math.max(1,r.height)-.5);
+      var amp=6+22*(Number(S.menuFxIntensity)||0);
+      tcWall.style.transform='translate3d('+(-nx*amp).toFixed(1)+'px,'+(-ny*amp).toFixed(1)+'px,0) scale(1.04)';
+      var bolt=D.getElementById('tcBolt');
+      if(bolt)bolt.style.transform='translate3d('+(nx*amp*1.6).toFixed(1)+'px,'+(ny*amp*1.6).toFixed(1)+'px,0) rotate(-10deg)';
+    },true);
+    panel=el('div','position:relative;z-index:2;width:820px;max-width:94vw;height:78vh;max-height:720px;display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(18,23,34,.985),rgba(9,13,21,.99));border:1px solid rgba(79,209,255,.7);border-radius:12px;box-shadow:0 20px 70px rgba(0,0,0,.72),0 0 30px rgba(79,209,255,.12);color:#ecf7ff;user-select:none;overflow:hidden;');
 
     var head=el('div','padding:18px 20px 10px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;');
     var titleWrap=el('div','min-width:0;');
@@ -48960,7 +48975,7 @@ c.PK;})();
     foot.appendChild(reset);
     panel.appendChild(foot);
     backdrop.appendChild(panel);
-    (D.body||D.documentElement).appendChild(backdrop);setMenuParallax();
+    (D.body||D.documentElement).appendChild(backdrop);
   }
   function renderTabs(){
     while(tabsEl.firstChild)tabsEl.removeChild(tabsEl.firstChild);
@@ -49115,49 +49130,6 @@ c.PK;})();
     else if(!want&&cur&&!forward)FPB(player,0);
   }
 
-var ARMOR_ICON_DATA={"diamond_helmet":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAGFBMVEUAAAAIJSAOPzZK7dkgxbUaqqeh++j////FmGLLAAAAAXRSTlMAQObYZgAAAD5JREFUGFeljDESACAIw4BW/P+PBQbxzk0zNRkq8ogVhxPB0HafDnAXg6eTHRAPOo5gmlyhP1jeQayWbv9lAXcuAMVFqT2nAAAAAElFTkSuQmCC","diamond_chestplate":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAGFBMVEUAAABK7dkOPzYIJSAgxbWh++gaqqf///9z4YboAAAAAXRSTlMAQObYZgAAAFZJREFUGFeFjTsWACEIAw0EvP+Nl4/7sHMakqHIWm8kuYNsQ4sTxABGEEYoAcAowrgtnNhm8QY9hap3BVy1dvR0dA2BFhzRjKgBcISz8F8cMz2nk+k3H8SrAYCTsqIdAAAAAElFTkSuQmCC","diamond_leggings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAGFBMVEUAAAAIJSBK7dkOPzYgxbUaqqeh++j///83NLHyAAAAAXRSTlMAQObYZgAAAEhJREFUGNONzkESwCAIA0CDAf//40Y7Rbx0zIFJ9kRrV+lvkDvGiDBzJGgp3KDBEwh4ATNVVJi1/wFnBQv4gvwDvsA3KN+9yAOqewEjR/Ei5QAAAABJRU5ErkJggg==","diamond_boots":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAGFBMVEUAAAAIJSAOPzZK7dkgxbWh++gaqqf///+Sb4flAAAAAXRSTlMAQObYZgAAAEVJREFUGFediEESwCAIA00E+/8flyDW8VhzgN1t7W4k65Q/jnVn8AzedxCy75B4BDtCUAbLN30ojCq08ABAoACpho/+7QV5hQDq80bh+AAAAABJRU5ErkJggg==","iron_helmet":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAZElEQVQ4y+2Q0QnAMAhEXcMhnMx9HMkZso3lPg7aNBBp/0oPjkDwPUlEvhkzq1XbcERUZl7q7qWq1YLHGIXgpAD3WwkEGAY4w2xLgJ7fDgjb2wJCc18LWn/ALY8ElKyGKJE/txyvKqD/7THp6gAAAABJRU5ErkJggg==","iron_chestplate":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAjElEQVQ4jc2R0QnAIAxEu4ZDOJn7OJIzuI3lfVxJa1LSvwYOjLl7SDyOX1StdT31yUNDzTnXGCMEhB4aDVDv/WbgzJ31bAANEEZBFLZzF9Bau4x6qmSDePDeAKWUhRhEQQmP/NtvcPkWRm7QArQDL8zzU4BIKYC3cYVTAP2GJy0wBLxBUmEL8ZQKf60THqBitQbYAN8AAAAASUVORK5CYII=","iron_leggings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAc0lEQVQ4y82SgQkAIQhFW6MhnKx9HKkZ3MbDgw8SenYHBwkf5PN7ldXacUVEmqn3ruViEVGU9aY5560xxjMEAL/Ii5n3AAhDnwEWNtnRtwHYzQetfwVYg5n/DwCDW68Q+SlgfW8Ayn+AiUeAyA8BXpV/Rl1RUOfrZYq2zAAAAABJRU5ErkJggg==","iron_boots":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAbklEQVQ4y92QwQ3AIAhFXYMhmIx9GIkZ3IbmH0ioRavH9ice/D6eCa39L8zscVbddBjpvTsR+VtfCgBVAnRmticYQfTotgQVeCxQ1XNBhioBuuqtHBaRhwDdVBI/5OEMxH1kboKAVkvKzHKZ38oFQPq/14rBNgYAAAAASUVORK5CYII=","gold_helmet":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAZUlEQVQ4y2NgGJ6gKVbsPzZMtOaXG0X/v3oXjoLvTBP+b6/H958ozX//l/0HARANMwAkTtAQkAEgxSCN6JphmCgDQBjZ7yBNINuJNgCmCR1TbABRYQCzhSwDYIZgUwQzhGEUYAAANYisw3NdQN0AAAAASUVORK5CYII=","gold_chestplate":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAm0lEQVQ4y2NgGBSgKVbsPzomSQ2IAwJ//5f9f/UuHKcBONWAODAJEH65URRFAYgNEkNWg2EATAKEQQphhsA0I8tjNeDONGG4QphTYRhZI0gNSC2KAfZ6fP9BGCSBSyMMg9TA1GPEBkgQn2YQxqoR2QBYGGDTDHI+UQbgwkQZgC3EYZqJMgAWG9gwLADxJmtchhClGT1a0TFNMiIAandqOAvCGb8AAAAASUVORK5CYII=","gold_leggings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAdUlEQVQ4y2NgGHSgKVbsPy5sr8f3n6Dmv//L/sMAiA3Cr96Fg/GdacL4DYEZgKwJGb/cKEqcAcgaQJgsA2CKQRjkdKINgNmGrBDEJskAdIW4xGljACzg0L2ATRynAejxDTOAYDqAhTg2A7CJYzUAGRMSHxwAAJiR874Nq2PgAAAAAElFTkSuQmCC","gold_boots":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAcElEQVQ4y2NgGH6gKVbsPwzjE8OpGQT+/i/7b6/H95+QOFYDQIqwGQASe/UunDgD0BWCxEFiRBmATSHJBrzcKEq6AciKsBkAEsMmh1XznWnCGAaAxHAaArMBWTOyAhgfXQ2KATBF+AIJWQ3ewBxaAAC8JMuT9VtZbQAAAABJRU5ErkJggg==","chainmail_helmet":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAX0lEQVQ4y+2QzQ2AUAiDWYMhOhn7MFu3qSeMP7yIV2OThgv9UjD7pgCo8zicmSJ5mhEhd9c4LOk9BIBI7u6aPAJq+Xi7uysiRHLWoEJXjxusAOMfdOERoCDdUkHs100boVCha+i/7e8AAAAASUVORK5CYII=","chainmail_chestplate":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAj0lEQVQ4jc2R0Q3AIAhEXcMhnMx9HMkZ3IbmmlxDEYv+lYRQ4d6JaUq/iFKK2DzS4IAYY0hrbWmw1ODAQe99EuAbPa2ZDDSsb7Ez74LboNb6CLgq08LQvgxyzoLEwIL2adBQP/0NNAl5MKoLagNCHowaGmBFC6GyHxrwnRrSdWsDmnj10yAyCWFt4uUWfBoXvcFSyOdFL1IAAAAASUVORK5CYII=","chainmail_leggings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAcUlEQVQ4y81SwQkAMQjrGh3CybpPR+oMbuORh1CK1tyvQjAEjMG2tedKRCxD793KYVU1L3BgrWVzThtj3E3cYB86O2WQDaNTBntcAJxOEG0CpxNEmzKdTpDpdALwXwnO9/YblP/ALx4ZRHposKPS36gPeLbmSuiws8IAAAAASUVORK5CYII=","chainmail_boots":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAc0lEQVQ4y92Q0QkAMQhDu4ZDOFn36UjO4DY9ciCItba/d0I/GpIXsbX/DTNPe5W2DWNUdRLRPOkpAKYMAE1E7gBjjAWAcNRTAEyxaaengKzpagNvqjZIITHce18A0LYQM/iwN9jfILHgBZipOpL3lMf81jyPr7yVQWNbKAAAAABJRU5ErkJggg==","leather_helmet":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAXklEQVQ4y2NgGJ4gODj4Pwjj4hPUPG3aNAzFxcXF/01NTf8Tpfn8+fMYCkHiBA0BGbB582acBoAwUQaAMLKfQZpAthNtALYAA2mk2ACiwgCXLUQZADMElwEENY9QAADYyG3b80w6vwAAAABJRU5ErkJggg==","leather_chestplate":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAlUlEQVQ4jc2R0QnAIBBDXcpJHMVdXMRBHMmSQko8tT3/KgTUS95dbQi/WCmlbnXkwaG1dqvWugVsPSyiAJVSBgP2uFPPBGABgpEQhrW+BOScHyNHtV05HbwDIMbYIRQYJsB2hof+6W/gUh9Kp6KWQQXwEziuHd8F0HEV4gLYgO5dAHbla3PP8yvAQizsM6yQlVzh03UB3pVjRY93eCIAAAAASUVORK5CYII=","leather_leggings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAaElEQVQ4T2NgGHQgODj4Py5samr6n6Dm8+fPY+DNmzeDcXFxMX5DkA2AaULG06ZNI84AZA0gTJYBMMUgDHI60QbA2MgKcbEHIaDYCyADQAGFHt8gNjZxDAALcWwGYBPHagAyJiQ+OAAAtsi4pUqS5fUAAAAASUVORK5CYII=","leather_boots":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAASElEQVQ4y2NgGH4gODj4PwzjE8Op+fz582Bsamr6n5A4yQZs3ryZOAPQFYLEQWJEGYBNIckGTJs2jTwDYIrwyYMMZxgFgwwAAMREe99ZR6oOAAAAAElFTkSuQmCC","shield":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAADtElEQVR4nO2YzWsTQRjGn8bdIVlj0rhSraVYrShUFO/ehPYgHhSEetKb3voH+Bd4E8WL4kVP9ipFBM8eRfHrYmurmASpabLbupFpIB62M85sNh81xHer87vszke2z/vk3fedZqjZbDbv3H2A7bC0tLit/bdv3Wy7dvnyVW38+PHDbT27XywR/N5CvqcPrFU9TE4exbu3bwAAGccBADgZB6MHDwIAyqUSgnoAAKgHAa5dn8P9e3din5fL9/Z3B4UFhMF/eXFXTtY8H8P5XOz11LkbWKt6AIAfy09R4xw2Y9jkHGs5B1U/kGNxHT5+gSS4Xkipg89fv6Hm+fDW6wCgXWuej+LqutybcRxk05Yc24zJ+03OAUCuiyxJIqlyqSQHhSNnsVKsAAizQMUePSMDa0fVD1DIJTfYOCx18On1AjhvAACG8zkUV9elEStvnsm1cqkEJ+Pg+89wnE1b2Ni6j2IzBifT3hTf8/qPog80A2zGMDHmylRXU/zE0TG8Xyx2fBjnDc0I9X56+jxc15VFz/c8VCoVuK4LAPL+2vW52PVBdQcrOhH95qOBqGTTFqqct6xz3gBjltwDAK7rYn7+kbZvdvaK1gW6rQ+ClGhX3YjWhG6IDiCIC0Sd67Y+KLQuMD41g9cflls2ZdMW7AO/i6AwLS4z1KBFzUgy0oCa52tFENAD/PjySWxAYq5dhxDPiCt26ly39UFhAZAHG5sxnJ46jPeLRXkGAMIgRHEUe1U6tccfG2G2VCoV7Z0WRU7QbX1QtBTBONRuoCICF4cgNUPE2u5s2AKfP1/4c5UDJBXt0aLY5fdk5Fy7LtAJ9WSYZGQNGM7nMD41I0+CgP7Nq0VQzsUEGZ1rlz1JQesCoghGRWfTVtsiCHSuAUlHM8BmDMcO75djNfUnxlz5PquvDWMWOG+0mCDGf/L6/E1S4n/4TiQ9iH7QMkCk/sbPhtYGVcqlkvzhYyenviAFhEEBQGHyrFYEVaJFMHqEbncg2uS8ZW+S0Ivgq4WWQicyodtJMDreCcdgQDkI1TwfNmMo5JyWdz6btoBIZ6gHQU9Bct5APUhuBsiodh26iH0jodD01lw6sjl6aBo5eamnH0WTzFCz2WxSi6Ak1X3Lv40xgFoANcYAagHUGAOoBVBjDKAWQI0xgFoANcYAagHUGAOoBVBjDKAWQI0xgFoANcYAagHUGAOoBVBjDKAWQI0xgFoANcYAagHUGAOoBVBjDKAWQI0xgFoANcYAagHUGAOoBVDz3xvwC64CwPDsj5vXAAAAAElFTkSuQmCC"};
-
-  // ------------------------------------------------------------------
-  // DOM HUD helpers: crisp item icons + ModernClient-style saturation.
-  // These sit above the game canvas and never steal mouse input.
-  // ------------------------------------------------------------------
-  var domHudRoot=null,armorHudEl=null,shieldHudEl=null,satHudEl=null,heldHudEl=null;
-  var armorCells=[];
-  function ensureDomHud(){
-    if(domHudRoot||!D||!D.body)return;
-    domHudRoot=el('div','position:fixed;inset:0;pointer-events:none;z-index:2147483644;font-family:Arial,sans-serif;');
-    armorHudEl=el('div','position:absolute;top:12px;right:12px;display:flex;gap:5px;align-items:flex-start;');
-    shieldHudEl=el('div','position:absolute;left:50%;bottom:64px;transform:translateX(-50%);display:none;align-items:center;justify-content:center;background:rgba(7,11,17,.72);border:1px solid rgba(79,209,255,.32);border-radius:6px;padding:3px;box-shadow:0 3px 12px rgba(0,0,0,.38);');
-    satHudEl=el('div','position:absolute;top:56px;right:12px;display:flex;gap:3px;align-items:center;');
-    heldHudEl=el('div','position:absolute;left:50%;bottom:70px;transform:translateX(-50%);display:none;align-items:center;gap:5px;background:rgba(5,8,13,.72);border:1px solid rgba(79,209,255,.25);border-radius:6px;padding:4px 7px;color:#eef8ff;text-shadow:0 1px 2px #000;white-space:nowrap;transform-origin:center bottom;');
-    for(var i=0;i<4;i++){
-      var cell=el('div','position:relative;width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:rgba(7,11,17,.72);border:1px solid rgba(130,160,180,.28);border-radius:6px;box-shadow:0 3px 12px rgba(0,0,0,.4);');
-      var img=el('img','width:22px;height:22px;image-rendering:pixelated;object-fit:contain;');
-      var pct=el('span','position:absolute;right:2px;bottom:1px;font:700 7px Arial;color:#fff;text-shadow:0 1px 2px #000;');
-      cell.appendChild(img);cell.appendChild(pct);armorHudEl.appendChild(cell);armorCells.push({cell:cell,img:img,pct:pct});
-    }
-    var shImg=el('img','width:24px;height:24px;image-rendering:pixelated;object-fit:contain;');
-    var shPct=el('span','font:700 8px Arial;color:#fff;text-shadow:0 1px 2px #000;margin-left:2px;');
-    shieldHudEl.appendChild(shImg);shieldHudEl.appendChild(shPct);shieldHudEl._img=shImg;shieldHudEl._pct=shPct;
-    for(var j=0;j<10;j++){var pip=el('span','width:9px;height:12px;background:#f4c43a;clip-path:polygon(50% 0%,83% 28%,93% 58%,80% 84%,50% 100%,20% 84%,7% 58%,17% 28%);filter:drop-shadow(0 0 2px rgba(255,211,70,.55));opacity:.12;');satHudEl.appendChild(pip);} 
-    var heldLabel=el('span','font:700 10px Arial;'); heldHudEl.appendChild(heldLabel); heldHudEl._label=heldLabel;
-    domHudRoot.appendChild(armorHudEl);domHudRoot.appendChild(shieldHudEl);domHudRoot.appendChild(satHudEl);domHudRoot.appendChild(heldHudEl);D.body.appendChild(domHudRoot);
-  }
-  function showDom(elm,show){if(elm)elm.style.display=show?'flex':'none';}
-  function hideArmorHud(){ensureDomHud();showDom(armorHudEl,false);}
-  function hideShieldHud(){ensureDomHud();showDom(shieldHudEl,false);}
-  function hideSaturationHud(){ensureDomHud();showDom(satHudEl,false);}
-  function hideHeldHud(){ensureDomHud();showDom(heldHudEl,false);}
-  function updateArmorHud(items){ensureDomHud();var any=false;for(var i=0;i<4;i++){var it=items&&items[i];var c=armorCells[i];if(!it){c.cell.style.display='none';continue;}any=true;c.cell.style.display='flex';c.img.src=it.src||'';c.pct.textContent=it.pct===null?'':String(it.pct)+'%';c.pct.style.color=it.pct<=25?'#ff5555':it.pct<=50?'#ffff55':'#ffffff';}showDom(armorHudEl,any);}
-  function updateShieldHud(player,blocking){ensureDomHud();var st=null;try{st=EjD(player);}catch(_){}if(!st||CCI(st)){hideShieldHud();return;}var name=String($rt_ustr(EJu(st))||'');if(name.toLowerCase().indexOf('shield')<0){hideShieldHud();return;}shieldHudEl._img.src=ARMOR_ICON_DATA.shield;var mx=EjU(st),pct=mx>0?Math.max(0,Math.min(100,Math.round((mx-EHa(st))*100/mx))):null;shieldHudEl._pct.textContent=pct===null?'':pct+'%';shieldHudEl.style.bottom=(64+Number(S.shieldY||0))+'px';shieldHudEl.style.borderColor=blocking?'rgba(79,209,255,.75)':'rgba(130,160,180,.28)';showDom(shieldHudEl,true);}
-  function updateSaturationHud(value){ensureDomHud();var v=Math.max(0,Math.min(20,Number(value)||0));var units=v/2;var ch=satHudEl.children;for(var i=0;i<10;i++){var fill=Math.max(0,Math.min(1,units-i));ch[i].style.opacity=fill<=0?'0.12':fill<1?'0.48':'0.98';}showDom(satHudEl,true);}
-  function updateHeldHud(text,color){ensureDomHud();heldHudEl._label.textContent=String(text||'').replace(/^Held /,'');heldHudEl._label.style.color=String('#'+((color>>>0)&0xFFFFFF).toString(16).padStart(6,'0'));heldHudEl.style.transform='translateX(-50%) scale('+(typeof S.heldScale==='number'?S.heldScale:0.85)+')';showDom(heldHudEl,true);}
-  function setMenuParallax(){
-    if(!backdrop||backdrop._parallaxAttached)return;backdrop._parallaxAttached=true;
-    var wall=el('div','position:absolute;inset:-12%;pointer-events:none;background:radial-gradient(circle at 20% 30%,rgba(79,209,255,.11),transparent 33%),radial-gradient(circle at 80% 70%,rgba(33,110,158,.08),transparent 38%),linear-gradient(125deg,#02060c,#0a111b 45%,#05080d);opacity:.72;transition:transform .18s ease-out;');
-    backdrop.insertBefore(wall,panel);backdrop.addEventListener('mousemove',function(e){var rx=(e.clientX/window.innerWidth-.5)*10,ry=(e.clientY/window.innerHeight-.5)*8;wall.style.transform='translate('+(-rx)+'px,'+(-ry)+'px) scale(1.03)';});
-  }
-
   // ------------------------------------------------------------------
   // HUD
   // ------------------------------------------------------------------
@@ -49181,21 +49153,9 @@ var ARMOR_ICON_DATA={"diamond_helmet":"data:image/png;base64,iVBORw0KGgoAAAANSUh
     var havePos=typeof px==='number'&&typeof py==='number'&&typeof pz==='number';
     if(havePos)updateSpeed(px,pz);
 
-    var armorInfo=[];
+    var armorStacks=[];
     if(S.armor){
-      try{
-        var armorSlots=[HHM,HIj,HJs,HJt];
-        for(var ai0=0;ai0<4;ai0++){
-          var ast=player.yE(armorSlots[ai0]);
-          if(ast!==null&&ast!==undefined&&!CCI(ast)){
-            var aname=String($rt_ustr(EJu(ast))||'').toLowerCase();
-            var amat=aname.indexOf('diamond')>=0?'diamond':aname.indexOf('gold')>=0?'gold':aname.indexOf('iron')>=0?'iron':aname.indexOf('chainmail')>=0||aname.indexOf('chain')>=0?'chainmail':'leather';
-            var part=['helmet','chestplate','leggings','boots'][ai0];
-            var ap=armorPct(player,armorSlots[ai0]);
-            armorInfo.push({src:ARMOR_ICON_DATA[amat+'_'+part],pct:ap,part:part});
-          }else armorInfo.push(null);
-        }
-      }catch(_){ armorInfo=[]; }
+      try{armorStacks=[player.yE(HHM),player.yE(HIj),player.yE(HJs),player.yE(HJt)];}catch(_){armorStacks=[];}
     }
     if(S.heldItem){
       try{
@@ -49212,7 +49172,7 @@ var ARMOR_ICON_DATA={"diamond_helmet":"data:image/png;base64,iVBORw0KGgoAAAANSUh
             col=pctColor(durabilityPct);
           }
           // Compact held-item line is drawn above the hotbar.
-          heldDisplay=['Held '+txt,col];
+          heldDisplay={stack:st,label:txt,color:col};
         }
       }catch(_){}
     }
@@ -49235,14 +49195,26 @@ var ARMOR_ICON_DATA={"diamond_helmet":"data:image/png;base64,iVBORw0KGgoAAAANSUh
         if(S.hunger)left.push(['Food '+foodValue,0xFFAA00]);
       }catch(_){}
     }
-    if(S.saturation) updateSaturationHud(saturationValue); else hideSaturationHud();
+    if(S.saturation){
+      // ModernClient-inspired yellow dots just above the hunger row.
+      var satClamped=Math.max(0,Math.min(20,saturationValue));
+      var satUnits=satClamped/2.0;
+      var satX=Math.round(width/2+46),satY=height-39;
+      for(var spip=0;spip<10;spip++){
+        var fill=Math.max(0,Math.min(1,satUnits-spip));
+        try{
+          if(fill>=1)drawScaled(font,'●',satX+spip*8,satY,0xFFFFCF33,.72);
+          else if(fill>.05)drawScaled(font,'●',satX+spip*8,satY,0xFFFF9E24,.45);
+        }catch(_){}
+      }
+    }
     if(S.sprintStatus){
       var sp=!!CBg(player);
       left.push(['Sprint '+(sp?'ON':'OFF'),sp?0x55FF55:0xAAAAAA]);
     }
-    var blockingNow=false;
+    var offhandStack=null,blockingNow=false;
     if(S.shield){
-      try{blockingNow=!!Ctr(player);}catch(_){}
+      try{offhandStack=DlC(player);blockingNow=!!Ctr(player);}catch(_){}
     }
 
     if(S.clock){
@@ -49273,9 +49245,44 @@ var ARMOR_ICON_DATA={"diamond_helmet":"data:image/png;base64,iVBORw0KGgoAAAANSUh
       y+=dy;
     }
 
-    if(S.armor) updateArmorHud(armorInfo); else hideArmorHud();
-    if(S.shield) updateShieldHud(player,blockingNow); else hideShieldHud();
-    if(heldDisplay) updateHeldHud(heldDisplay[0],heldDisplay[1]); else hideHeldHud();
+    // Armor icons: actual item sprites, with a thin durability bar instead of percentages.
+    if(armorStacks&&armorStacks.length){
+      var armorX=Math.round(width/2-42), armorY=Math.max(8,height-72);
+      for(var ai=0;ai<armorStacks.length;ai++){
+        var ast=armorStacks[ai];
+        if(ast===null||ast===undefined)continue;
+        try{
+          if(CCI(ast))continue;
+          Dmi(gui.hr,ast,armorX+ai*18,armorY);
+          var amx=EjU(ast),leftDur=amx>0?amx-EHa(ast):0;
+          if(amx>0){
+            var pp=Math.max(0,Math.min(1,leftDur/amx));
+            var bc=pp>.5?0xFF55FF55:(pp>.25?0xFFFFFF55:0xFFFF5555);
+            D49(armorX+ai*18,armorY+17,armorX+ai*18+16,armorY+19,0xFF33363B);
+            D49(armorX+ai*18,armorY+17,armorX+ai*18+Math.max(1,Math.round(16*pp)),armorY+19,bc);
+          }
+        }catch(_){ }
+      }
+    }
+
+    // Offhand/shield icon with vertical position control. No BLOCKING text.
+    if(S.shield&&offhandStack){
+      try{
+        if(!CCI(offhandStack)){
+          var shX=Math.round(width/2+42), shY=Math.round(height-72+S.shieldY);
+          Dmi(gui.hr,offhandStack,shX,shY);
+          if(blockingNow)D49(shX,shY+17,shX+16,shY+19,0xFF55E8FF);
+        }
+      }catch(_){ }
+    }
+
+    // Held item icon + compact label, scaled by the Held Item Size slider.
+    if(heldDisplay){
+      var heldScale=(typeof S.heldScale==='number'?S.heldScale:1.0);
+      var hx=Math.max(5,width-36), hy=Math.max(5,height-54);
+      try{Eu0();DPm(hx|0,hy|0,0);FWK(heldScale,heldScale,heldScale);Dmi(gui.hr,heldDisplay.stack,0,0);ECi();}catch(_){ }
+      try{drawScaled(font,heldDisplay.label,hx+18*heldScale,hy+18*heldScale,heldDisplay.color,Math.min(1,heldScale));}catch(_){ }
+    }
 
     if(S.keystrokes){
       var ky=height-46,kx=width-51;
@@ -49298,7 +49305,7 @@ var ARMOR_ICON_DATA={"diamond_helmet":"data:image/png;base64,iVBORw0KGgoAAAANSUh
   // ------------------------------------------------------------------
   // Hooks (each wrapper falls through to the original game code)
   // ------------------------------------------------------------------
-  // Fire-overlay hook: Fire Height slider uses 0.00 as vanilla position; negative values move it down.
+  // Fire-overlay hook: Fire Height slider uses 0.00 as vanilla position.
   var origC94=C94;
   C94=function(a){
     var off=(typeof S.fireOffset==='number'&&isFinite(S.fireOffset))?S.fireOffset:0;
