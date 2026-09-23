@@ -48750,16 +48750,19 @@ c.PK;})();
   var KEY='thunderClientSettings_v3';
   var GAMMA_KEY='thunderSavedGamma_v1';
   var DEFAULTS={
-    heldItem:true,coords:true,direction:true,speed:false,hunger:true,saturation:true,
+    armor:true,heldItem:true,coords:true,direction:true,speed:false,hunger:true,saturation:true,
     effects:true,sprintStatus:true,shield:true,clock:false,memory:false,
     fps:false,cps:false,keystrokes:false,
     noHurtCam:false,noFov:false,
     toggleSprint:false,noBob:false,
     blockF3:true,
     fullbright:false,
-    fireOffset:-0.35,
+    fireOffset:-0.20,
     shieldY:0,
-    heldScale:0.85
+    shieldX:0,
+    heldScale:0.85,
+    heldOffsetX:0,
+    heldOffsetY:0
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -48781,15 +48784,16 @@ c.PK;})();
   // Menu layout: [category, [[id, label, description], ...]]
   var CATS=[
     ['HUD',[
+      ['armor','Armor Status','Vanilla-style armor item icons'],
       ['heldItem','Held Item','Compact held-item display'],
       ['coords','Coordinates','XYZ position'],
       ['direction','Direction','Facing and axis'],
       ['speed','Speed','Horizontal speed in blocks/second'],
       ['hunger','Hunger','Food level'],
-      ['saturation','Saturation','ModernClient-style yellow saturation pips'],
+      ['saturation','Saturation','Yellow saturation drops outside hunger bar'],
       ['effects','Potion Effects','Active effects with time left'],
       ['sprintStatus','Sprint Status','Shows whether you are sprinting'],
-      ['shield','Shield Indicator','Vanilla-style shield indicator near the hotbar'],
+      ['shield','Shield Status','Small shield status icon'],
       ['clock','Clock','Real-world time'],
       ['memory','Memory','JS memory in use'],
       ['fps','FPS','Frames per second'],
@@ -48809,15 +48813,21 @@ c.PK;})();
     ]],
     ['VISUAL',[
       ['fullbright','Fullbright','Maximum brightness everywhere'],
-      ['fireOffset','Fire Height','Move the fire overlay up or down'],
-      ['shieldY','Shield Height','Move the shield indicator higher or lower'],
-      ['heldScale','Held Item Size','Changes the size of the held-item text']
+      ['fireOffset','Fire Height','Move first-person fire up or down'],
+      ['shieldY','Shield Height','Move the shield icon up or down'],
+      ['shieldX','Shield Left / Right','Move the shield icon left or right'],
+      ['heldScale','Held Item Size','Scale the held-item display'],
+      ['heldOffsetX','Held Item Left / Right','Move the held-item display left or right'],
+      ['heldOffsetY','Held Item Up / Down','Move the held-item display up or down']
     ]]
   ];
   var NUMERIC_RANGES={
-    fireOffset:{min:-0.60,max:0.60,step:0.05,unit:'',format:function(v){return v.toFixed(2);}},
-    shieldY:{min:-60,max:60,step:1,unit:' px',format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}},
-    heldScale:{min:0.50,max:1.50,step:0.05,unit:'x',format:function(v){return v.toFixed(2)+'x';}}
+    fireOffset:{min:-0.55,max:0.35,step:0.05,unit:'',format:function(v){return v.toFixed(2);}},
+    shieldY:{min:-55,max:55,step:1,unit:' px',format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}},
+    shieldX:{min:-90,max:90,step:1,unit:' px',format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}},
+    heldScale:{min:0.50,max:1.50,step:0.05,unit:'x',format:function(v){return v.toFixed(2)+'x';}},
+    heldOffsetX:{min:-220,max:220,step:2,unit:' px',format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}},
+    heldOffsetY:{min:-90,max:90,step:2,unit:' px',format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}}
   };
 
   // ------------------------------------------------------------------
@@ -48919,42 +48929,43 @@ c.PK;})();
     return n;
   }
   function buildMenu(){
-    backdrop=el('div','position:fixed;inset:0;z-index:2147483646;background:rgba(2,6,12,.66);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;font-family:Arial,sans-serif;');
+    backdrop=el('div','position:fixed;inset:0;z-index:2147483646;background:rgba(3,6,11,.68);backdrop-filter:blur(9px);display:none;align-items:center;justify-content:center;font-family:Arial,sans-serif;');
     backdrop.id='thunder-client-menu';
     backdrop.addEventListener('mousedown',function(e){if(e.target===backdrop)hideMenu();});
-    panel=el('div','width:820px;max-width:94vw;height:78vh;max-height:720px;display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(18,23,34,.985),rgba(9,13,21,.99));border:1px solid rgba(79,209,255,.7);border-radius:12px;box-shadow:0 20px 70px rgba(0,0,0,.72),0 0 30px rgba(79,209,255,.12);color:#ecf7ff;user-select:none;overflow:hidden;');
+    panel=el('div','width:980px;max-width:95vw;height:78vh;max-height:720px;display:grid;grid-template-columns:190px 1fr;background:linear-gradient(160deg,rgba(16,21,31,.99),rgba(8,12,19,.995));border:1px solid rgba(79,209,255,.58);border-radius:16px;box-shadow:0 30px 90px rgba(0,0,0,.76),0 0 40px rgba(79,209,255,.08);color:#edf8ff;user-select:none;overflow:hidden;');
 
-    var head=el('div','padding:18px 20px 10px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;');
+    var sidebar=el('div','padding:18px 12px;border-right:1px solid rgba(79,209,255,.13);background:linear-gradient(180deg,rgba(12,17,26,.96),rgba(8,12,18,.96));display:flex;flex-direction:column;gap:8px;');
+    sidebar.appendChild(el('div','font-size:18px;font-weight:900;letter-spacing:.14em;color:#f7fbff;padding:2px 10px 4px;','THUNDER'));
+    sidebar.appendChild(el('div','font-size:9px;letter-spacing:.18em;color:#6792a9;padding:0 10px 14px;','CLIENT CONTROL')); 
+    tabsEl=el('div','display:flex;flex-direction:column;gap:5px;');
+    sidebar.appendChild(tabsEl);
+    var sideHint=el('div','margin-top:auto;padding:10px;border:1px solid rgba(79,209,255,.12);border-radius:10px;background:rgba(255,255,255,.018);font-size:9px;line-height:1.55;color:#6f8b9d;','RIGHT SHIFT<br>opens menu<br><br>ESC closes menu<br><br>Changes save instantly.');
+    sidebar.appendChild(sideHint);
+    panel.appendChild(sidebar);
+
+    var main=el('div','min-width:0;display:flex;flex-direction:column;');
+    var head=el('div','padding:18px 20px 14px;border-bottom:1px solid rgba(79,209,255,.08);display:flex;align-items:flex-start;justify-content:space-between;gap:16px;');
     var titleWrap=el('div','min-width:0;');
-    titleWrap.appendChild(el('div','font-weight:800;font-size:21px;letter-spacing:.13em;color:#f4fbff;','THUNDER CLIENT'));
-    titleWrap.appendChild(el('div','font-size:11px;color:#8ca8ba;margin-top:5px;','Right Shift opens • Esc closes • changes save instantly'));
+    titleWrap.appendChild(el('div','font-weight:800;font-size:20px;letter-spacing:.11em;color:#f5fbff;','THUNDER CLIENT'));
+    titleWrap.appendChild(el('div','font-size:10px;color:#7897aa;margin-top:5px;','Modern-style module panel')); 
     head.appendChild(titleWrap);
-    var badge=el('div','font-size:10px;font-weight:700;letter-spacing:.08em;color:#06121a;background:#4fd1ff;padding:7px 9px;border-radius:7px;','HUD LAB');
-    head.appendChild(badge);
-    panel.appendChild(head);
+    head.appendChild(el('div','font-size:9px;font-weight:800;letter-spacing:.12em;color:#07121a;background:#63dcff;padding:7px 10px;border-radius:999px;','HUD LAB'));
+    main.appendChild(head);
 
-    tabsEl=el('div','display:flex;gap:7px;padding:0 20px 10px;flex-wrap:wrap;');
-    panel.appendChild(tabsEl);
-
-    var searchWrap=el('div','padding:0 20px 12px;');
-    searchInput=el('input','box-sizing:border-box;width:100%;height:38px;border:1px solid rgba(106,136,157,.42);border-radius:8px;background:rgba(4,8,14,.68);color:#eef8ff;padding:0 12px;font:12px Arial;outline:none;','');
-    searchInput.type='text';
-    searchInput.placeholder='Search modules or settings…';
-    searchInput.value=searchQuery;
+    var searchWrap=el('div','padding:13px 20px 10px;');
+    searchInput=el('input','box-sizing:border-box;width:100%;height:38px;border:1px solid rgba(106,136,157,.34);border-radius:9px;background:rgba(4,8,14,.72);color:#eef8ff;padding:0 12px;font:12px Arial;outline:none;');
+    searchInput.type='text';searchInput.placeholder='Search modules…';searchInput.value=searchQuery;
     searchInput.addEventListener('input',function(){searchQuery=String(searchInput.value||'').toLowerCase();renderList();});
-    searchWrap.appendChild(searchInput);
-    panel.appendChild(searchWrap);
+    searchWrap.appendChild(searchInput); main.appendChild(searchWrap);
 
-    listEl=el('div','overflow-y:auto;padding:0 20px 14px;flex:1 1 auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:min-content;gap:9px;align-content:start;scrollbar-color:#355568 #0b0f17;');
-    panel.appendChild(listEl);
-
-    var foot=el('div','display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 20px 14px;border-top:1px solid rgba(79,209,255,.14);background:rgba(4,7,12,.35);');
-    foot.appendChild(el('span','font-size:10px;color:#7893a5;','Armor stays vanilla. Use Visual sliders for fire, shield, and held-item size.'));
-    var reset=el('button','border:1px solid #46677a;background:#101c27;color:#eaf6ff;padding:7px 11px;border-radius:7px;font:11px Arial;cursor:pointer;','Reset all');
-    reset.type='button';
-    reset.onclick=function(){for(var id in DEFAULTS)S[id]=DEFAULTS[id];save();renderList();};
-    foot.appendChild(reset);
-    panel.appendChild(foot);
+    listEl=el('div','overflow-y:auto;padding:4px 20px 16px;flex:1 1 auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:min-content;gap:10px;align-content:start;scrollbar-color:#355568 #0b0f17;');
+    main.appendChild(listEl);
+    var foot=el('div','display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 20px 12px;border-top:1px solid rgba(79,209,255,.10);background:rgba(4,7,12,.34);');
+    foot.appendChild(el('span','font-size:9px;color:#718d9f;','Tune fire, shield and held-item placement from VISUAL.')); 
+    var reset=el('button','border:1px solid rgba(99,220,255,.35);background:rgba(99,220,255,.07);color:#dff8ff;padding:7px 11px;border-radius:8px;font:11px Arial;cursor:pointer;','Reset all');
+    reset.type='button';reset.onclick=function(){for(var id in DEFAULTS)S[id]=DEFAULTS[id];save();renderList();};
+    foot.appendChild(reset); main.appendChild(foot);
+    panel.appendChild(main);
     backdrop.appendChild(panel);
     (D.body||D.documentElement).appendChild(backdrop);
   }
@@ -48962,9 +48973,8 @@ c.PK;})();
     while(tabsEl.firstChild)tabsEl.removeChild(tabsEl.firstChild);
     CATS.forEach(function(cat,i){
       var on=i===currentTab;
-      var b=el('button','border:1px solid '+(on?'#4fd1ff':'rgba(91,119,138,.45)')+';background:'+(on?'rgba(79,209,255,.16)':'rgba(8,14,22,.82)')+';color:'+(on?'#eaffff':'#9bb3c3')+';padding:7px 14px;border-radius:7px;font:bold 11px Arial;letter-spacing:.06em;cursor:pointer;',cat[0]);
-      b.type='button';
-      b.onclick=function(){currentTab=i;searchQuery='';if(searchInput)searchInput.value='';renderTabs();renderList();};
+      var b=el('button','width:100%;text-align:left;border:1px solid '+(on?'rgba(99,220,255,.54)':'rgba(91,119,138,.18)')+';background:'+(on?'linear-gradient(90deg,rgba(99,220,255,.15),rgba(99,220,255,.04))':'rgba(8,14,22,.48)')+';color:'+(on?'#ecfbff':'#87a3b4')+';padding:10px 12px;border-radius:9px;font:bold 11px Arial;letter-spacing:.06em;cursor:pointer;',cat[0]);
+      b.type='button';b.onclick=function(){currentTab=i;searchQuery='';if(searchInput)searchInput.value='';renderTabs();renderList();};
       tabsEl.appendChild(b);
     });
   }
@@ -48974,35 +48984,22 @@ c.PK;})();
     var mods=CATS[currentTab][1].filter(function(m){return !q||String(m[1]).toLowerCase().indexOf(q)>=0||String(m[2]).toLowerCase().indexOf(q)>=0;});
     mods.forEach(function(m){
       var id=m[0];
-      var card=el('div','min-height:82px;padding:11px 12px;background:linear-gradient(180deg,rgba(23,29,41,.94),rgba(15,20,29,.94));border:1px solid rgba(101,129,148,.22);border-radius:9px;box-shadow:0 5px 14px rgba(0,0,0,.18);display:flex;flex-direction:column;justify-content:space-between;gap:9px;');
-      var top=el('div','display:flex;justify-content:space-between;gap:8px;align-items:flex-start;');
+      var card=el('div','min-height:84px;padding:12px 13px;background:linear-gradient(165deg,rgba(24,31,43,.97),rgba(13,18,27,.97));border:1px solid rgba(101,129,148,.20);border-radius:11px;box-shadow:0 7px 18px rgba(0,0,0,.18);display:flex;flex-direction:column;justify-content:space-between;gap:10px;');
+      var top=el('div','display:flex;justify-content:space-between;gap:10px;align-items:flex-start;');
       var txt=el('div','min-width:0;');
-      txt.appendChild(el('div','font-size:12px;font-weight:700;color:#f2f7fb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',m[1]));
-      txt.appendChild(el('div','font-size:9px;line-height:1.3;color:#7690a0;margin-top:3px;',m[2]));
+      txt.appendChild(el('div','font-size:12px;font-weight:700;color:#eff8fc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',m[1]));
+      txt.appendChild(el('div','font-size:9px;line-height:1.35;color:#718c9e;margin-top:3px;',m[2]));
       top.appendChild(txt);
-
       if(Object.prototype.hasOwnProperty.call(NUMERIC_RANGES,id)){
-        var info=NUMERIC_RANGES[id];
-        var val=Number(S[id]);
-        var valLabel=el('span','font-size:10px;font-weight:700;color:#ffd95c;',info.format(val));
-        top.appendChild(valLabel);
-        card.appendChild(top);
-        var range=document.createElement('input');
-        range.type='range';range.min=String(info.min);range.max=String(info.max);range.step=String(info.step);range.value=String(val);
-        range.style.cssText='width:100%;accent-color:#4fd1ff;cursor:pointer;';
+        var info=NUMERIC_RANGES[id],val=Number(S[id]);
+        var valLabel=el('span','font-size:10px;font-weight:800;color:#ffe06a;white-space:nowrap;',info.format(val)); top.appendChild(valLabel); card.appendChild(top);
+        var range=document.createElement('input'); range.type='range'; range.min=String(info.min);range.max=String(info.max);range.step=String(info.step);range.value=String(val); range.style.cssText='width:100%;accent-color:#f6c948;cursor:pointer;';
         range.addEventListener('input',(function(id,info,valLabel,range){return function(){var nv=parseFloat(range.value);S[id]=nv;valLabel.textContent=info.format(nv);save();};})(id,info,valLabel,range));
         card.appendChild(range);
       }else{
         var btn=el('button','');btn.type='button';
-        function paint(){
-          var on=!!S[id];
-          btn.textContent=on?'ON':'OFF';
-          btn.style.cssText='min-width:48px;height:24px;border:1px solid '+(on?'#59db71':'#465765')+';border-radius:999px;background:'+(on?'rgba(70,208,96,.15)':'rgba(80,96,108,.12)')+';color:'+(on?'#a8ffb7':'#8da0ac')+';padding:0 8px;font:bold 10px Arial;cursor:pointer;flex:0 0 auto;';
-        }
-        paint();
-        btn.onclick=function(){S[id]=!S[id];save();paint();};
-        top.appendChild(btn);
-        card.appendChild(top);
+        function paint(){var on=!!S[id];btn.textContent=on?'ON':'OFF';btn.style.cssText='min-width:50px;height:24px;border:1px solid '+(on?'#5adf77':'#465765')+';border-radius:999px;background:'+(on?'rgba(70,208,96,.15)':'rgba(80,96,108,.12)')+';color:'+(on?'#b1ffbe':'#8da0ac')+';padding:0 8px;font:bold 10px Arial;cursor:pointer;flex:0 0 auto;';}
+        paint(); btn.onclick=function(){S[id]=!S[id];save();paint();}; top.appendChild(btn); card.appendChild(top);
       }
       listEl.appendChild(card);
     });
@@ -49027,6 +49024,7 @@ c.PK;})();
     try{Eu0();DPm(x|0,y|0,0);FWK(s,s,s);draw(font,text,0,0,color);ECi();}
     catch(_){try{draw(font,text,x,y,color);}catch(__){}}
   }
+
 
   var EFFECT_NAMES={
     moveSpeed:'Speed',moveSlowdown:'Slowness',digSpeed:'Haste',digSlowDown:'Mining Fatigue',
@@ -49122,6 +49120,17 @@ c.PK;})();
     var havePos=typeof px==='number'&&typeof py==='number'&&typeof pz==='number';
     if(havePos)updateSpeed(px,pz);
 
+    var armorStacks=[];
+    if(S.armor){
+      try{
+        Dt();
+        var armorSlots=[HHM,HIj,HJs,HJt];
+        for(var asi=0;asi<armorSlots.length;asi++){
+          var ast=player.yE(armorSlots[asi]);
+          if(ast&&!CCI(ast))armorStacks.push(ast);
+        }
+      }catch(_){}
+    }
     if(S.heldItem){
       try{
         var st=EZ6(player);
@@ -49161,21 +49170,21 @@ c.PK;})();
       }catch(_){}
     }
     if(S.saturation){
-      // Gold saturation pips just outside the hunger row. One pip represents two saturation points.
+      // ModernClient-inspired yellow saturation drops, deliberately outside the hunger bar.
       var satClamped=Math.max(0,Math.min(20,saturationValue));
       var satUnits=satClamped/2.0;
-      var satX=Math.round(width/2+96),satY=height-21;
+      var satX=Math.round(width/2+56),satY=height-31;
       for(var spip=0;spip<10;spip++){
         var fill=Math.max(0,Math.min(1,satUnits-spip));
         var px0=satX+spip*7;
         try{
-          D49(px0+2,satY,px0+5,satY+1,0xFF252B32);
-          D49(px0+1,satY+1,px0+6,satY+4,0xFF252B32);
-          D49(px0+2,satY+4,px0+5,satY+5,0xFF252B32);
+          D49(px0+2,satY,px0+4,satY+1,0xFF4A4032);
+          D49(px0+1,satY+1,px0+5,satY+3,0xFF4A4032);
+          D49(px0,satY+3,px0+6,satY+5,0xFF4A4032);
           if(fill>0){
-            var fw=Math.max(1,Math.round(4*fill));
-            D49(px0+3,satY+1,px0+3+fw,satY+4,0xFFFFD34A);
-            D49(px0+2,satY,px0+4,satY+1,0xFFFFE27A);
+            D49(px0+2,satY,px0+4,satY+1,0xFFFFE15A);
+            D49(px0+1,satY+1,px0+5,satY+3,0xFFFFD52E);
+            D49(px0,satY+3,px0+6,satY+(fill>=1?5:3),0xFFFFC51F);
           }
         }catch(_){}
       }
@@ -49217,31 +49226,31 @@ c.PK;})();
       y+=dy;
     }
 
-    // Armor uses the real vanilla armor icons already rendered by Minecraft; no percentage text is drawn here.
+    // Armor durability: compact percentages directly above the vanilla armor/shield area.
+    // Vanilla armor-style item icons: no percentage text.
+    if(armorStacks.length){
+      var armorX=Math.round(width/2-45), armorY=Math.max(5,height-68);
+      for(var ai=0;ai<armorStacks.length;ai++){
+        try{GvJ(gui,armorX+ai*18,armorY,0,player,armorStacks[ai]);}catch(_){}
+      }
+    }
+    // Shield status icon: no text label, position controlled from VISUAL.
     if(S.shield){
-      // Small pixel shield near the off-hand/hotbar area. The icon is movable; no text is drawn.
-      var shX=Math.round(width/2-102);
-      var shY=Math.round(height-30+S.shieldY);
-      var active=blockingNow;
-      var outline=active?0xFFE4B24A:0xFF6B7280;
-      var fill=active?0xFFB97926:0xFF39414B;
+      var sx=Math.round(width/2+64+Number(S.shieldX||0));
+      var sy=Math.round(height-57+Number(S.shieldY||0));
+      var glow=blockingNow?0xFF63D8FF:0xFFAAB7C2;
       try{
-        D49(shX+4,shY,shX+12,shY+2,outline);
-        D49(shX+2,shY+2,shX+14,shY+6,outline);
-        D49(shX+1,shY+6,shX+15,shY+10,outline);
-        D49(shX+3,shY+10,shX+13,shY+14,outline);
-        D49(shX+5,shY+14,shX+11,shY+17,outline);
-        D49(shX+4,shY+3,shX+12,shY+6,fill);
-        D49(shX+3,shY+6,shX+13,shY+10,fill);
-        D49(shX+5,shY+10,shX+11,shY+14,fill);
-        D49(shX+7,shY+14,shX+9,shY+16,fill);
-        if(active)D49(shX+1,shY-2,shX+15,shY,0xFFFFE08A);
+        D49(sx+4,sy,sx+8,sy+2,glow);
+        D49(sx+2,sy+2,sx+10,sy+4,glow);
+        D49(sx+1,sy+4,sx+11,sy+8,glow);
+        D49(sx+2,sy+8,sx+10,sy+10,glow);
+        D49(sx+4,sy+10,sx+8,sy+12,glow);
       }catch(_){}
     }
     if(heldDisplay){
       var heldScale=(typeof S.heldScale==='number'?S.heldScale:0.85);
-      var heldX=Math.max(5,width-textWidth(font,heldDisplay[0])-8);
-      var heldY=Math.max(5,height-18);
+      var heldX=Math.max(5,width-textWidth(font,heldDisplay[0])-8+Number(S.heldOffsetX||0));
+      var heldY=Math.max(5,height-18+Number(S.heldOffsetY||0));
       drawScaled(font,heldDisplay[0],heldX,heldY,heldDisplay[1],heldScale);
     }
 
@@ -49261,7 +49270,7 @@ c.PK;})();
     try{CFi(1.0,1.0,1.0,1.0);}catch(_){}
   }
   TC.render=drawHud;
-  TC.fireNotice='The vanilla renderer requests minecraft:blocks/fire_layer_0. Purple/black fire means the active resource pack is missing or overriding that atlas texture; this is separate from the HUD hook.';
+  TC.fireNotice='Fire textures are supplied by the resource pack. Purple/black fire is a missing-texture/resource-pack problem, not a HUD problem.';
 
   // ------------------------------------------------------------------
   // Hooks (each wrapper falls through to the original game code)
