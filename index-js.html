@@ -499,10 +499,18 @@
 
 				// Let Eagler show its normal Mojang/loading screen and click-to-continue first.
 				// The Thunder storm/loading sequence starts only after this delay.
-				const THUNDER_START_DELAY = 5000;
-				setTimeout(function() {
+				// Wait for Eaglercraft's initial Mojang/"click to continue" phase to finish.
+				// The old fixed 5-second timer could start Thunder while the Mojang screen was
+				// still visible. We now wait for the first real user dismissal input after a
+				// short arming period, then start the Thunder sequence on an opaque black stage.
+				let thunderSequenceStarted = false;
+				let thunderInputArmed = false;
+				const THUNDER_ARM_MS = 1800;
 
-				startRainLoop();
+				function startThunderSequence() {
+					if (thunderSequenceStarted) return;
+					thunderSequenceStarted = true;
+					startRainLoop();
 
 
 				// ---------------------------------------------------------------
@@ -511,6 +519,8 @@
 				let stormActive = true;
 				const canvas = document.createElement('canvas');
 				canvas.id = 'stormCanvas';
+				canvas.style.background = '#000';
+				canvas.style.backgroundColor = '#000';
 				document.body.appendChild(canvas);
 				const ctx2d = canvas.getContext('2d');
 
@@ -910,7 +920,21 @@ let progress = 0;
 					}, 3100);
 				}
 
-				}, THUNDER_START_DELAY);
+				}
+
+				setTimeout(function() {
+					thunderInputArmed = true;
+				}, THUNDER_ARM_MS);
+
+				function thunderDismissInput() {
+					if (!thunderInputArmed || thunderSequenceStarted) return;
+					startThunderSequence();
+					window.removeEventListener('pointerdown', thunderDismissInput, true);
+					window.removeEventListener('keydown', thunderDismissInput, true);
+				}
+
+				window.addEventListener('pointerdown', thunderDismissInput, true);
+				window.addEventListener('keydown', thunderDismissInput, true);
 			});
 		</script>
 		<script type="text/javascript" src="thunder_ambient.js"></script>
