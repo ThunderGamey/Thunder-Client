@@ -48750,8 +48750,8 @@ c.PK;})();
   var KEY='thunderClientSettings_v5';
   var GAMMA_KEY='thunderSavedGamma_v1';
   var DEFAULTS={
-    armor:true,heldItem:true,coords:true,direction:true,speed:false,hunger:true,saturation:true,
-    effects:true,sprintStatus:true,shield:true,clock:false,memory:false,
+    heldItem:true,coords:true,direction:true,speed:false,hunger:true,saturation:true,
+    effects:true,sprintStatus:false,shield:true,clock:false,memory:false,
     fps:false,cps:false,keystrokes:false,
     noHurtCam:false,noFov:false,
     toggleSprint:false,noBob:false,
@@ -48762,6 +48762,7 @@ c.PK;})();
     heldScale:0.85
   };
   var S={},k;
+  try{W.localStorage.removeItem('thunderClientSettings_v3');W.localStorage.removeItem('thunderClientSettings_v4');}catch(_){}
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
   try{
     var saved=W.localStorage.getItem(KEY);
@@ -48781,7 +48782,6 @@ c.PK;})();
   // Menu layout: [category, [[id, label, description], ...]]
   var CATS=[
     ['HUD',[
-      ['armor','Armor HUD','Vanilla-style armor icons'],
       ['heldItem','Held Item','Compact held-item display'],
       ['coords','Coordinates','XYZ position'],
       ['direction','Direction','Facing and axis'],
@@ -48790,7 +48790,7 @@ c.PK;})();
       ['saturation','Saturation','ModernClient-style yellow saturation pips'],
       ['effects','Potion Effects','Active effects with time left'],
       ['sprintStatus','Sprint Status','Shows whether you are sprinting'],
-      ['shield','Shield HUD','Shield icon while blocking'],
+      ['shield','Shield Status','Off-hand shield durability'],
       ['clock','Clock','Real-world time'],
       ['memory','Memory','JS memory in use'],
       ['fps','FPS','Frames per second'],
@@ -48810,14 +48810,14 @@ c.PK;})();
     ]],
     ['VISUAL',[
       ['fullbright','Fullbright','Maximum brightness everywhere'],
-      ['fireOffset','Fire Height','Move the fire overlay up or down'],
-      ['shieldY','Shield Height','Move the shield icon up or down'],
-      ['heldScale','Held Item Size','Scale the held-item readout']
+      ['fireOffset','Fire Height','Moves the fire overlay up/down (0 = vanilla)'],
+      ['shieldY','Shield Height','Moves the shield status higher/lower'],
+      ['heldScale','Held Item Size','Changes the size of the held-item text']
     ]]
   ];
   var NUMERIC_RANGES={
-    fireOffset:{min:-0.60,max:0.60,step:0.05,unit:'',format:function(v){return (v===0?'Vanilla':v.toFixed(2));}},
-    shieldY:{min:-60,max:60,step:1,unit:' px',format:function(v){return (v===0?'Center':(v>0?'+':'')+Math.round(v)+' px');}},
+    fireOffset:{min:-0.55,max:0.45,step:0.05,unit:'',format:function(v){return v.toFixed(2);}},
+    shieldY:{min:-45,max:45,step:1,unit:' px',format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}},
     heldScale:{min:0.50,max:1.50,step:0.05,unit:'x',format:function(v){return v.toFixed(2)+'x';}}
   };
 
@@ -48923,7 +48923,7 @@ c.PK;})();
     backdrop=el('div','position:fixed;inset:0;z-index:2147483646;background:rgba(2,6,12,.66);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;font-family:Arial,sans-serif;');
     backdrop.id='thunder-client-menu';
     backdrop.addEventListener('mousedown',function(e){if(e.target===backdrop)hideMenu();});
-    panel=el('div','width:820px;max-width:94vw;height:78vh;max-height:720px;display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(18,23,34,.985),rgba(9,13,21,.99));border:1px solid rgba(255,199,48,.78);border-radius:12px;box-shadow:0 20px 70px rgba(0,0,0,.72),0 0 30px rgba(255,199,48,.13);color:#ecf7ff;user-select:none;overflow:hidden;');
+    panel=el('div','width:820px;max-width:94vw;height:78vh;max-height:720px;display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(18,23,34,.985),rgba(9,13,21,.99));border:1px solid rgba(79,209,255,.7);border-radius:12px;box-shadow:0 20px 70px rgba(0,0,0,.72),0 0 30px rgba(79,209,255,.12);color:#ecf7ff;user-select:none;overflow:hidden;');
 
     var head=el('div','padding:18px 20px 10px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;');
     var titleWrap=el('div','min-width:0;');
@@ -48949,8 +48949,8 @@ c.PK;})();
     listEl=el('div','overflow-y:auto;padding:0 20px 14px;flex:1 1 auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:min-content;gap:9px;align-content:start;scrollbar-color:#355568 #0b0f17;');
     panel.appendChild(listEl);
 
-    var foot=el('div','display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 20px 14px;border-top:1px solid rgba(255,199,48,.16);background:rgba(4,7,12,.35);');
-    foot.appendChild(el('span','font-size:10px;color:#7893a5;','Tip: use the sliders under Visual to tune fire, shield, and held-item size.'));
+    var foot=el('div','display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 20px 14px;border-top:1px solid rgba(79,209,255,.14);background:rgba(4,7,12,.35);');
+    foot.appendChild(el('span','font-size:10px;color:#7893a5;','Tip: use Visual sliders to tune fire, shield-status position, and held-item size.'));
     var reset=el('button','border:1px solid #46677a;background:#101c27;color:#eaf6ff;padding:7px 11px;border-radius:7px;font:11px Arial;cursor:pointer;','Reset all');
     reset.type='button';
     reset.onclick=function(){for(var id in DEFAULTS)S[id]=DEFAULTS[id];save();renderList();};
@@ -48958,20 +48958,12 @@ c.PK;})();
     panel.appendChild(foot);
     backdrop.appendChild(panel);
     (D.body||D.documentElement).appendChild(backdrop);
-    try{
-      W.addEventListener('mousemove',function(e){
-        if(!menuOpen||!panel)return;
-        var dx=((e.clientX/(W.innerWidth||1))-.5)*10;
-        var dy=((e.clientY/(W.innerHeight||1))-.5)*8;
-        panel.style.transform='translate3d('+dx.toFixed(1)+'px,'+dy.toFixed(1)+'px,0)';
-      },true);
-    }catch(_){}
   }
   function renderTabs(){
     while(tabsEl.firstChild)tabsEl.removeChild(tabsEl.firstChild);
     CATS.forEach(function(cat,i){
       var on=i===currentTab;
-      var b=el('button','border:1px solid '+(on?'#ffc730':'rgba(91,119,138,.45)')+';background:'+(on?'rgba(255,199,48,.14)':'rgba(8,14,22,.82)')+';color:'+(on?'#fff7d1':'#9bb3c3')+';padding:7px 14px;border-radius:7px;font:bold 11px Arial;letter-spacing:.06em;cursor:pointer;',cat[0]);
+      var b=el('button','border:1px solid '+(on?'#4fd1ff':'rgba(91,119,138,.45)')+';background:'+(on?'rgba(79,209,255,.16)':'rgba(8,14,22,.82)')+';color:'+(on?'#eaffff':'#9bb3c3')+';padding:7px 14px;border-radius:7px;font:bold 11px Arial;letter-spacing:.06em;cursor:pointer;',cat[0]);
       b.type='button';
       b.onclick=function(){currentTab=i;searchQuery='';if(searchInput)searchInput.value='';renderTabs();renderList();};
       tabsEl.appendChild(b);
@@ -48998,7 +48990,7 @@ c.PK;})();
         card.appendChild(top);
         var range=document.createElement('input');
         range.type='range';range.min=String(info.min);range.max=String(info.max);range.step=String(info.step);range.value=String(val);
-        range.style.cssText='width:100%;accent-color:#ffc730;cursor:pointer;';
+        range.style.cssText='width:100%;accent-color:#4fd1ff;cursor:pointer;';
         range.addEventListener('input',(function(id,info,valLabel,range){return function(){var nv=parseFloat(range.value);S[id]=nv;valLabel.textContent=info.format(nv);save();};})(id,info,valLabel,range));
         card.appendChild(range);
       }else{
@@ -49037,17 +49029,6 @@ c.PK;})();
     catch(_){try{draw(font,text,x,y,color);}catch(__){}}
   }
 
-  function armorPct(player,slot){
-    try{
-      var st=player.yE(slot);
-      if(st===null||st===undefined)return null;
-      if(CCI(st))return null;
-      var max=EjU(st);
-      if(max<=0)return null;
-      var p=Math.round((max-EHa(st))*100/max);
-      return p<0?0:(p>100?100:p);
-    }catch(_){return null;}
-  }
 
   var EFFECT_NAMES={
     moveSpeed:'Speed',moveSlowdown:'Slowness',digSpeed:'Haste',digSlowDown:'Mining Fatigue',
@@ -49143,8 +49124,6 @@ c.PK;})();
     var havePos=typeof px==='number'&&typeof py==='number'&&typeof pz==='number';
     if(havePos)updateSpeed(px,pz);
 
-    var armorValue=0;
-    if(S.armor){try{armorValue=Math.max(0,Math.min(20,Ez7(player)));}catch(_){} }
     if(S.heldItem){
       try{
         var st=EZ6(player);
@@ -49183,34 +49162,24 @@ c.PK;})();
         if(S.hunger)left.push(['Food '+foodValue,0xFFAA00]);
       }catch(_){}
     }
+
     if(S.saturation){
-      // ModernClient-inspired saturation: tiny yellow diamond/pip shapes above the hunger bar.
+      // Compact yellow saturation dots outside the hunger bar.
       var satClamped=Math.max(0,Math.min(20,saturationValue));
       var satUnits=satClamped/2.0;
-      var satX=Math.round(width/2+46),satY=height-33;
+      var satX=Math.round(width/2+52),satY=height-34;
       for(var spip=0;spip<10;spip++){
-        var fill=Math.max(0,Math.min(1,satUnits-spip));
-        var sx=satX+spip*8;
+        var full=(spip<Math.floor(satUnits));
+        var half=(!full && satUnits-spip>=0.5);
         try{
-          D49(sx+2,satY,sx+4,satY+5,0xFF5F5F5F);
-          D49(sx+1,satY+1,sx+5,satY+4,0xFF5F5F5F);
-          if(fill>0){
-            D49(sx+2,satY,sx+4,satY+5,0xFFFFD447);
-            D49(sx+1,satY+1,sx+5,satY+4,0xFFFFD447);
-            if(fill<1)D49(sx+1+Math.round(4*fill),satY,sx+5,satY+5,0xFF2B2F36);
-          }
-        }catch(_){}
+          draw(font,full?'●':(half?'◐':'○'),satX+spip*7,satY,full||half?0xFFFFC928:0xFF6E7378);
+        }catch(_){ }
       }
     }
     if(S.sprintStatus){
       var sp=!!CBg(player);
       left.push(['Sprint '+(sp?'ON':'OFF'),sp?0x55FF55:0xAAAAAA]);
     }
-    var blockingNow=false;
-    if(S.shield){
-      try{blockingNow=!!Ctr(player);}catch(_){}
-    }
-
     if(S.clock){
       var d=new Date();
       right.push([pad2(d.getHours())+':'+pad2(d.getMinutes())+':'+pad2(d.getSeconds()),0xFFFFFF]);
@@ -49239,29 +49208,28 @@ c.PK;})();
       y+=dy;
     }
 
-    // Vanilla-style armor HUD: 10 pixel armor icons using Minecraft's icons texture.
-    if(S.armor && armorValue>0){
+    // Vanilla Minecraft already renders the real armor icons. Thunder does not replace them
+    // with percentage text.
+
+    // Shield status: show only off-hand shield durability, never a BLOCKING label.
+    if(S.shield){
       try{
-        var tm=Fco(mc);
-        D17(tm,H3o);
-        var ax=width-88, ay=8;
-        for(var ai=0;ai<10;ai++){
-          var points=(ai+1)*2;
-          var tx=points<=armorValue?34:(points-1<=armorValue?25:16);
-          FYs(gui,ax+ai*8,ay,tx,9,9,9);
+        var off=EjD(player);
+        if(off && !CCI(off)){
+          var offName=$rt_ustr(EJu(off));
+          if(offName && /shield/i.test(offName)) {
+            var maxShield=EjU(off), leftShield=maxShield>0?(maxShield-EHa(off)):0;
+            var shieldPct=maxShield>0?Math.max(0,Math.min(100,Math.round(leftShield*100/maxShield))):100;
+            var shText='Shield '+shieldPct+'%';
+            var shW=textWidth(font,shText)+12;
+            var shX=Math.round(width/2-shW/2);
+            var shY=Math.round(height-64+S.shieldY);
+            D49(shX,shY-2,shX+shW,shY+10,0x9910161F);
+            D49(shX,shY-2,shX+2,shY+10,0xFFFFC928);
+            draw(font,shText,shX+7,shY,pctColor(shieldPct));
+          }
         }
-      }catch(_){}
-    }
-    // Compact shield icon; no blocking text. The slider controls its vertical position.
-    if(S.shield && blockingNow){
-      var shX=width-24, shY=Math.max(4,Math.min(height-30,14+S.shieldY));
-      try{
-        D49(shX-7,shY,shX+7,shY+2,0xFF6FEAFF);
-        D49(shX-9,shY+2,shX+9,shY+5,0xFF6FEAFF);
-        D49(shX-8,shY+5,shX+8,shY+9,0xFF55C8E8);
-        D49(shX-6,shY+9,shX+6,shY+13,0xFF42A9C6);
-        D49(shX-3,shY+13,shX+3,shY+16,0xFF2B6E82);
-      }catch(_){}
+      }catch(_){ }
     }
     if(heldDisplay){
       var heldScale=(typeof S.heldScale==='number'?S.heldScale:0.85);
@@ -49286,8 +49254,8 @@ c.PK;})();
     try{CFi(1.0,1.0,1.0,1.0);}catch(_){}
   }
   TC.render=drawHud;
+  TC.v5Notes='Vanilla armor icons are left to the base game; Thunder no longer draws fake armor percentages. Shield status is durability only. Fire offset uses a balanced push/translate/pop hook.';
   TC.fireNotice='The vanilla renderer requests minecraft:blocks/fire_layer_0. Purple/black fire means the active resource pack is missing or overriding that atlas texture; this is separate from the HUD hook.';
-  TC.version='v5';
 
   // ------------------------------------------------------------------
   // Hooks (each wrapper falls through to the original game code)
@@ -49297,8 +49265,9 @@ c.PK;})();
   C94=function(a){
     var off=(typeof S.fireOffset==='number'&&isFinite(S.fireOffset))?S.fireOffset:0;
     if(Math.abs(off)<0.001)return origC94(a);
-    try{Eu0();DPm(0.0,off,0.0);return origC94(a);}
-    finally{try{ECi();}catch(_){}}
+    var ok=false;
+    try{Eu0();DPm(0.0,off,0.0);ok=true;return origC94(a);}
+    finally{if(ok){try{ECi();}catch(_){}}else{try{ECi();}catch(__){}}}
   };
 
   var origEwc=Ewc;
