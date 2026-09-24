@@ -787,13 +787,167 @@
 				}
 				requestAnimationFrame(animate);
 
+				// ---------------------------------------------------------------
+				// Persistent Thunder menu ambience:
+				// a subtle animated storm/parallax layer that stays visible on menus
+				// and fades away automatically when Minecraft captures the mouse.
+				// ---------------------------------------------------------------
+				var thunderAmbientStarted = false;
+				function startThunderAmbient() {
+					if (thunderAmbientStarted) return;
+					thunderAmbientStarted = true;
+
+					var ac = document.createElement('canvas');
+					ac.id = 'thunderAmbientCanvas';
+					ac.style.position = 'fixed';
+					ac.style.left = '0';
+					ac.style.top = '0';
+					ac.style.width = '100%';
+					ac.style.height = '100%';
+					ac.style.pointerEvents = 'none';
+					ac.style.zIndex = '1900';
+					ac.style.opacity = '0';
+					ac.style.transition = 'opacity 700ms ease';
+					ac.style.mixBlendMode = 'screen';
+					document.body.appendChild(ac);
+
+					var ax = ac.getContext('2d');
+					var apx = 0, apy = 0, tx = 0, ty = 0;
+					var ambientFlash = 0, nextAmbientFlash = performance.now() + 900 + Math.random() * 1700;
+					var stars = [];
+					var clouds2 = [];
+					var drops = [];
+					var aw = 0, ah = 0, adpr = 1;
+
+					function resizeAmbient() {
+						adpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+						aw = window.innerWidth;
+						ah = window.innerHeight;
+						ac.width = Math.round(aw * adpr);
+						ac.height = Math.round(ah * adpr);
+						ax.setTransform(adpr, 0, 0, adpr, 0, 0);
+					}
+					window.addEventListener('resize', resizeAmbient);
+					resizeAmbient();
+
+					for (var si = 0; si < 55; si++) {
+						stars.push({x:Math.random(), y:Math.random()*0.7, r:0.5+Math.random()*1.5, a:0.08+Math.random()*0.16});
+					}
+					for (var ci = 0; ci < 11; ci++) {
+						clouds2.push({x:Math.random(), y:0.12+Math.random()*0.42, s:0.7+Math.random()*1.4, v:0.00003+Math.random()*0.00007});
+					}
+					for (var ri = 0; ri < 95; ri++) {
+						drops.push({x:Math.random(), y:Math.random(), l:10+Math.random()*18, v:2+Math.random()*3});
+					}
+
+					window.addEventListener('pointermove', function(e) {
+						var nx = (e.clientX / Math.max(1, window.innerWidth)) - 0.5;
+						var ny = (e.clientY / Math.max(1, window.innerHeight)) - 0.5;
+						tx = nx * 18;
+						ty = ny * 12;
+					}, {passive:true});
+
+					function updateAmbientVisibility() {
+						var locked = !!document.pointerLockElement;
+						ac.style.opacity = locked ? '0' : '0.78';
+					}
+					document.addEventListener('pointerlockchange', updateAmbientVisibility);
+					setTimeout(updateAmbientVisibility, 150);
+
+					function ambientLightning(now) {
+						if (now >= nextAmbientFlash) {
+							ambientFlash = 0.9;
+							nextAmbientFlash = now + 1500 + Math.random() * 2800;
+						}
+						ambientFlash *= 0.86;
+					}
+
+					function drawAmbient(now) {
+						apx += (tx - apx) * 0.035;
+						apy += (ty - apy) * 0.035;
+						ambientLightning(now);
+
+						ax.clearRect(0, 0, aw, ah);
+
+						var bg = ax.createLinearGradient(0, 0, aw, ah);
+						bg.addColorStop(0, 'rgba(5,10,22,0.38)');
+						bg.addColorStop(0.5, 'rgba(18,32,55,0.16)');
+						bg.addColorStop(1, 'rgba(3,7,17,0.38)');
+						ax.fillStyle = bg;
+						ax.fillRect(0, 0, aw, ah);
+
+						// Large parallax "wallpaper" clouds.
+						for (var i = 0; i < clouds2.length; i++) {
+							var cc = clouds2[i];
+							cc.x += cc.v;
+							if (cc.x > 1.15) cc.x = -0.15;
+							var cx = cc.x * aw + apx * (0.7 + i * 0.03);
+							var cy = cc.y * ah + apy * (0.45 + i * 0.02);
+							var rr = (70 + (i % 4) * 28) * cc.s;
+							var grad = ax.createRadialGradient(cx, cy, 0, cx, cy, rr);
+							grad.addColorStop(0, 'rgba(85,110,155,0.17)');
+							grad.addColorStop(1, 'rgba(40,55,85,0)');
+							ax.fillStyle = grad;
+							ax.beginPath();
+							ax.arc(cx, cy, rr, 0, Math.PI * 2);
+							ax.fill();
+						}
+
+						// Tiny distant glow particles.
+						for (var s = 0; s < stars.length; s++) {
+							var st = stars[s];
+							ax.fillStyle = 'rgba(150,210,255,' + st.a + ')';
+							ax.beginPath();
+							ax.arc(st.x * aw + apx * 0.25, st.y * ah + apy * 0.2, st.r, 0, Math.PI * 2);
+							ax.fill();
+						}
+
+						// Soft diagonal rain.
+						ax.strokeStyle = 'rgba(145,190,230,0.08)';
+						ax.lineWidth = 1;
+						for (var d = 0; d < drops.length; d++) {
+							var dr = drops[d];
+							dr.y += dr.v / Math.max(1, ah);
+							dr.x -= 0.00045;
+							if (dr.y > 1.05 || dr.x < -0.05) {
+								dr.y = -0.05;
+								dr.x = 0.1 + Math.random() * 0.95;
+							}
+							var dx = dr.x * aw + apx * 0.15;
+							var dy = dr.y * ah + apy * 0.15;
+							ax.beginPath();
+							ax.moveTo(dx, dy);
+							ax.lineTo(dx - 6, dy + dr.l);
+							ax.stroke();
+						}
+
+						if (ambientFlash > 0.01) {
+							ax.fillStyle = 'rgba(210,235,255,' + (ambientFlash * 0.14) + ')';
+							ax.fillRect(0, 0, aw, ah);
+							ax.strokeStyle = 'rgba(215,240,255,' + (ambientFlash * 0.65) + ')';
+							ax.lineWidth = 2;
+							ax.beginPath();
+							var lx = aw * 0.25 + apx * 1.5;
+							ax.moveTo(lx, 0);
+							for (var li = 0; li < 7; li++) {
+								lx += (Math.random() - 0.5) * 95;
+								ax.lineTo(lx, ah * ((li + 1) / 7));
+							}
+							ax.stroke();
+						}
+
+						requestAnimationFrame(drawAmbient);
+					}
+					requestAnimationFrame(drawAmbient);
+				}
+
 				// stops the storm visuals + rain/thunder audio once the intro finishes —
 				// this is the fix that keeps the storm from following you into worlds/servers
 				function stopStorm() {
 					stormActive = false;
 					canvas.style.transition = 'opacity 0.6s ease-out';
 					canvas.style.opacity = '0';
-					setTimeout(function() { canvas.remove(); }, 650);
+					setTimeout(function() { canvas.remove(); startThunderAmbient(); }, 650);
 					hud.style.display = 'none';
 
 					if (rainGainRef && actx) {
