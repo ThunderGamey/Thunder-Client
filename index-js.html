@@ -217,7 +217,13 @@
 		<meta property="og:image" content="favicon.png" />
 		<link type="image/png" rel="shortcut icon" href="favicon.png" />
 		<script type="text/javascript">window.__thunderIntroLoaded = true;</script>
-		<script type="text/javascript" src="classes.js"></script>
+		<script type="text/javascript" src="classes.js?v=20260924-v6"></script>
+		<script type="text/javascript">
+			/* Start Fire Height at vanilla until the texture fix is confirmed. The slider remains adjustable. */
+			try {
+				if (window.ThunderClient && window.ThunderClient.settings) window.ThunderClient.settings.fireOffset = 0;
+			} catch (_) {}
+		</script>
 		<script type="text/javascript">
 			"use strict";
 			window.addEventListener("load", function() {
