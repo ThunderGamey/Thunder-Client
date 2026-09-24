@@ -1033,6 +1033,34 @@ let progress = 0;
 })();
 </script>
 
+
+<script type="text/javascript">
+/* Thunder input bridge: keep keyboard/wheel focus on the Eagler canvas without
+   stealing focus from real HTML controls such as the Thunder search box. */
+(function(){
+  "use strict";
+  function isHtmlControl(el){
+    if(!el) return false;
+    var tag=(el.tagName||"").toLowerCase();
+    return tag==="input"||tag==="textarea"||tag==="select"||tag==="button"||el.isContentEditable;
+  }
+  function focusGame(){
+    try{
+      if(isHtmlControl(document.activeElement)) return;
+      var c=document.querySelector("#game_frame canvas");
+      if(!c) return;
+      if(typeof c.tabIndex!=="number" || c.tabIndex<0) c.tabIndex=-1;
+      if(document.activeElement!==c){
+        try{c.focus({preventScroll:true});}catch(_){try{c.focus();}catch(__){}}
+      }
+    }catch(_){}
+  }
+  window.addEventListener("pointerdown",function(){setTimeout(focusGame,0);},{passive:true});
+  window.addEventListener("wheel",function(){setTimeout(focusGame,0);},{passive:true});
+  window.addEventListener("keydown",function(){setTimeout(focusGame,0);},{passive:true});
+})();
+</script>
+
 </head>
 	<body style="margin:0px;width:100%;height:100%;overflow:hidden;background-color:black;" id="game_frame"></body>
 </html>
