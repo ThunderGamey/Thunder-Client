@@ -1061,6 +1061,70 @@ let progress = 0;
 })();
 </script>
 
+
+/* ===== THUNDER PARALLAX MENU FX ===== */
+#thunderParallaxFx{position:fixed;inset:-6%;z-index:2147483000;pointer-events:none;opacity:0;mix-blend-mode:screen;transition:opacity .35s ease;overflow:hidden}
+#thunderParallaxFx.active{opacity:.34}
+#thunderParallaxFx .tp-cloud,#thunderParallaxFx .tp-glow,#thunderParallaxFx .tp-stars{position:absolute;inset:0}
+#thunderParallaxFx .tp-cloud{filter:blur(28px);background:radial-gradient(ellipse at 18% 32%,rgba(78,177,255,.22),transparent 27%),radial-gradient(ellipse at 76% 24%,rgba(135,77,255,.18),transparent 25%),radial-gradient(ellipse at 82% 76%,rgba(38,113,159,.16),transparent 23%);animation:thunderMenuCloud 15s ease-in-out infinite alternate}
+#thunderParallaxFx .tp-glow{background:radial-gradient(circle at 50% 50%,rgba(105,210,255,.06),transparent 38%),linear-gradient(135deg,rgba(4,12,24,.05),rgba(79,36,130,.08));animation:thunderMenuPulse 6s ease-in-out infinite}
+#thunderParallaxFx .tp-stars{opacity:.16;background-image:radial-gradient(circle,rgba(220,242,255,.72) 0 1px,transparent 1.5px);background-size:54px 54px;animation:thunderMenuStars 18s linear infinite}
+#thunderParallaxFx .tp-bolt{position:absolute;left:72%;top:-4%;width:2px;height:63%;opacity:0;transform:rotate(7deg);background:linear-gradient(180deg,transparent,rgba(239,251,255,.96) 22%,rgba(107,220,255,.72) 62%,transparent);box-shadow:0 0 18px rgba(89,215,255,.9),0 0 52px rgba(83,109,255,.35);animation:thunderMenuBolt 8s infinite}
+#thunderParallaxFx .tp-bolt.two{left:28%;top:18%;width:1px;height:50%;transform:rotate(-9deg);animation:thunderMenuBolt2 11s 2.2s infinite}
+@keyframes thunderMenuCloud{from{transform:translate3d(-1.5%,-.5%,0) scale(1.03)}to{transform:translate3d(2%,1.2%,0) scale(1.07)}}
+@keyframes thunderMenuPulse{0%,100%{opacity:.68}50%{opacity:1}}
+@keyframes thunderMenuStars{from{background-position:0 0}to{background-position:54px 42px}}
+@keyframes thunderMenuBolt{0%,84%,100%{opacity:0}85%{opacity:.92}86%{opacity:.08}87%{opacity:.74}88%{opacity:0}}
+@keyframes thunderMenuBolt2{0%,88%,100%{opacity:0}89%{opacity:.62}90%{opacity:.06}91%{opacity:0}}
+
+<script id="thunder-parallax-script">
+/* ===== THUNDER PARALLAX MENU FX ===== */
+(function(){
+  "use strict";
+  var canvas=null,fx=null,last={x:0,y:0},active=false;
+  function ensureFx(){
+    if(fx)return;
+    fx=document.createElement("div");
+    fx.id="thunderParallaxFx";
+    fx.innerHTML='<div class="tp-cloud"></div><div class="tp-glow"></div><div class="tp-stars"></div><div class="tp-bolt"></div><div class="tp-bolt two"></div>';
+    document.body.appendChild(fx);
+  }
+  function findCanvas(){
+    if(canvas&&canvas.isConnected)return canvas;
+    canvas=document.querySelector("#game_frame canvas, canvas");
+    return canvas;
+  }
+  function setMode(){
+    var c=findCanvas();
+    if(!c)return;
+    var menuLike=!document.pointerLockElement;
+    active=menuLike;
+    if(fx)fx.classList.toggle("active",active);
+    if(active){
+      c.style.transformOrigin="50% 50%";
+      c.style.transform="translate3d("+(last.x*8).toFixed(2)+"px,"+(last.y*6).toFixed(2)+"px,0) scale(1.012)";
+      c.style.transition="transform 180ms ease-out";
+    }else{
+      c.style.transform="";
+      c.style.transition="";
+    }
+  }
+  function onMove(e){
+    last.x=e.clientX/Math.max(1,window.innerWidth)-.5;
+    last.y=e.clientY/Math.max(1,window.innerHeight)-.5;
+    setMode();
+  }
+  function boot(){
+    ensureFx();
+    window.addEventListener("mousemove",onMove,{passive:true});
+    document.addEventListener("pointerlockchange",setMode);
+    window.addEventListener("resize",setMode);
+    setInterval(setMode,700);
+    setMode();
+  }
+  window.addEventListener("load",boot,{once:true});
+})();
+</script>
 </head>
 	<body style="margin:0px;width:100%;height:100%;overflow:hidden;background-color:black;" id="game_frame"></body>
 </html>
