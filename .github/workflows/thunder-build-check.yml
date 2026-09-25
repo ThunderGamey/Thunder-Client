@@ -1,0 +1,38 @@
+name: Thunder build check
+
+# Rebuilds classes.js from backups/classes.clean-base.js + thunder/thunder-client.js with the
+# name verifier and fails if the committed classes.js is not exactly that output.
+# It never commits anything.
+
+on:
+  push:
+    paths:
+      - "thunder/**"
+      - "backups/classes.clean-base.js"
+      - "classes.js"
+      - ".github/workflows/thunder-build-check.yml"
+  pull_request:
+    paths:
+      - "thunder/**"
+      - "backups/classes.clean-base.js"
+      - "classes.js"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install parser
+        run: npm install --no-save --no-package-lock acorn@8
+      - name: Build and verify
+        run: node thunder/build.js --out /tmp/classes.js
+      - name: Committed classes.js matches the verified build
+        run: cmp /tmp/classes.js classes.js
+      - name: Syntax check
+        run: node --check classes.js

@@ -48725,117 +48725,19 @@ c.epQ});Object.defineProperty(c,"tabIndex",{get:c.eqU,set:c.fn9});Object.defineP
 "srcdoc",{get:c.fxz,set:c.fgV});Object.defineProperty(c,"contentDocument",{get:c.fzN});Object.defineProperty(c,"offsetWidth",{get:c.eYE});Object.defineProperty(c,"tagName",{get:c.e5p});Object.defineProperty(c,"offsetHeight",{get:c.fpR});Object.defineProperty(c,"width",{get:c.e8N,set:c.fzc});Object.defineProperty(c,"attributes",{get:c.fuH});Object.defineProperty(c,"absoluteLeft",{get:c.fCx});c=BGL.prototype;c[HC3]=true;c.resolveStr=c.eVE;c=A6v.prototype;c[HC3]=true;c.accept=c.fCg;c=Cjm.prototype;c.removeEventListener
 =c.emS;c.dispatchEvent=c.ecf;c.addEventListener=c.fqa;c=A2F.prototype;c[HC3]=true;c.handleEvent=c.i3;c=A0Y.prototype;c[HC3]=true;c.onMessage=c.egn;c=EPF.prototype;c[HC3]=true;c.handleEvent=c.i3;c=EPE.prototype;c[HC3]=true;c.handleEvent=c.i3;c=A0K.prototype;c[HC3]=true;c.handleEvent=c.i3;c=A0J.prototype;c[HC3]=true;c.handleEvent=c.i3;c=BO4.prototype;c[HC3]=true;c.handleEvent=c.i3;c=B01.prototype;c[HC3]=true;c.call=c.cvG;c=BCw.prototype;c[HC3]=true;c.handleEvent=c.PK;c=B7k.prototype;c[HC3]=true;c.handleEvent=
 c.PK;})();
-/* ========================= THUNDER CLIENT NATIVE v6 (HUD + Right Shift menu) =========================
-   Built into classes.js by thunder/build.js, which verifies every game name below against the
-   base build's own deobfuscation table before writing anything. Do not edit classes.js by hand.
-
-   Game functions this block replaces (each wrapper always falls through to the original):
-   @hook Ewc net.minecraft.client.gui.GuiIngame.renderGameOverlay
-   @hook C94 net.minecraft.client.renderer.ItemRenderer.renderFireInFirstPerson
-   @hook FN3 net.minecraft.client.renderer.EntityRenderer.hurtCameraEffect
-   @hook Cyx net.minecraft.client.renderer.EntityRenderer.setupViewBobbing
-   @hook Dvp net.minecraft.client.renderer.EntityRenderer.getFOVModifier
-   @hook G7V net.minecraft.util.datafix.DataFixesManager.createFixer
-
-   Game functions it calls:
-   @use Ff$ net.minecraft.init.Bootstrap.register
-   @use CBg net.minecraft.entity.Entity.isSprinting
-   @use Fch net.minecraft.entity.Entity.isSneaking
-   @use FPB net.minecraft.entity.EntityLivingBase.setSprinting
-   @use F9v net.minecraft.entity.EntityLivingBase.getActivePotionEffects
-   @use EZ6 net.minecraft.entity.EntityLivingBase.getHeldItemMainhand
-   @use Ctr net.minecraft.entity.EntityLivingBase.isActiveItemStackBlocking
-   @use A4G net.minecraft.client.entity.EntityPlayerSP.isHandActive
-   @use FAU net.minecraft.entity.player.EntityPlayer.getFoodStats
-   @use ZP net.minecraft.util.FoodStats.getFoodLevel
-   @use A1i net.minecraft.util.FoodStats.getSaturationLevel
-   @use CCI net.minecraft.item.ItemStack.func_190926_b
-   @use CRD net.minecraft.item.ItemStack.func_190916_E
-   @use EJu net.minecraft.item.ItemStack.getDisplayName
-   @use EjU net.minecraft.item.ItemStack.getMaxDamage
-   @use EHa net.minecraft.item.ItemStack.getItemDamage
-   @use CSt net.minecraft.potion.PotionEffect.getEffectName
-   @use ELx net.minecraft.potion.PotionEffect.getAmplifier
-   @use D8_ net.minecraft.potion.PotionEffect.getDuration
-   @use Chf net.minecraft.client.gui.GuiIngame.getFontRenderer
-   @use CC net.minecraft.client.gui.FontRenderer.getStringWidth
-   @use AIz net.minecraft.client.gui.ScaledResolution.getScaledWidth
-   @use ASe net.minecraft.client.gui.ScaledResolution.getScaledHeight
-   @use D49 net.minecraft.client.gui.Gui.drawRect
-   @use CFi net.lax1dude.eaglercraft.opengl.GlStateManager.color
-   @use Eu0 net.lax1dude.eaglercraft.opengl.GlStateManager.pushMatrix
-   @use ECi net.lax1dude.eaglercraft.opengl.GlStateManager.popMatrix
-   @use DPm net.lax1dude.eaglercraft.opengl.GlStateManager.translate
-   @use FWK net.lax1dude.eaglercraft.opengl.GlStateManager.scale
-   @use Dnz net.minecraft.client.renderer.RenderHelper.disableStandardItemLighting
-
-   Virtual (prototype) methods it calls:
-   @virtual eiX net.minecraft.client.gui.FontRenderer drawString
-   @virtual yE net.minecraft.entity.player.EntityPlayer getItemStackFromSlot
-   @virtual O * iterator
-   @virtual B * hasNext
-   @virtual z * next
-
-   Static fields (checked against the owning class's static initializer):
-   @static HHM net.minecraft.inventory.EntityEquipmentSlot HEAD
-   @static HIj net.minecraft.inventory.EntityEquipmentSlot CHEST
-   @static HJs net.minecraft.inventory.EntityEquipmentSlot LEGS
-   @static HJt net.minecraft.inventory.EntityEquipmentSlot FEET
-   @clinit Dt net.minecraft.inventory.EntityEquipmentSlot
-
-   Instance fields (checked against a method that reads them):
-   @field dk net.minecraft.client.gui.GuiIngame.renderHotbarItem GuiIngame.mc
-   @field nZ net.minecraft.client.gui.GuiIngame.renderGameOverlay Minecraft scaled resolution
-   @field v net.minecraft.client.gui.GuiIngame.renderGameOverlay Minecraft.player
-   @field G net.minecraft.client.gui.GuiIngame.renderHotbar Minecraft.gameSettings
-   @field bCx net.minecraft.client.renderer.EntityRenderer.updateLightmap GameSettings.gammaSetting
-   @field US net.minecraft.client.renderer.EntityRenderer.getFOVModifier EntityRenderer.fovModifierHand
-   @field cQr net.minecraft.client.renderer.EntityRenderer.getFOVModifier EntityRenderer.fovModifierHandPrev
-   @field b net.minecraft.entity.Entity.getPositionVector Entity.posX
-   @field f net.minecraft.entity.Entity.getPositionVector Entity.posY
-   @field c net.minecraft.entity.Entity.getPositionVector Entity.posZ
-   @field C net.minecraft.entity.Entity.getHorizontalFacing Entity.rotationYaw
-
-   TeaVM runtime:
-   @runtime $rt_globals x
-   @runtime $rt_str x
-   @runtime $rt_ustr x
-   @runtime $rt_suspending x
-   @runtime $rt_resuming x
-   @runtime $rt_nativeThread x
-
-   Suspension safety: compiled functions can suspend the TeaVM thread (texture/image loads,
-   IndexedDB, sleep). Every wrapper here saves its own state on the thread stack exactly like
-   compiled code does, so a suspended call resumes correctly instead of corrupting the stack.
+/* ========================= THUNDER CLIENT NATIVE (HUD + Right Shift menu) =========================
+   Drawn inside the game by hooking renderGameOverlay (Ewc). Every game function used below was
+   checked against the compiled code in this file:
+     CBg isSprinting, FPB setSprinting, ENU getHealth, Crp getMaxHealth, CkW getAbsorptionAmount,
+     FAU getFoodStats, ZP getFoodLevel, A1i getSaturationLevel, F9v getActivePotionEffects,
+     EZ6 getHeldItemMainhand, EJu getDisplayName, CRD getCount, EjU getMaxDamage, EHa getItemDamage,
+     CCI isEmpty, Ctr isActiveItemStackBlocking, A4G isHandActive, Fch isSneaking,
+     Chf getFontRenderer, CC getStringWidth, AIz/ASe scaled width/height, Dvp getFOVModifier,
+     FN3 hurtCameraEffect, Cyx setupViewBobbing, CFi GlStateManager.color(r,g,b,a).
+   Entity fields: b/f/c = posX/posY/posZ, C = yaw, bc = pitch. Minecraft: v = player, nZ = scaled
+   resolution, G = game settings (bCx = gamma). Java Strings in this build are objects, so every string
+   handed to the font renderer goes through $rt_str().
 =================================================================================================== */
-
-/* ---------------------------------------------------------------------------------------------
-   Integrated-server worker fix. In this build the worker's serverMain() creates the DataFixer
-   before Bootstrap.register(); the fixer touches EntityChicken -> Items, and Items refuses to load
-   before Bootstrap ("Accessed Items before Bootstrap!"), so every singleplayer world crashed on
-   start. Vanilla registers Bootstrap first; this does the same. register() is idempotent, so it
-   is harmless on builds that already do it. Runs only in the worker (no document there).
---------------------------------------------------------------------------------------------- */
-(function(){
-  var G=$rt_globals;
-  if(!G||G.document)return;
-  var origCreateFixer=G7V;
-  G7V=function(){
-    var st=1;
-    if($rt_resuming())st=$rt_nativeThread().pop();
-    if(st===1){
-      Ff$();
-      if($rt_suspending()){$rt_nativeThread().push(1);return null;}
-    }
-    var r=origCreateFixer();
-    if($rt_suspending()){$rt_nativeThread().push(2);return null;}
-    return r;
-  };
-})();
-
-/* ---------------------------------------------------------------------------------------------
-   Client
---------------------------------------------------------------------------------------------- */
 (function(){
   var G=$rt_globals;
   var W=G.window||G;
@@ -48855,7 +48757,7 @@ c.PK;})();
     toggleSprint:false,noBob:false,
     blockF3:true,
     fullbright:false,
-    fireOffset:0,
+    fireOffset:-0.35,
     shieldY:0,
     heldScale:0.85
   };
@@ -48885,7 +48787,7 @@ c.PK;})();
       ['direction','Direction','Facing and axis'],
       ['speed','Speed','Horizontal speed in blocks/second'],
       ['hunger','Hunger','Food level'],
-      ['saturation','Saturation','Saturation indicator above the hunger bar'],
+      ['saturation','Saturation','ModernClient-style yellow saturation pips'],
       ['effects','Potion Effects','Active effects with time left'],
       ['sprintStatus','Sprint Status','Shows whether you are sprinting'],
       ['shield','Shield / Blocking','Compact blocking indicator'],
@@ -48914,9 +48816,9 @@ c.PK;})();
     ]]
   ];
   var NUMERIC_RANGES={
-    fireOffset:{min:-0.55,max:0.45,step:0.05,format:function(v){return v.toFixed(2);}},
-    shieldY:{min:-45,max:45,step:1,format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}},
-    heldScale:{min:0.50,max:1.50,step:0.05,format:function(v){return v.toFixed(2)+'x';}}
+    fireOffset:{min:-0.55,max:0.45,step:0.05,unit:'',format:function(v){return v.toFixed(2);}},
+    shieldY:{min:-45,max:45,step:1,unit:' px',format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}},
+    heldScale:{min:0.50,max:1.50,step:0.05,unit:'x',format:function(v){return v.toFixed(2)+'x';}}
   };
 
   // ------------------------------------------------------------------
@@ -49022,31 +48924,64 @@ c.PK;})();
     backdrop.id='thunder-client-menu';
     backdrop.addEventListener('mousedown',function(e){if(e.target===backdrop)hideMenu();});
 
-    panel=el('div','position:relative;z-index:2;width:820px;max-width:94vw;height:78vh;max-height:720px;display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(18,23,34,.965),rgba(9,13,21,.985));border:1px solid rgba(79,209,255,.62);border-radius:14px;box-shadow:0 24px 90px rgba(0,0,0,.82),0 0 36px rgba(79,209,255,.10);color:#ecf7ff;user-select:none;overflow:hidden;');
+    // ModernClient-inspired animated Thunder scene: the panel stays stable while the scenery
+    // drifts opposite the cursor to create depth. Pure CSS/DOM, no external image dependency.
+    var scene=el('div','position:absolute;inset:-7%;z-index:0;pointer-events:none;overflow:hidden;transform:translate3d(0,0,0);');
+    scene.id='thunder-menu-scene';
+    var glow=el('div','position:absolute;inset:0;opacity:.72;background:radial-gradient(circle at 18% 20%,rgba(76,183,255,.16),transparent 27%),radial-gradient(circle at 76% 58%,rgba(155,79,255,.12),transparent 25%),linear-gradient(120deg,rgba(4,12,24,.35),rgba(8,13,25,.65));');
+    var cloudA=el('div','position:absolute;inset:-10%;opacity:.34;filter:blur(22px);background:radial-gradient(ellipse at 22% 34%,rgba(41,85,120,.58),transparent 28%),radial-gradient(ellipse at 64% 22%,rgba(78,51,115,.42),transparent 24%),radial-gradient(ellipse at 86% 72%,rgba(24,61,85,.45),transparent 26%);animation:thunderCloudDrift 16s ease-in-out infinite alternate;');
+    var cloudB=el('div','position:absolute;inset:-14%;opacity:.2;filter:blur(34px);background:radial-gradient(ellipse at 75% 35%,rgba(62,154,208,.5),transparent 30%),radial-gradient(ellipse at 25% 78%,rgba(117,58,174,.38),transparent 24%);animation:thunderCloudDrift2 21s ease-in-out infinite alternate;');
+    var bolt=el('div','position:absolute;left:68%;top:8%;width:2px;height:58%;opacity:0;background:linear-gradient(180deg,transparent 0%,rgba(229,248,255,.95) 22%,rgba(106,216,255,.8) 55%,transparent 100%);filter:blur(.3px);transform:rotate(7deg);box-shadow:0 0 18px rgba(89,215,255,.85),0 0 48px rgba(86,120,255,.35);animation:thunderMenuFlash 7.5s infinite;');
+    var bolt2=el('div','position:absolute;left:27%;top:25%;width:1px;height:42%;opacity:0;background:linear-gradient(180deg,transparent,rgba(201,221,255,.68),transparent);transform:rotate(-10deg);filter:blur(.4px);animation:thunderMenuFlash2 10s 2.8s infinite;');
+    var particles=el('div','position:absolute;inset:0;opacity:.16;background-image:radial-gradient(circle,rgba(208,239,255,.65) 0 1px,transparent 1.5px);background-size:56px 56px;animation:thunderParticleDrift 18s linear infinite;');
+    scene.appendChild(glow);scene.appendChild(cloudA);scene.appendChild(cloudB);scene.appendChild(bolt);scene.appendChild(bolt2);scene.appendChild(particles);
+    var style=D.getElementById('thunder-menu-anim-style');
+    if(!style){
+      style=D.createElement('style');style.id='thunder-menu-anim-style';
+      style.textContent='@keyframes thunderCloudDrift{from{transform:translate3d(-1.5%,-.5%,0) scale(1.02)}to{transform:translate3d(2%,1.2%,0) scale(1.06)}}@keyframes thunderCloudDrift2{from{transform:translate3d(2%,1%,0) scale(1.05)}to{transform:translate3d(-2%,-1.5%,0) scale(1.08)}}@keyframes thunderParticleDrift{from{background-position:0 0}to{background-position:56px 44px}}@keyframes thunderMenuFlash{0%,86%,100%{opacity:0}87%{opacity:.9}88%{opacity:.08}89%{opacity:.72}90%{opacity:0}}@keyframes thunderMenuFlash2{0%,88%,100%{opacity:0}89%{opacity:.65}90%{opacity:.1}91%{opacity:0}}';
+      (D.head||D.documentElement).appendChild(style);
+    }
+    backdrop.appendChild(scene);
+
+    panel=el('div','position:relative;z-index:2;width:820px;max-width:94vw;height:78vh;max-height:720px;display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(18,23,34,.965),rgba(9,13,21,.985));border:1px solid rgba(79,209,255,.62);border-radius:14px;box-shadow:0 24px 90px rgba(0,0,0,.82),0 0 36px rgba(79,209,255,.10),inset 0 0 0 1px rgba(255,255,255,.025);color:#ecf7ff;user-select:none;overflow:hidden;transform:translate3d(0,0,0);');
+
+    // Mouse parallax for the scenery; panel motion is deliberately tiny so controls remain stable.
+    backdrop.addEventListener('mousemove',function(e){
+      try{
+        var nx=((e.clientX/(W.innerWidth||1))-.5);
+        var ny=((e.clientY/(W.innerHeight||1))-.5);
+        scene.style.transform='translate3d('+(-nx*18).toFixed(2)+'px,'+(-ny*12).toFixed(2)+'px,0) scale(1.03)';
+        panel.style.transform='translate3d('+(nx*2.5).toFixed(2)+'px,'+(ny*1.7).toFixed(2)+'px,0)';
+      }catch(_){}
+    });
+    backdrop.addEventListener('mouseleave',function(){scene.style.transform='translate3d(0,0,0) scale(1.02)';panel.style.transform='translate3d(0,0,0)';});
 
     var head=el('div','padding:18px 20px 10px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;');
     var titleWrap=el('div','min-width:0;');
     titleWrap.appendChild(el('div','font-weight:800;font-size:21px;letter-spacing:.13em;color:#f4fbff;','THUNDER CLIENT'));
-    titleWrap.appendChild(el('div','font-size:11px;color:#8ca8ba;margin-top:5px;','Right Shift opens \u2022 Esc closes \u2022 changes save instantly'));
+    titleWrap.appendChild(el('div','font-size:11px;color:#8ca8ba;margin-top:5px;','Right Shift opens • Esc closes • changes save instantly'));
     head.appendChild(titleWrap);
+    var badge=el('div','font-size:10px;font-weight:700;letter-spacing:.08em;color:#06121a;background:#4fd1ff;padding:7px 9px;border-radius:7px;','HUD LAB');
+    head.appendChild(badge);
     panel.appendChild(head);
 
     tabsEl=el('div','display:flex;gap:7px;padding:0 20px 10px;flex-wrap:wrap;');
     panel.appendChild(tabsEl);
 
     var searchWrap=el('div','padding:0 20px 12px;');
-    searchInput=el('input','box-sizing:border-box;width:100%;height:38px;border:1px solid rgba(106,136,157,.42);border-radius:8px;background:rgba(4,8,14,.68);color:#eef8ff;padding:0 12px;font:12px Arial;outline:none;');
+    searchInput=el('input','box-sizing:border-box;width:100%;height:38px;border:1px solid rgba(106,136,157,.42);border-radius:8px;background:rgba(4,8,14,.68);color:#eef8ff;padding:0 12px;font:12px Arial;outline:none;','');
     searchInput.type='text';
-    searchInput.placeholder='Search modules or settings\u2026';
+    searchInput.placeholder='Search modules or settings…';
     searchInput.value=searchQuery;
     searchInput.addEventListener('input',function(){searchQuery=String(searchInput.value||'').toLowerCase();renderList();});
     searchWrap.appendChild(searchInput);
     panel.appendChild(searchWrap);
 
-    listEl=el('div','overflow-y:auto;padding:0 20px 14px;flex:1 1 auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:min-content;gap:9px;align-content:start;');
+    listEl=el('div','overflow-y:auto;padding:0 20px 14px;flex:1 1 auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:min-content;gap:9px;align-content:start;scrollbar-color:#355568 #0b0f17;');
     panel.appendChild(listEl);
 
-    var foot=el('div','display:flex;justify-content:flex-end;align-items:center;gap:12px;padding:9px 20px 14px;border-top:1px solid rgba(79,209,255,.14);');
+    var foot=el('div','display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 20px 14px;border-top:1px solid rgba(79,209,255,.14);background:rgba(4,7,12,.35);');
+    foot.appendChild(el('span','font-size:10px;color:#7893a5;','Tip: use the sliders under Visual to tune fire, shield, and held-item size.'));
     var reset=el('button','border:1px solid #46677a;background:#101c27;color:#eaf6ff;padding:7px 11px;border-radius:7px;font:11px Arial;cursor:pointer;','Reset all');
     reset.type='button';
     reset.onclick=function(){for(var id in DEFAULTS)S[id]=DEFAULTS[id];save();renderList();};
@@ -49071,32 +49006,33 @@ c.PK;})();
     var mods=CATS[currentTab][1].filter(function(m){return !q||String(m[1]).toLowerCase().indexOf(q)>=0||String(m[2]).toLowerCase().indexOf(q)>=0;});
     mods.forEach(function(m){
       var id=m[0];
-      var card=el('div','min-height:82px;padding:11px 12px;background:linear-gradient(180deg,rgba(23,29,41,.94),rgba(15,20,29,.94));border:1px solid rgba(101,129,148,.22);border-radius:9px;display:flex;flex-direction:column;justify-content:space-between;gap:9px;');
+      var card=el('div','min-height:82px;padding:11px 12px;background:linear-gradient(180deg,rgba(23,29,41,.94),rgba(15,20,29,.94));border:1px solid rgba(101,129,148,.22);border-radius:9px;box-shadow:0 5px 14px rgba(0,0,0,.18);display:flex;flex-direction:column;justify-content:space-between;gap:9px;');
       var top=el('div','display:flex;justify-content:space-between;gap:8px;align-items:flex-start;');
       var txt=el('div','min-width:0;');
       txt.appendChild(el('div','font-size:12px;font-weight:700;color:#f2f7fb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',m[1]));
       txt.appendChild(el('div','font-size:9px;line-height:1.3;color:#7690a0;margin-top:3px;',m[2]));
       top.appendChild(txt);
+
       if(Object.prototype.hasOwnProperty.call(NUMERIC_RANGES,id)){
         var info=NUMERIC_RANGES[id];
         var val=Number(S[id]);
         var valLabel=el('span','font-size:10px;font-weight:700;color:#ffd95c;',info.format(val));
         top.appendChild(valLabel);
         card.appendChild(top);
-        var range=D.createElement('input');
+        var range=document.createElement('input');
         range.type='range';range.min=String(info.min);range.max=String(info.max);range.step=String(info.step);range.value=String(val);
         range.style.cssText='width:100%;accent-color:#4fd1ff;cursor:pointer;';
         range.addEventListener('input',(function(id,info,valLabel,range){return function(){var nv=parseFloat(range.value);S[id]=nv;valLabel.textContent=info.format(nv);save();};})(id,info,valLabel,range));
         card.appendChild(range);
       }else{
         var btn=el('button','');btn.type='button';
-        var paint=(function(btn,id){return function(){
+        function paint(){
           var on=!!S[id];
           btn.textContent=on?'ON':'OFF';
           btn.style.cssText='min-width:48px;height:24px;border:1px solid '+(on?'#59db71':'#465765')+';border-radius:999px;background:'+(on?'rgba(70,208,96,.15)':'rgba(80,96,108,.12)')+';color:'+(on?'#a8ffb7':'#8da0ac')+';padding:0 8px;font:bold 10px Arial;cursor:pointer;flex:0 0 auto;';
-        };})(btn,id);
+        }
         paint();
-        btn.onclick=(function(id,paint){return function(){S[id]=!S[id];save();paint();};})(id,paint);
+        btn.onclick=function(){S[id]=!S[id];save();paint();};
         top.appendChild(btn);
         card.appendChild(top);
       }
@@ -49108,54 +49044,21 @@ c.PK;})();
   TC.reset=function(){for(var id in DEFAULTS)S[id]=DEFAULTS[id];save();if(menuOpen)renderList();};
 
   // ------------------------------------------------------------------
-  // Suspension-safe draw list
+  // In-game drawing helpers
   // ------------------------------------------------------------------
-  // The HUD is collected as a list of operations first; each operation is exactly one call into
-  // the game. runOps executes them. If a call suspends the TeaVM thread, runOps reports the index
-  // so the hook can save (list, index) on the thread stack; on resume that same call is re-entered
-  // (it restores itself from the stack) and nothing before it runs twice.
-  var ops=null;          // list being built for this frame
-  var opDepth=0;         // matrices pushed by operations that have completed
-  function op(fn){
-    var a=[];
-    for(var i=1;i<arguments.length;i++)a.push(arguments[i]);
-    ops.push([fn,a,0]);
+  function draw(font,text,x,y,color){
+    font.eiX($rt_str(String(text)),x|0,y|0,color|0,1);
   }
-  function opPush(){ops.push([Eu0,[],1]);}
-  function opPop(){ops.push([ECi,[],-1]);}
-  function runOps(list,i){
-    for(;i<list.length;i++){
-      var o=list[i];
-      o[0].apply(null,o[1]);
-      if($rt_suspending())return i;
-      opDepth+=o[2];
-    }
-    return -1;
-  }
-  function unwindOps(){
-    while(opDepth>0){opDepth--;try{ECi();}catch(_){}}
-    opDepth=0;
-    try{Dnz();}catch(_){}
-    try{CFi(1.0,1.0,1.0,1.0);}catch(_){}
-  }
-
-  // ------------------------------------------------------------------
-  // HUD helpers (they only queue operations)
-  // ------------------------------------------------------------------
-  function drawStringOp(font,s,x,y,color){return font.eiX(s,x,y,color,1);}
-  function text(font,str,x,y,color){op(drawStringOp,font,$rt_str(String(str)),x|0,y|0,color|0);}
-  function textScaled(font,str,x,y,color,scale){
-    var s=(typeof scale==='number'&&isFinite(scale))?scale:1.0;
-    if(s===1){text(font,str,x,y,color);return;}
-    opPush();op(DPm,x|0,y|0,0.0);op(FWK,s,s,s);
-    text(font,str,0,0,color);
-    opPop();
-  }
-  function rect(x1,y1,x2,y2,color){op(D49,x1|0,y1|0,x2|0,y2|0,color|0);}
-  function textWidth(font,str){return CC(font,$rt_str(String(str)));}
+  function textWidth(font,text){return CC(font,$rt_str(String(text)));}
   function pctColor(p){return p<=25?0xFF5555:(p<=50?0xFFFF55:0xFFFFFF);}
   function fmt1(n){return (Math.round(n*10)/10).toFixed(1);}
   function pad2(n){return n<10?'0'+n:''+n;}
+  function drawScaled(font,text,x,y,color,scale){
+    var s=(typeof scale==='number'&&isFinite(scale))?scale:1.0;
+    if(s===1){draw(font,text,x,y,color);return;}
+    try{Eu0();DPm(x|0,y|0,0);FWK(s,s,s);draw(font,text,0,0,color);ECi();}
+    catch(_){try{draw(font,text,x,y,color);}catch(__){}}
+  }
 
   function armorPct(player,slot){
     try{
@@ -49236,14 +49139,14 @@ c.PK;})();
     var forward=!!(keyState.KeyW||keyState.ArrowUp);
     var want=forward&&!menuOpen&&locked()&&!Fch(player)&&!A4G(player)&&!Ctr(player)&&ZP(FAU(player))>6;
     var cur=!!CBg(player);
-    if(want&&!cur)op(FPB,player,1);
-    else if(!want&&cur&&!forward)op(FPB,player,0);
+    if(want&&!cur)FPB(player,1);
+    else if(!want&&cur&&!forward)FPB(player,0);
   }
 
   // ------------------------------------------------------------------
-  // HUD (queues operations; nothing here calls into rendering directly)
+  // HUD
   // ------------------------------------------------------------------
-  function buildHud(gui){
+  function drawHud(gui){
     var mc=gui&&gui.dk;
     if(!mc)return;
     fullbrightTick(mc);
@@ -49280,10 +49183,12 @@ c.PK;})();
           if(cnt>1)txt+=' x'+cnt;
           var mx=EjU(st),col=0xFFFFFF;
           if(mx>0){
-            var durabilityPct=Math.round((mx-EHa(st))*100/mx);
+            var leftDur=mx-EHa(st);
+            var durabilityPct=Math.round(leftDur*100/mx);
             txt+=' '+durabilityPct+'%';
             col=pctColor(durabilityPct);
           }
+          // Compact held-item line is drawn above the hotbar.
           heldDisplay=['Held '+txt,col];
         }
       }catch(_){}
@@ -49298,21 +49203,27 @@ c.PK;})();
     }
     if(S.speed)left.push(['Speed '+fmt1(speed)+' b/s',0xFFFFFF]);
     var saturationValue=0;
+    var foodValue=0;
     if(S.hunger||S.saturation){
       try{
         var fs=FAU(player);
+        foodValue=ZP(fs);
         saturationValue=A1i(fs);
-        if(S.hunger)left.push(['Food '+ZP(fs),0xFFAA00]);
+        if(S.hunger)left.push(['Food '+foodValue,0xFFAA00]);
       }catch(_){}
     }
     if(S.saturation){
-      var satUnits=Math.max(0,Math.min(20,saturationValue))/2.0;
+      // ModernClient-inspired saturation pips: 10 compact yellow segments above the hunger area.
+      var satClamped=Math.max(0,Math.min(20,saturationValue));
+      var satUnits=satClamped/2.0;
       var satX=Math.round(width/2+46),satY=height-31;
       for(var spip=0;spip<10;spip++){
         var fill=Math.max(0,Math.min(1,satUnits-spip));
         var px0=satX+spip*8;
-        rect(px0,satY,px0+6,satY+3,0xFF3A3A3A);
-        if(fill>0)rect(px0,satY,px0+Math.max(2,Math.round(6*fill)),satY+3,0xFFFFC928);
+        try{
+          D49(px0,satY,px0+6,satY+3,0xFF3A3A3A);
+          if(fill>0)D49(px0,satY,px0+Math.max(2,Math.round(6*fill)),satY+3,0xFFFFC928);
+        }catch(_){}
       }
     }
     if(S.sprintStatus){
@@ -49323,6 +49234,7 @@ c.PK;})();
     if(S.shield){
       try{blockingNow=!!Ctr(player);}catch(_){}
     }
+
     if(S.clock){
       var d=new Date();
       right.push([pad2(d.getHours())+':'+pad2(d.getMinutes())+':'+pad2(d.getSeconds()),0xFFFFFF]);
@@ -49344,30 +49256,37 @@ c.PK;})();
     }
 
     var x=5,y=5,dy=10,j;
-    for(j=0;j<left.length;j++){text(font,left[j][0],x,y,left[j][1]);y+=dy;}
+    for(j=0;j<left.length;j++){draw(font,left[j][0],x,y,left[j][1]);y+=dy;}
     y=5;
     for(j=0;j<right.length;j++){
-      text(font,right[j][0],width-textWidth(font,right[j][0])-5,y,right[j][1]);
+      draw(font,right[j][0],width-textWidth(font,right[j][0])-5,y,right[j][1]);
       y+=dy;
     }
+
+    // Armor durability: compact percentages directly above the vanilla armor/shield area.
     if(armorDisplay.length){
       var armorX=Math.round(width/2-36);
       var armorY=Math.max(5,height-68);
-      for(var ai=0;ai<armorDisplay.length;ai++)text(font,armorDisplay[ai][0],armorX+ai*18,armorY,armorDisplay[ai][1]);
+      for(var ai=0;ai<armorDisplay.length;ai++)draw(font,armorDisplay[ai][0],armorX+ai*18,armorY,armorDisplay[ai][1]);
     }
     if(blockingNow){
       var shText='BLOCKING';
       var shW=textWidth(font,shText)+12;
       var shX=Math.round(width/2-shW/2);
       var shY=Math.round(height-54+S.shieldY);
-      rect(shX,shY-2,shX+shW,shY+10,0x99080F17);
-      rect(shX,shY-2,shX+2,shY+10,0xFF55E8FF);
-      text(font,shText,shX+7,shY,0xFF8AF3FF);
+      try{
+        D49(shX,shY-2,shX+shW,shY+10,0x99080F17);
+        D49(shX,shY-2,shX+2,shY+10,0xFF55E8FF);
+      }catch(_){}
+      draw(font,shText,shX+7,shY,0xFF8AF3FF);
     }
     if(heldDisplay){
       var heldScale=(typeof S.heldScale==='number'?S.heldScale:0.85);
-      textScaled(font,heldDisplay[0],Math.max(5,width-textWidth(font,heldDisplay[0])-8),Math.max(5,height-18),heldDisplay[1],heldScale);
+      var heldX=Math.max(5,width-textWidth(font,heldDisplay[0])-8);
+      var heldY=Math.max(5,height-18);
+      drawScaled(font,heldDisplay[0],heldX,heldY,heldDisplay[1],heldScale);
     }
+
     if(S.keystrokes){
       var ky=height-46,kx=width-51;
       var keys=[
@@ -49378,55 +49297,38 @@ c.PK;})();
         ['LMB',mouseState[0],kx-2,ky+24],
         ['RMB',mouseState[2],kx+26,ky+24]
       ];
-      for(var q=0;q<keys.length;q++)text(font,keys[q][0],keys[q][2],keys[q][3],keys[q][1]?0x55FF55:0xFFFFFF);
+      for(var q=0;q<keys.length;q++)draw(font,keys[q][0],keys[q][2],keys[q][3],keys[q][1]?0x55FF55:0xFFFFFF);
     }
     // the font renderer leaves the GL color tinted; put it back so later GUI drawing is unaffected
-    op(CFi,1.0,1.0,1.0,1.0);
+    try{CFi(1.0,1.0,1.0,1.0);}catch(_){}
   }
-  TC.buildHud=buildHud;
+  TC.render=drawHud;
+  TC.fireNotice='The vanilla renderer requests minecraft:blocks/fire_layer_0. Purple/black fire means the active resource pack is missing or overriding that atlas texture; this is separate from the HUD hook.';
 
   // ------------------------------------------------------------------
-  // Hooks
+  // Hooks (each wrapper falls through to the original game code)
   // ------------------------------------------------------------------
-  var errCount=0;
-  function report(e){
-    TC.lastError=e;
-    if(errCount++<5&&W.console&&W.console.warn)W.console.warn('[Thunder] HUD error',e);
-  }
-
-  // renderGameOverlay: vanilla first, then the Thunder HUD list (TeaVM-resumable).
-  var origEwc=Ewc;
-  Ewc=function(a,b){
-    var st=0,list=null,i=0,t;
-    if($rt_resuming()){t=$rt_nativeThread();i=t.pop();list=t.pop();st=t.pop();b=t.pop();a=t.pop();}
-    if(st===0){
-      origEwc(a,b);
-      if($rt_suspending()){$rt_nativeThread().push(a,b,0,null,0);return;}
-      ops=[];opDepth=0;
-      try{buildHud(a);list=ops;}catch(e){report(e);list=null;}
-      ops=null;i=0;
-    }
-    if(list){
-      try{i=runOps(list,i);}
-      catch(e){report(e);i=-1;unwindOps();}
-      if(i>=0){$rt_nativeThread().push(a,b,1,list,i);return;}
-    }
-  };
-
-  // Fire overlay: 0.00 is vanilla, negative moves the first-person fire down, positive up.
+  // Fire-overlay hook: Fire Height slider uses 0.00 as vanilla position; negative values move it down.
   var origC94=C94;
   C94=function(a){
-    var st=0,t;
-    if($rt_resuming()){t=$rt_nativeThread();st=t.pop();a=t.pop();}
-    else{
-      var off=(typeof S.fireOffset==='number'&&isFinite(S.fireOffset))?S.fireOffset:0;
-      if(Math.abs(off)>=0.001){Eu0();DPm(0.0,off,0.0);st=1;}
+    var off=(typeof S.fireOffset==='number'&&isFinite(S.fireOffset))?S.fireOffset:0;
+    if(Math.abs(off)<0.001)return origC94(a);
+    try{Eu0();DPm(0.0,off,0.0);return origC94(a);}
+    finally{try{ECi();}catch(_){}}
+  };
+
+  var origEwc=Ewc;
+  var errCount=0;
+  Ewc=function(a,b){
+    var r=origEwc(a,b);
+    if(!$rt_suspending()){
+      try{drawHud(a,b);}
+      catch(e){
+        TC.lastError=e;
+        if(errCount++<3&&W.console&&W.console.warn)W.console.warn('[Thunder] HUD error',e);
+      }
     }
-    try{origC94(a);}
-    finally{
-      if($rt_suspending())$rt_nativeThread().push(a,st);
-      else if(st===1)ECi();
-    }
+    return r;
   };
 
   var origFN3=FN3;
@@ -49441,22 +49343,18 @@ c.PK;})();
     return origCyx(a,b);
   };
 
-  // FOV: with No FOV Change the hand FOV modifier is pinned to 1.0 for the duration of the call.
   var origDvp=Dvp;
   Dvp=function(a,b,c){
-    var o1=0,o2=0,pinned=0,t,r;
-    if($rt_resuming()){t=$rt_nativeThread();pinned=t.pop();o2=t.pop();o1=t.pop();}
-    else if(S.noFov&&c&&a&&typeof a.US==='number'&&typeof a.cQr==='number'){
-      o1=a.US;o2=a.cQr;a.US=1.0;a.cQr=1.0;pinned=1;
+    if(S.noFov&&c&&!$rt_resuming()&&a&&typeof a.US==='number'&&typeof a.cQr==='number'){
+      var o1=a.US,o2=a.cQr;
+      a.US=1.0;a.cQr=1.0;
+      try{return origDvp(a,b,c);}
+      finally{a.US=o1;a.cQr=o2;}
     }
-    try{r=origDvp(a,b,c);}
-    finally{
-      if($rt_suspending())$rt_nativeThread().push(o1,o2,pinned);
-      else if(pinned){a.US=o1;a.cQr=o2;}
-    }
-    return r;
+    return origDvp(a,b,c);
   };
 })();
+
 }));
 
 //# sourceMappingURL=../classes.js.map
