@@ -75,8 +75,10 @@ function decodeNames(src) {
   const parts = data[0], pool = data[1];
   const methods = new Map();           // jsName -> "java.Class.method"
   const byJava = new Map();            // "java.Class.method" -> [jsName...]
+  const classes = new Map();           // JS constructor name -> "java.Class"
   for (let k = 2; k < data.length - 2; k += 3) {
     const cls = dec(data[k]).map((i) => parts[i]).join('.');
+    classes.set(data[k + 1], cls);
     const m2 = dec(data[k + 2]);
     for (let p = 0; p + 1 < m2.length; p += 2) {
       const js = pool[m2[p]], java = cls + '.' + pool[m2[p + 1]];
@@ -85,7 +87,7 @@ function decodeNames(src) {
       byJava.get(java).push(js);
     }
   }
-  return { methods, byJava };
+  return { methods, byJava, classes };
 }
 const names = decodeNames(base);
 console.log('names  ' + names.methods.size + ' compiled functions mapped to Java methods');
@@ -169,7 +171,7 @@ if (/[^\x00-\x7f]/.test(thunder)) fail('thunder-client.js must be ASCII only (us
 const manifest = new Map();   // name -> {kind, target, extra}
 const errors = [];
 for (const line of thunder.split('\n')) {
-  const m = /^\s*\*?\s*@(hook|use|static|clinit|field|virtual|runtime)\s+(\S+)\s+(\S+)(?:\s+(.*))?$/.exec(line);
+  const m = /^\s*\*?\s*@(hook|use|static|clinit|class|new|field|virtual|runtime)\s+(\S+)\s+(\S+)(?:\s+(.*))?$/.exec(line);
   if (!m) continue;
   const [, kind, name, target, extra] = m;
   if (kind === 'field' || kind === 'virtual') {
@@ -224,6 +226,16 @@ for (const [name, e] of manifest) {
     const clinit = jsOf(e.target + '.<clinit>');
     const b = topFunctionBody(base, name);
     if (!b || !clinit.some((j) => b.indexOf(j + '(') >= 0)) errors.push('@clinit ' + name + ' does not run ' + e.target + '.<clinit>');
+  } else if (e.kind === 'new') {
+    // TeaVM constructor factory: function F(..){var x=new Cls();Init(x,..);return x;}
+    const b = topFunctionBody(base, name) || '';
+    const mm = /\{var ([a-z$]+)=new ([A-Za-z0-9_$]+)\(\);([A-Za-z0-9_$]+)\(\1[,)]/.exec(b);
+    if (!mm) errors.push('@new ' + name + ' is not a constructor factory');
+    else if (names.classes.get(mm[2]) !== e.target || javaOf(mm[3]) !== e.target + '.<init>') {
+      errors.push('@new ' + name + ' constructs ' + (names.classes.get(mm[2]) || mm[2]) + ' via ' + (javaOf(mm[3]) || mm[3]) + ', expected ' + e.target);
+    }
+  } else if (e.kind === 'class') {
+    if (names.classes.get(name) !== e.target) errors.push('@class ' + name + ' is ' + (names.classes.get(name) || 'unknown') + ' in this base, expected ' + e.target);
   } else if (e.kind === 'runtime') {
     if (!hasTopLevel(base, name)) errors.push('@runtime ' + name + ' not found in base');
   }
@@ -326,6 +338,9 @@ console.log('thunder ' + path.relative(ROOT, SRC) + '  ' + block.length + ' byte
 console.log('hooks  ' + hooks.map((h) => h + '=' + (javaOf(h) || '?').replace(/^net\.minecraft\.|^net\.lax1dude\.eaglercraft\./, '')).join('  '));
 console.log('uses   ' + [...manifest.values()].filter((e) => e.kind === 'use').length + ' game functions, ' +
   [...manifest.values()].filter((e) => e.kind === 'static').length + ' static fields, ' +
+  [...manifest.values()].filter((e) => e.kind === 'class').length + ' classes, ' +
+  [...manifest.values()].filter((e) => e.kind === 'new').length + ' constructors, ' +
+  [...manifest.keys()].filter((k) => k[0] === '#').length + ' virtual methods, ' +
   [...manifest.keys()].filter((k) => k[0] === '.').length + ' instance fields - all verified');
 if (CHECK_ONLY) { console.log('check  OK (nothing written)'); process.exit(0); }
 fs.writeFileSync(OUT, out);

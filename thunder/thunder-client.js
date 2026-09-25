@@ -41,6 +41,17 @@
    @use DPm net.lax1dude.eaglercraft.opengl.GlStateManager.translate
    @use FWK net.lax1dude.eaglercraft.opengl.GlStateManager.scale
    @use Dnz net.minecraft.client.renderer.RenderHelper.disableStandardItemLighting
+   @use FKF net.minecraft.client.renderer.RenderHelper.enableGUIStandardItemLighting
+   @use FkK net.minecraft.client.renderer.RenderItem.renderItemAndEffectIntoGUI
+   @use F8l net.minecraft.client.renderer.RenderItem.renderItemOverlays
+   @use CyN net.lax1dude.eaglercraft.opengl.GlStateManager.enableBlend
+   @use CTO net.lax1dude.eaglercraft.opengl.GlStateManager.disableBlend
+   @use B$o net.lax1dude.eaglercraft.opengl.GlStateManager.tryBlendFuncSeparate
+   @use D17 net.minecraft.client.renderer.texture.TextureManager.bindTexture
+   @use FYs net.minecraft.client.gui.Gui.drawTexturedModalRect
+   @use DlC net.minecraft.entity.player.EntityPlayer.getPrimaryHand
+   @use CiU net.minecraft.util.EnumHandSide.opposite
+   @use YZ net.minecraft.client.multiplayer.PlayerControllerMP.isSpectator
 
    Virtual (prototype) methods it calls:
    @virtual eiX net.minecraft.client.gui.FontRenderer drawString
@@ -55,6 +66,8 @@
    @static HJs net.minecraft.inventory.EntityEquipmentSlot LEGS
    @static HJt net.minecraft.inventory.EntityEquipmentSlot FEET
    @clinit Dt net.minecraft.inventory.EntityEquipmentSlot
+   @static HJu net.minecraft.util.EnumHandSide LEFT
+   @static Lo2 net.minecraft.client.gui.GuiIngame WIDGETS_TEX_PATH (textures/gui/widgets.png)
 
    Instance fields (checked against a method that reads them):
    @field dk net.minecraft.client.gui.GuiIngame.renderHotbarItem GuiIngame.mc
@@ -68,6 +81,10 @@
    @field f net.minecraft.entity.Entity.getPositionVector Entity.posY
    @field c net.minecraft.entity.Entity.getPositionVector Entity.posZ
    @field C net.minecraft.entity.Entity.getHorizontalFacing Entity.rotationYaw
+   @field b0l net.minecraft.client.gui.GuiIngame.renderHotbarItem GuiIngame.itemRenderer
+   @field bH net.minecraft.client.gui.GuiIngame.renderHotbar Minecraft.renderEngine
+   @field dz net.minecraft.client.gui.GuiIngame.renderHotbar Gui.zLevel
+   @field dw net.minecraft.client.gui.GuiIngame.renderGameOverlay Minecraft.playerController
 
    TeaVM runtime:
    @runtime $rt_globals x
@@ -130,7 +147,8 @@
     fullbright:false,
     fireOffset:0,
     shieldY:0,
-    heldScale:0.85
+    heldScale:0.85,
+    armorX:0,armorY:0,armorWarn:true
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -152,7 +170,8 @@
   // Menu layout: [category, [[id, label, description], ...]]
   var CATS=[
     ['HUD',[
-      ['armor','Armor Status','Durability of worn armor'],
+      ['armor','Armor HUD','Worn armor as item icons with vanilla durability bars, next to the off-hand slot'],
+      ['armorWarn','Low Armor Warning','Pulses a slot red when that piece is below 10% durability'],
       ['heldItem','Held Item','Compact held-item display'],
       ['coords','Coordinates','XYZ position'],
       ['direction','Direction','Facing and axis'],
@@ -183,13 +202,17 @@
       ['fullbright','Fullbright','Maximum brightness everywhere'],
       ['fireOffset','Fire Height','Vertical fire-overlay offset (0 = vanilla)'],
       ['shieldY','Shield Height','Moves the blocking indicator higher/lower'],
-      ['heldScale','Held Item Size','Changes the size of the held-item text']
+      ['heldScale','Held Item Size','Changes the size of the held-item text'],
+      ['armorX','Armor HUD X','Moves the armor slots left/right'],
+      ['armorY','Armor HUD Y','Moves the armor slots up/down']
     ]]
   ];
   var NUMERIC_RANGES={
     fireOffset:{min:-0.55,max:0.45,step:0.05,format:function(v){return v.toFixed(2);}},
     shieldY:{min:-45,max:45,step:1,format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}},
-    heldScale:{min:0.50,max:1.50,step:0.05,format:function(v){return v.toFixed(2)+'x';}}
+    heldScale:{min:0.50,max:1.50,step:0.05,format:function(v){return v.toFixed(2)+'x';}},
+    armorX:{min:-120,max:120,step:1,format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}},
+    armorY:{min:-120,max:0,step:1,format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}}
   };
 
   // ------------------------------------------------------------------
@@ -426,21 +449,77 @@
   }
   function rect(x1,y1,x2,y2,color){op(D49,x1|0,y1|0,x2|0,y2|0,color|0);}
   function textWidth(font,str){return CC(font,$rt_str(String(str)));}
+
+  // Items: same GL setup as vanilla GuiIngame.renderHotbar around renderHotbarItem.
+  function itemsBegin(){op(CyN);op(B$o,770,771,1,0);op(FKF);}
+  function itemsEnd(){op(Dnz);op(CTO);op(CFi,1.0,1.0,1.0,1.0);}
+  function itemIcon(ctx,stack,x,y){
+    op(FkK,ctx.ri,ctx.player,stack,x|0,y|0);        // icon + enchantment glint
+    op(F8l,ctx.ri,ctx.font,stack,x|0,y|0);          // vanilla count + durability bar
+  }
+  function setZ(gui,z){gui.dz=z;}
+  // widgets.png blits at the hotbar's z-level (-90), exactly like vanilla draws the hotbar frame
+  function widgetsBegin(ctx){op(D17,ctx.tm,Lo2);op(CFi,1.0,1.0,1.0,1.0);op(setZ,ctx.gui,-90.0);}
+  function widgetsEnd(ctx){op(setZ,ctx.gui,ctx.z0);}
+  function blit(ctx,x,y,u,v,w,h){op(FYs,ctx.gui,x|0,y|0,u,v,w,h);}
+  // n-slot strip cut from the hotbar texture: left border + n slots + right border (20px pitch)
+  function slotStrip(ctx,x,y,n){
+    blit(ctx,x,y,0,0,1+20*n,22);
+    blit(ctx,x+1+20*n,y,181,0,1,22);
+  }
+  function clamp(v,a,b){return v<a?a:(v>b?b:v);}
+
+  // ------------------------------------------------------------------
+  // Armor HUD: worn armor as real item icons in a hotbar-style strip next to the off-hand slot.
+  // Durability is the vanilla item durability bar (plus an optional red pulse under 10%).
+  // ------------------------------------------------------------------
+  function armorHud(ctx){
+    var p=ctx.player,i,st;
+    Dt();
+    var pieces=[p.yE(HHM),p.yE(HIj),p.yE(HJs),p.yE(HJt)];      // helmet, chest, legs, boots
+    var worn=0;
+    for(i=0;i<4;i++){
+      st=pieces[i];
+      if(st&&!CCI(st))worn++;else pieces[i]=null;
+    }
+    if(!worn)return;
+    // default: one row of 4 just outside the (reserved) off-hand slot; 2x2 when the screen is narrow
+    var cols=4,rows=1,w=82,h=22;
+    var gap=4,off=29;
+    var x=ctx.offLeft?ctx.cx-91-off-gap-w:ctx.cx+91+off+gap;
+    if(x<2||x+w>ctx.w-2){
+      cols=2;rows=2;w=42;h=44;
+      x=ctx.offLeft?ctx.cx-91-off-gap-w:ctx.cx+91+off+gap;
+    }
+    var y=ctx.h-h;
+    x=clamp(Math.round(x+(Number(S.armorX)||0)),0,ctx.w-w);
+    y=clamp(Math.round(y+(Number(S.armorY)||0)),0,ctx.h-h);
+
+    widgetsBegin(ctx);
+    for(i=0;i<rows;i++)slotStrip(ctx,x,y+i*22,cols);
+    widgetsEnd(ctx);
+
+    if(S.armorWarn){
+      var pulse=0.5+0.5*Math.sin(now()/140);
+      for(i=0;i<4;i++){
+        st=pieces[i];
+        if(!st)continue;
+        var max=EjU(st);
+        if(max<=0||(max-EHa(st))/max>=0.10)continue;
+        var sx=x+3+(i%cols)*20,sy=y+3+((i/cols)|0)*22;
+        rect(sx-1,sy-1,sx+17,sy+17,((0x30+Math.round(0x50*pulse))<<24)|0xFF2A2A);
+      }
+    }
+
+    itemsBegin();
+    for(i=0;i<4;i++){
+      if(pieces[i])itemIcon(ctx,pieces[i],x+3+(i%cols)*20,y+3+((i/cols)|0)*22);
+    }
+    itemsEnd();
+  }
   function pctColor(p){return p<=25?0xFF5555:(p<=50?0xFFFF55:0xFFFFFF);}
   function fmt1(n){return (Math.round(n*10)/10).toFixed(1);}
   function pad2(n){return n<10?'0'+n:''+n;}
-
-  function armorPct(player,slot){
-    try{
-      var st=player.yE(slot);
-      if(st===null||st===undefined)return null;
-      if(CCI(st))return null;
-      var max=EjU(st);
-      if(max<=0)return null;
-      var p=Math.round((max-EHa(st))*100/max);
-      return p<0?0:(p>100?100:p);
-    }catch(_){return null;}
-  }
 
   var EFFECT_NAMES={
     moveSpeed:'Speed',moveSlowdown:'Slowness',digSpeed:'Haste',digSlowDown:'Mining Fatigue',
@@ -536,14 +615,10 @@
     var havePos=typeof px==='number'&&typeof py==='number'&&typeof pz==='number';
     if(havePos)updateSpeed(px,pz);
 
-    var armorDisplay=[];
-    if(S.armor){
-      try{
-        Dt();
-        var vals=[armorPct(player,HHM),armorPct(player,HIj),armorPct(player,HJs),armorPct(player,HJt)];
-        for(var i=0;i<4;i++)if(vals[i]!==null)armorDisplay.push([vals[i]+'%',pctColor(vals[i])]);
-      }catch(_){}
-    }
+    var ctx={gui:gui,mc:mc,player:player,font:font,ri:gui.b0l,tm:mc.bH,z0:gui.dz,
+      w:width,h:height,cx:(width/2)|0,offLeft:true};
+    try{ctx.offLeft=CiU(DlC(player))===HJu;}catch(_){}
+    var itemHud=!YZ(mc.dw)&&!!ctx.ri&&!!ctx.tm;     // no hotbar (so no item HUD) in spectator
     if(S.heldItem){
       try{
         var st=EZ6(player);
@@ -623,11 +698,7 @@
       text(font,right[j][0],width-textWidth(font,right[j][0])-5,y,right[j][1]);
       y+=dy;
     }
-    if(armorDisplay.length){
-      var armorX=Math.round(width/2-36);
-      var armorY=Math.max(5,height-68);
-      for(var ai=0;ai<armorDisplay.length;ai++)text(font,armorDisplay[ai][0],armorX+ai*18,armorY,armorDisplay[ai][1]);
-    }
+    if(S.armor&&itemHud)armorHud(ctx);
     if(blockingNow){
       var shText='BLOCKING';
       var shW=textWidth(font,shText)+12;
