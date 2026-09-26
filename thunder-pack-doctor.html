@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thunder Pack Doctor</title>
+<link type="image/png" rel="shortcut icon" href="favicon.png">
+<style>
+  :root { --bg:#070b12; --panel:#0e1520; --card:#121b28; --line:rgba(88,196,255,.18); --text:#e6f4ff; --muted:#86a2b7;
+          --cyan:#4fd1ff; --fix:#59e06a; --warn:#ffc940; --info:#7f9bb0; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; background:radial-gradient(ellipse at 50% -10%,rgba(79,209,255,.16),transparent 55%),var(--bg);
+         color:var(--text); font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; display:flex; justify-content:center; padding:32px 16px; }
+  main { width:100%; max-width:760px; }
+  h1 { margin:0; font-size:22px; letter-spacing:.14em; font-weight:800; }
+  h1 span { color:var(--cyan); text-shadow:0 0 18px rgba(79,209,255,.55); }
+  .sub { color:var(--muted); margin:6px 0 22px; }
+  .drop { display:block; border:1.5px dashed rgba(79,209,255,.45); border-radius:14px; background:var(--panel); padding:34px 20px; text-align:center;
+          cursor:pointer; transition:border-color .15s, background .15s, box-shadow .15s; }
+  .drop:hover, .drop.over { border-color:var(--cyan); background:#101a27; box-shadow:0 0 0 4px rgba(79,209,255,.08); }
+  .drop b { color:var(--cyan); }
+  .drop small { display:block; color:var(--muted); margin-top:6px; }
+  input[type=file] { display:none; }
+  .summary { display:none; margin:20px 0 10px; padding:14px 16px; border-radius:12px; background:var(--card); border:1px solid var(--line);
+             align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .summary.show { display:flex; }
+  .counts span { margin-right:14px; font-weight:600; }
+  .c-fix { color:var(--fix); } .c-warn { color:var(--warn); } .c-info { color:var(--info); }
+  button { font:600 13px system-ui,Arial,sans-serif; color:#04121a; background:var(--cyan); border:0; border-radius:9px; padding:10px 16px;
+           cursor:pointer; box-shadow:0 0 18px rgba(79,209,255,.35); }
+  button:disabled { background:#2a3a48; color:#7d91a0; box-shadow:none; cursor:default; }
+  ul { list-style:none; padding:0; margin:0; }
+  li { background:var(--card); border:1px solid var(--line); border-left:3px solid var(--info); border-radius:10px; padding:10px 12px; margin:8px 0; }
+  li.fix { border-left-color:var(--fix); } li.warn { border-left-color:var(--warn); }
+  li .tag { font:700 10px system-ui,Arial,sans-serif; letter-spacing:.08em; margin-right:8px; }
+  li.fix .tag { color:var(--fix); } li.warn .tag { color:var(--warn); } li.info .tag { color:var(--info); }
+  li code { color:#bfe9ff; word-break:break-all; }
+  .err { color:#ff7b7b; margin-top:14px; }
+  footer { color:var(--muted); font-size:12px; margin-top:26px; line-height:1.6; }
+</style>
+</head>
+<body>
+<main>
+  <h1>THUNDER <span>PACK DOCTOR</span></h1>
+  <p class="sub">Finds and repairs the resource-pack problems that turn fire, lava, water, portals and other animated textures into the purple/black missing texture. Everything runs in your browser; the pack is never uploaded.</p>
+
+  <label class="drop" id="drop">
+    <input type="file" id="file" accept=".zip,application/zip">
+    <b>Drop a resource pack .zip here</b> or click to choose one
+    <small>Your original file is not changed - you get a repaired copy to import in Options &rarr; Resource Packs.</small>
+  </label>
+
+  <div class="summary" id="summary">
+    <div class="counts" id="counts"></div>
+    <button id="download" disabled>Download repaired pack</button>
+  </div>
+  <ul id="report"></ul>
+  <div class="err" id="error"></div>
+
+  <footer>
+    What it fixes: block/item textures that are animation strips (taller than wide) need a matching
+    <code>&lt;name&gt;.png.mcmeta</code> in the same pack, and every frame listed in it must exist - otherwise
+    the game rejects the texture. Missing files are added (with vanilla frame order and speed when the frame
+    count matches), bad frame numbers are removed, <code>&lt;name&gt;.mcmeta</code> is renamed to
+    <code>&lt;name&gt;.png.mcmeta</code>, and broken JSON is replaced. Textures wider than tall are only reported,
+    because they need to be resized by hand.
+  </footer>
+</main>
+<script src="thunder/pack-doctor.js"></script>
+<script>
+(function () {
+  'use strict';
+  var input = document.getElementById('file'), drop = document.getElementById('drop');
+  var summary = document.getElementById('summary'), counts = document.getElementById('counts');
+  var list = document.getElementById('report'), errBox = document.getElementById('error'), dl = document.getElementById('download');
+  var result = null, fileName = 'pack.zip';
+
+  function streamThrough(bytes, stream) {
+    return new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer().then(function (b) { return new Uint8Array(b); });
+  }
+  var io = {
+    inflateRaw: function (b) {
+      if (typeof DecompressionStream === 'undefined') return Promise.reject(new Error('This browser cannot unzip files (DecompressionStream missing). Try a current Chrome, Edge, Firefox or Safari.'));
+      return streamThrough(b, new DecompressionStream('deflate-raw'));
+    },
+    deflateRaw: typeof CompressionStream === 'undefined' ? null : function (b) { return streamThrough(b, new CompressionStream('deflate-raw')); }
+  };
+
+  function show(res) {
+    list.textContent = '';
+    var n = { fix: 0, warn: 0, info: 0 };
+    res.report.forEach(function (r) {
+      n[r.level]++;
+      var li = document.createElement('li'); li.className = r.level;
+      var tag = document.createElement('span'); tag.className = 'tag';
+      tag.textContent = r.level === 'fix' ? 'FIXED' : (r.level === 'warn' ? 'CHECK' : 'INFO');
+      li.appendChild(tag);
+      if (r.path) { var c = document.createElement('code'); c.textContent = r.path; li.appendChild(c); li.appendChild(document.createTextNode(' - ')); }
+      li.appendChild(document.createTextNode(r.message));
+      list.appendChild(li);
+    });
+    counts.innerHTML = '';
+    [['fix', 'fixed'], ['warn', 'need a look'], ['info', 'info']].forEach(function (k) {
+      var s = document.createElement('span'); s.className = 'c-' + k[0]; s.textContent = n[k[0]] + ' ' + k[1]; counts.appendChild(s);
+    });
+    summary.classList.add('show');
+    dl.disabled = !res.changed;
+    dl.textContent = res.changed ? 'Download repaired pack' : 'Nothing to repair';
+  }
+
+  function handle(file) {
+    if (!file) return;
+    errBox.textContent = ''; list.textContent = ''; summary.classList.remove('show'); result = null;
+    fileName = file.name.replace(/\.zip$/i, '') + '-fixed.zip';
+    file.arrayBuffer().then(function (buf) { return ThunderPackDoctor.repair(new Uint8Array(buf), io); })
+      .then(function (res) { result = res; show(res); })
+      .catch(function (e) { errBox.textContent = 'Could not read that pack: ' + e.message; });
+  }
+
+  input.addEventListener('change', function () { handle(input.files[0]); input.value = ''; });
+  ['dragenter', 'dragover'].forEach(function (t) { drop.addEventListener(t, function (e) { e.preventDefault(); drop.classList.add('over'); }); });
+  ['dragleave', 'drop'].forEach(function (t) { drop.addEventListener(t, function (e) { e.preventDefault(); drop.classList.remove('over'); }); });
+  drop.addEventListener('drop', function (e) { handle(e.dataTransfer.files[0]); });
+  dl.addEventListener('click', function () {
+    if (!result) return;
+    var url = URL.createObjectURL(new Blob([result.zip], { type: 'application/zip' }));
+    var a = document.createElement('a'); a.href = url; a.download = fileName; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  });
+})();
+</script>
+</body>
+</html>
