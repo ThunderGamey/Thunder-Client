@@ -14,6 +14,22 @@
      @staticset HEj net.lax1dude.eaglercraft.opengl.GlStateManager.viewport (cached viewport width)
      @staticset HEk net.lax1dude.eaglercraft.opengl.GlStateManager.viewport (cached viewport height)
      @staticset KPa net.lax1dude.eaglercraft.opengl.GlStateManager.colorMask (cached color mask bits: r=1 g=2 b=4 a=8)
+
+     Where the sun is (Sun Rays and Atmosphere), read once per frame, all plain field reads or
+     small synchronous methods:
+     @use Q$ net.minecraft.world.World.getCelestialAngle
+     @use R$ net.minecraft.world.World.getRainStrength
+     @virtual Tv net.minecraft.world.WorldProvider isSurfaceWorld
+     @field bv net.minecraft.client.renderer.EntityRenderer.renderWorld EntityRenderer.mc
+     @field hI net.minecraft.client.renderer.EntityRenderer.renderWorld Minecraft.renderViewEntity
+     @field X net.minecraft.client.renderer.EntityRenderer.updateLightmap Minecraft.world
+     @field b4 net.minecraft.world.World.getCelestialAngle World.provider
+     @field lu net.minecraft.client.renderer.EntityRenderer.orientCamera GameSettings.thirdPersonView
+     @field cy net.minecraft.client.renderer.EntityRenderer.orientCamera Entity.prevRotationYaw
+     @field c1 net.minecraft.client.renderer.EntityRenderer.orientCamera Entity.prevRotationPitch
+     @field bc net.minecraft.client.renderer.EntityRenderer.orientCamera Entity.rotationPitch
+     (Entity.rotationYaw C and Minecraft.gameSettings G are declared in thunder-client.js; the
+     world camera's FOV comes from its getFOVModifier wrapper.)
      In this build those two GlStateManager methods are the only in-game code that sets the GL
      viewport and color mask (the raw calls elsewhere are the early loading screen and the WebGL 1
      presenter), so their caches are exact. Reading them avoids two synchronous GL queries per
@@ -49,7 +65,7 @@
   // threshold (soft at night, a sharp cut by day). scatter weights the wider blur levels.
   // Live-tunable from the console (ThunderClient.shaders.tune) while designing new looks.
   var SH_TUNE={thrDark:0.45,thrBright:0.9,knee:0.5,scatter:0.72,adaptMs:600};
-  var SH_UNITS=4;
+  var SH_UNITS=5;
 
   // Effects, in the order they run inside the one full-screen composite pass. Each adds a GLSL
   // block that is compiled in only while the effect is on, reads its strength (percent) from
@@ -57,19 +73,49 @@
   // levels, 'history' = the previous frame. New effects are added here (see SHADERS.md).
   var SH_EFFECTS=[
     {id:'bloom',on:'shBloom',str:'shBloomStr',max:1.2,needs:'chain',u:'u_bloom',
-      glsl:'c+=texture(u_bloomTex,v_uv).rgb*u_bloom;'},
+      glsl:'c+=texture(u_bloomTex,v_uv).rgb*vec3(1.06,0.98,0.9)*u_bloom;'},
     {id:'ambient',on:'shAmbient',str:'shAmbientStr',max:0.6,needs:'chain',u:'u_amb',
       glsl:'{vec4 w=texture(u_wideTex,v_uv);'+
         'c+=w.rgb*vec3(1.0,0.92,0.8)*(1.0-clamp(c,0.0,1.0))*(u_amb*1.5);'+
         'float l=luma(c),dark=1.0-smoothstep(0.03,0.35,w.a);'+
         'c+=vec3(0.86,0.93,1.0)*(u_amb*0.09*dark*smoothstep(0.0,0.2,l)*(1.0-l));}'},
-    // grading: warm neutral highlights, cool shadows, then vibrance (dull colors gain the most
-    // saturation). The tint is weighted by (1 - chroma), so saturated colors such as the sky keep
-    // their hue instead of drifting toward grey.
+    // Sun Rays: light shafts from the sun (or moon) through gaps in leaves, terrain and clouds.
+    // The rays pass (SH_FS_RAYS) blurs the bright sky toward the sun's screen position; this adds
+    // it in the sun's color with a screen blend, so it can brighten but never clip.
+    {id:'rays',on:'shRays',str:'shRaysStr',max:1.1,needs:'rays',u:'u_rays',
+      glsl:'{vec3 a=clamp(u_sunCol*texture(u_rayTex,v_uv).r*u_rays*u_sun.z,0.0,1.0);c+=a*(1.0-min(c,vec3(1.0)));}'},
+    // Atmosphere: time-of-day light (golden sunrise/sunset, warm day, cool blue night, grey rain),
+    // a soft haze of sunlight around the sun, and aerial haze along the horizon (placed from the
+    // camera pitch, tinted toward the sun when facing it). Haze and glow only show where the
+    // blurred scene is bright enough (open sky and far terrain), so caves and walls stay clear.
+    {id:'atmos',on:'shAtmos',str:'shAtmosStr',max:1.0,u:'u_atm',
+      // the tint spares blue sky (it keeps its blue) and, with the cool night tint, bright light
+      // sources (torches, windows and glowstone keep their warm color)
+      glsl:'{float sk=smoothstep(0.02,0.15,c.b-max(c.r,c.g))*smoothstep(0.25,0.6,luma(c));'+
+        'float lt=clamp((u_tint.b-u_tint.r)*4.0,0.0,1.0)*smoothstep(0.3,0.75,luma(c));'+
+        'c*=mix(vec3(1.0),u_tint,u_atm*(1.0-0.7*sk)*(1.0-lt));\n'+
+        '#ifdef CHAIN\n'+
+        'vec2 q=(v_uv-u_sun.xy)*vec2(u_aspect,1.0);float r2=dot(q,q);'+
+        'float sv=smoothstep(0.3,0.75,texture(u_wideTex,clamp(u_sun.xy,0.0,1.0)).a);'+
+        'vec3 a=clamp(u_sunCol*((exp(-r2*3.0)*0.35+exp(-r2*25.0)*0.5)*u_sun.z*sv*u_atm*0.8),0.0,1.0);'+
+        'c+=a*(1.0-min(c,vec3(1.0)));'+
+        'float dh=v_uv.y-u_hor.x,hb=exp(dh>0.0?-dh*30.0:dh*u_hor.y)*u_hor.z*smoothstep(0.12,0.45,texture(u_wideTex,v_uv).a);'+
+        'c=mix(c,u_haze,clamp(hb*u_atm*0.3,0.0,1.0));\n'+
+        '#endif\n'+
+        '}'},
+    // Color Grading, "Mellow" look: shadows and mid-tones opened up a little, richer color
+    // (vibrance: dull colors gain the most), warm light and cool shadows, slightly lifted blacks
+    // and a soft highlight shoulder. Warmth is weighted by (1 - chroma), so the blue sky and other
+    // saturated colors keep their hue instead of turning grey or white.
     {id:'grade',on:'shGrade',str:'shGradeStr',max:1.0,u:'u_grade',
-      glsl:'{float l=luma(c),ch=max(c.r,max(c.g,c.b))-min(c.r,min(c.g,c.b));'+
-        'vec3 g=c+(vec3(0.05,0.018,-0.045)*smoothstep(0.35,0.95,l)+vec3(-0.02,0.0,0.03)*(1.0-smoothstep(0.0,0.4,l)))*(1.0-ch);'+
-        'g=mix(vec3(luma(g)),g,1.0+0.35*(1.0-clamp(ch*1.6,0.0,1.0)));'+
+      glsl:'{vec3 g=max(c,0.0);float l=luma(g);'+
+        'g*=1.0+0.18*(1.0-smoothstep(0.2,0.8,l));'+
+        'float ch=max(g.r,max(g.g,g.b))-min(g.r,min(g.g,g.b));'+
+        'g=mix(vec3(luma(g)),g,1.22+0.25*(1.0-clamp(ch*1.5,0.0,1.0)));'+
+        'g*=mix(vec3(1.0),mix(vec3(0.94,0.98,1.07),vec3(1.08,1.0,0.88),smoothstep(0.1,0.65,luma(g))),1.0-clamp(ch*1.3,0.0,0.8));'+
+        'g.rg*=1.0-0.15*smoothstep(0.02,0.15,g.b-max(g.r,g.g))*smoothstep(0.25,0.6,luma(g));'+   // deeper blue sky and water
+        'g=max(g,0.0)*0.97+vec3(0.015,0.014,0.022);'+
+        'float gm=max(g.r,max(g.g,g.b));if(gm>0.88)g*=(0.88+(gm-0.88)/(1.0+(gm-0.88)*8.0))/gm;'+
         'c=mix(c,g,u_grade);}'},
     // contrast: S-curve on luminance only, applied by scaling the color (hue and saturation stay),
     // normalized so bright saturated colors cannot clip
@@ -125,20 +171,40 @@
       's+=(texture(u_src,v_uv+vec2(-h.x,h.y))+texture(u_src,v_uv+h)'+
       '+texture(u_src,v_uv+vec2(h.x,-h.y))+texture(u_src,v_uv-h))*2.0;'+
       'o_col=mix(texture(u_base,v_uv),s/12.0,u_scatter);}\n';
-  var SH_COMP_UNIFORMS=['u_scene','u_bloomTex','u_wideTex','u_histTex','u_aspect'];
+  // sun rays: radial blur toward the sun of the bright-pass level (alpha = scene brightness).
+  // Bright sky and light sources near the sun are the source; anything darker (terrain, leaves,
+  // walls) blocks, which is what cuts the light into shafts. Samples off screen count as blocked.
+  var SH_FS_RAYS=SH_HEAD+
+    'uniform sampler2D u_src;uniform vec3 u_sun;uniform float u_aspect;\n'+
+    'float hash(vec2 p){vec3 q=fract(vec3(p.xyx)*0.1031);q+=dot(q,q.yzx+33.33);return fract((q.x+q.y)*q.z);}\n'+
+    'void main(){vec2 st=(u_sun.xy-v_uv)*(0.9/28.0),p=v_uv+st*hash(gl_FragCoord.xy);float w=1.0,sum=0.0,acc=0.0;'+
+      'for(int i=0;i<28;i++){'+
+        'vec2 q=(p-u_sun.xy)*vec2(u_aspect,1.0);'+
+        'float m=smoothstep(0.5,0.92,texture(u_src,p).a)*(0.1+0.9*exp(-dot(q,q)*6.0));'+
+        'm*=step(0.0,p.x)*step(p.x,1.0)*step(0.0,p.y)*step(p.y,1.0);'+
+        'acc+=m*w;sum+=w;w*=0.95;p+=st;}'+
+      'o_col=vec4(vec3(min(acc/sum*1.6,1.0)),1.0);}\n';
+  // pass sources that can be swapped from the console while designing (ThunderClient.shaders.src,
+  // then ThunderClient.shaders.release() to rebuild)
+  var SH_SRC={rays:SH_FS_RAYS};
+  var SH_COMP_UNIFORMS=['u_scene','u_bloomTex','u_wideTex','u_histTex','u_rayTex','u_aspect','u_sun','u_sunCol','u_tint','u_hor','u_haze'];
   SH_EFFECTS.forEach(function(e){SH_COMP_UNIFORMS.push(e.u);});
   // debug views (console: ThunderClient.shaders.debug = n): 1 bloom, 2 wide glow level, 3 blurred
   // brightness. They replace the image and are never saved.
   var SH_DEBUG=['','c=texture(u_bloomTex,v_uv).rgb*2.0;','c=texture(u_wideTex,v_uv).rgb*2.0;','c=vec3(texture(u_wideTex,v_uv).a);'];
   function shCompositeSource(mask){
-    var body='',dbg=mask>>8;
-    SH_EFFECTS.forEach(function(e,i){if(mask&(1<<i))body+=e.glsl+'\n';});
+    var body='',dbg=mask>>8,chain=dbg>0;
+    SH_EFFECTS.forEach(function(e,i){if(mask&(1<<i)){body+=e.glsl+'\n';if(e.needs)chain=true;}});
     if(dbg)body=SH_DEBUG[dbg]+'\n';
-    return SH_HEAD+
-      'uniform sampler2D u_scene;uniform sampler2D u_bloomTex;uniform sampler2D u_wideTex;uniform sampler2D u_histTex;\n'+
+    return SH_HEAD.replace('\n','\n'+(chain?'#define CHAIN\n':''))+
+      'uniform sampler2D u_scene;uniform sampler2D u_bloomTex;uniform sampler2D u_wideTex;uniform sampler2D u_histTex;uniform sampler2D u_rayTex;\n'+
+      'uniform vec3 u_sun,u_sunCol,u_tint,u_hor,u_haze;\n'+
       'uniform float u_aspect,'+SH_EFFECTS.map(function(e){return e.u;}).join(',')+';\n'+
       'float hash(vec2 p){vec3 q=fract(vec3(p.xyx)*0.1031);q+=dot(q,q.yzx+33.33);return fract((q.x+q.y)*q.z);}\n'+
       'void main(){vec4 src=texture(u_scene,v_uv);vec3 c=src.rgb;\n'+body+
+      // over-bright colors are scaled down as a whole (hue kept) and only very bright ones turn
+      // toward white, instead of clipping each channel (which turns orange light lemon-yellow)
+      'float mx=max(c.r,max(c.g,c.b));if(mx>1.0)c=mix(c/mx,vec3(1.0),clamp((mx-1.0)*0.25,0.0,0.5));\n'+
       'c+=(hash(gl_FragCoord.xy)-0.5)*(1.0/255.0);\n'+     // dither: no banding from the grading
       'o_col=vec4(clamp(c,0.0,1.0),src.a);}\n';
   }
@@ -154,13 +220,14 @@
   // ---- GL resources ------------------------------------------------------------------------
   function shInit(gl){
     var R={gl:gl,vao:gl.createVertexArray(),vs:gl.createShader(gl.VERTEX_SHADER),progs:{},comp:{},
-      par:gl.getExtension('KHR_parallel_shader_compile'),key:'',scene:null,down:[],up:[],out:null,hist:null,
+      par:gl.getExtension('KHR_parallel_shader_compile'),key:'',scene:null,down:[],up:[],out:null,hist:null,rays:null,
       histOk:false,expo:[],expoOk:false};
     gl.shaderSource(R.vs,SH_VS);gl.compileShader(R.vs);
     R.progs.pre=shProgram(R,SH_FS_PRE,['u_src','u_expo','u_off','u_thr'],{u_src:0,u_expo:1});
     R.progs.adapt=shProgram(R,SH_FS_ADAPT,['u_src','u_expo','u_rate'],{u_src:0,u_expo:1});
     R.progs.down=shProgram(R,SH_FS_DOWN,['u_src','u_px'],{u_src:0});
     R.progs.up=shProgram(R,SH_FS_UP,['u_src','u_base','u_px','u_scatter'],{u_src:0,u_base:1});
+    R.progs.rays=shProgram(R,SH_SRC.rays,['u_src','u_sun','u_aspect'],{u_src:0});
     return R;
   }
   function shProgram(R,fs,names,samplers){
@@ -199,12 +266,12 @@
     return {t:t,f:f,w:w,h:h};
   }
   function shFreeTargets(R){
-    var gl=R.gl,all=[R.scene,R.out,R.hist].concat(R.down,R.up,R.expo);
+    var gl=R.gl,all=[R.scene,R.out,R.hist,R.rays].concat(R.down,R.up,R.expo);
     all.forEach(function(x){if(x){gl.deleteFramebuffer(x.f);gl.deleteTexture(x.t);}});
-    R.scene=R.out=R.hist=null;R.down=[];R.up=[];R.expo=[];R.key='';R.histOk=false;R.expoOk=false;
+    R.scene=R.out=R.hist=R.rays=null;R.down=[];R.up=[];R.expo=[];R.key='';R.histOk=false;R.expoOk=false;
   }
   // (re)allocate the render targets when the frame size or the pass layout changes
-  function shKey(fw,fh,cfg){return fw+'x'+fh+':'+(cfg.chain?cfg.res+'/'+cfg.levels:'-')+':'+(cfg.history?1:0);}
+  function shKey(fw,fh,cfg){return fw+'x'+fh+':'+(cfg.chain?cfg.res+'/'+cfg.levels:'-')+':'+(cfg.history?1:0)+(cfg.rays?':r':'');}
   function shAlloc(R,fw,fh,cfg,key){
     if(R.key===key)return;
     var gl=R.gl,i,w,h;
@@ -219,6 +286,7 @@
         w=Math.max(1,(w+1)>>1);h=Math.max(1,(h+1)>>1);
       }
       R.expo=[shTarget(gl,1,1),shTarget(gl,1,1)];
+      if(cfg.rays)R.rays=shTarget(gl,R.down[0].w,R.down[0].h);
     }
     if(cfg.history){R.out=shTarget(gl,fw,fh);R.hist=shTarget(gl,fw,fh);}
     R.key=key;
@@ -232,7 +300,7 @@
       var gl=R.gl,k;
       if(gl.isContextLost())return;
       shFreeTargets(R);
-      var progs=[R.progs.pre,R.progs.adapt,R.progs.down,R.progs.up];
+      var progs=[R.progs.pre,R.progs.adapt,R.progs.down,R.progs.up,R.progs.rays];
       for(k in R.comp)progs.push(R.comp[k]);
       progs.forEach(function(pr){gl.deleteProgram(pr.p);gl.deleteShader(pr.f);});
       gl.deleteShader(R.vs);gl.deleteVertexArray(R.vao);
@@ -284,7 +352,7 @@
   }
 
   // ---- what to draw this frame -------------------------------------------------------------
-  var shCfg={mask:0,amount:[],chain:false,history:false,res:2,levels:4,cap:3,name:''};
+  var shCfg={mask:0,amount:[],chain:false,history:false,rays:false,res:2,levels:4,cap:3,name:''};
   function shConfig(){
     var inten=clamp(Number(S.shIntensity)||0,0,100)/100;
     if(!(inten>0))return null;
@@ -294,12 +362,17 @@
     var cap=S.shPerf?0:(S.shAuto?shAuto.cap:3),limited=false;
     if(cap===2&&(res<2||levels>4)){res=Math.max(res,2);levels=Math.min(levels,4);limited=true;}
     if(cap===1&&(res<3||levels>3)){res=3;levels=Math.min(levels,3);limited=true;}
-    shCfg.chain=false;shCfg.history=false;
+    shCfg.chain=false;shCfg.history=false;shCfg.rays=false;
     for(i=0;i<SH_EFFECTS.length;i++){
       e=SH_EFFECTS[i];a=0;
       if(S[e.on]&&!(cap===0&&e.needs))a=clamp(Number(S[e.str])||0,0,100)/100*e.max*inten;
       shCfg.amount[i]=a;
-      if(a>0){mask|=1<<i;if(e.needs==='chain')shCfg.chain=true;if(e.needs==='history')shCfg.history=true;}
+      if(a>0){
+        mask|=1<<i;
+        if(e.needs==='chain')shCfg.chain=true;
+        if(e.needs==='rays')shCfg.chain=shCfg.rays=true;
+        if(e.needs==='history')shCfg.history=true;
+      }
     }
     if(!mask)return null;
     var dbg=SHS.debug|0;
@@ -307,6 +380,72 @@
     shCfg.mask=mask;shCfg.res=res;shCfg.levels=levels;shCfg.cap=cap;
     shCfg.name=cap===0?'PERFORMANCE':(limited?SH_PRESETS[cap-1].name+' (auto)':SH_QUALITY[p]);
     return shCfg;
+  }
+
+  // ---- sun, moon and time of day (Sun Rays, Atmosphere) ---------------------------------------
+  // Read once per frame from the world and the camera. The sky is drawn rotated by the celestial
+  // angle about the east-west axis, so the sun's direction is (-sin a, cos a, 0) (east at
+  // sunrise); the moon is opposite. It is projected with the world camera's yaw, pitch and FOV
+  // (third-person front view looks the other way). x, y: screen position (0..1, may be off
+  // screen); vis: how much sun/moon light the effects may add (0 = none: below the horizon,
+  // behind the camera, raining, or no sky in this dimension).
+  var shSun={x:0.5,y:0.5,vis:0,col:[1,0.9,0.7],tint:[1,1,1],haze:[0.86,0.9,0.98],hor:[0.5,7,0],sky:false,height:0,rain:0,err:0};
+  SHS.sun=shSun;SHS.src=SH_SRC;
+  function shStep(a,b,x){var t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);}
+  function shMix3(o,a,b,t){o[0]=a[0]+(b[0]-a[0])*t;o[1]=a[1]+(b[1]-a[1])*t;o[2]=a[2]+(b[2]-a[2])*t;}
+  // colors by time of day: tint = whole-image light color, col = sun/moon light (rays, glow),
+  // haze = horizon haze. Live-tunable from the console (ThunderClient.shaders.palette).
+  var SH_PAL={tintDay:[1.03,1.0,0.95],tintDusk:[1.09,0.97,0.88],tintNight:[0.84,0.92,1.12],tintRain:[0.93,0.97,1.03],
+    colDay:[1.0,0.86,0.62],colDusk:[1.0,0.62,0.32],colMoon:[0.5,0.62,0.9],
+    hazeDay:[0.75,0.84,0.97],hazeDusk:[1.0,0.64,0.38],hazeNight:[0.1,0.12,0.2],hazeRain:[0.68,0.7,0.74]};
+  SHS.palette=SH_PAL;
+  function shSunUpdate(er,pt,aspect){
+    var O=shSun;
+    O.vis=0;O.sky=false;O.tint[0]=O.tint[1]=O.tint[2]=1;O.hor[2]=0;
+    try{
+      var mc=er&&er.bv,w=mc&&mc.X,e=mc&&mc.hI,prov=w&&w.b4;
+      if(!w||!e||!prov||!prov.Tv())return;          // no world yet, or the Nether / the End
+      O.sky=true;
+      if(!(pt>=0&&pt<=1))pt=1;
+      var ang=Q$(w,pt)*6.283185307179586,sx=-Math.sin(ang),sy=Math.cos(ang);
+      var rain=clamp(Number(R$(w,pt))||0,0,1);
+      O.height=sy;O.rain=rain;
+      var day=shStep(-0.1,0.3,sy),dusk=1-shStep(0.0,0.4,Math.abs(sy-0.05));
+      var P=SH_PAL;
+      shMix3(O.tint,P.tintNight,P.tintDay,day);
+      shMix3(O.tint,O.tint,P.tintDusk,dusk*0.85);
+      shMix3(O.tint,O.tint,P.tintRain,rain*0.8);
+      shMix3(O.haze,P.hazeNight,P.hazeDay,day);
+      shMix3(O.haze,O.haze,P.hazeDusk,dusk*0.8);
+      shMix3(O.haze,O.haze,P.hazeRain,rain*0.8);
+      var up=sy>-0.08,dx=up?sx:-sx,dy=up?sy:-sy;
+      var strength=up?shStep(-0.08,0.12,sy):shStep(0.0,0.2,-sy)*0.45;
+      if(up)shMix3(O.col,P.colDay,P.colDusk,dusk);else shMix3(O.col,P.colMoon,P.colMoon,0);
+      strength*=1-rain*0.9;
+      var d2r=0.017453292519943295;
+      var yaw=(e.cy+(e.C-e.cy)*pt)*d2r,pitch=(e.c1+(e.bc-e.c1)*pt)*d2r;
+      if(!isFinite(yaw)||!isFinite(pitch))return;
+      var cyw=Math.cos(yaw),syw=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch);
+      var fx=-syw*cp,fy=-sp,fz=cyw*cp,rx=-cyw,rz=-syw;             // forward, right (y = 0)
+      var front=mc.G&&mc.G.lu===2;
+      if(front){fx=-fx;fy=-fy;fz=-fz;rx=-rx;rz=-rz;}
+      var t=Math.tan(clamp(worldFov,10,170)*0.008726646259971648);
+      // horizon: straight ahead at the camera's pitch, so it sits tan(pitch)/tan(fov/2) above the
+      // centre (pitch > 0 = looking down). Only near the middle of a level view is it on screen.
+      var hp=front?-pitch:pitch;
+      if(Math.abs(hp)<1.4){O.hor[0]=0.5+0.5*Math.tan(hp)/t;O.hor[1]=7;O.hor[2]=1;}
+      if(strength<=0.001)return;
+      var ux=-rz*fy,uy=rz*fx-rx*fz;                                   // up = right x forward (z unused: sun z = 0)
+      var z=dx*fx+dy*fy;
+      if(z<0.05)return;                                               // behind the camera
+      shMix3(O.haze,O.haze,O.col,clamp(z,0,1)*dusk*0.5);                // facing a low sun: haze takes its color
+      var X=(dx*rx)/(z*t*aspect),Y=(dx*ux+dy*uy)/(z*t);
+      O.x=X*0.5+0.5;O.y=Y*0.5+0.5;
+      O.vis=strength*shStep(0.05,0.3,z)*(1-shStep(1.2,2.2,Math.max(Math.abs(X),Math.abs(Y))));
+    }catch(err){
+      O.vis=0;O.sky=false;O.tint[0]=O.tint[1]=O.tint[2]=1;O.hor[2]=0;
+      if(!O.err++){if(W.console&&W.console.warn)W.console.warn('[Thunder] shaders: sun position unavailable',err);}
+    }
   }
 
   // ---- the pass ----------------------------------------------------------------------------
@@ -353,6 +492,15 @@
         gl.drawArrays(gl.TRIANGLES,0,3);n++;px+=s.w*s.h;
       }
     }
+    // 2b. sun rays, at bloom resolution, only while the sun or moon is in (or near) the view
+    var sun=shSun,sunVis=cfg.rays&&sun.vis>0.001?sun.vis:0;
+    if(sunVis){
+      var rp=R.progs.rays;
+      shDraw(gl,rp,R.rays,R.down[0].t);
+      gl.uniform3f(rp.u.u_sun,sun.x,sun.y,sunVis);
+      gl.uniform1f(rp.u.u_aspect,fw/fh);
+      gl.drawArrays(gl.TRIANGLES,0,3);n++;px+=R.rays.w*R.rays.h;
+    }
     // 3. composite every enabled effect in one full-screen pass
     var comp=R.comp[cfg.mask],target=cfg.history?R.out:game;
     shDraw(gl,comp,target,R.scene.t,cfg.chain?R.up[0].t:null);
@@ -361,7 +509,13 @@
       gl.activeTexture(gl.TEXTURE2);gl.bindTexture(gl.TEXTURE_2D,R.up[clamp(4-cfg.res,0,L-1)].t);
     }
     if(cfg.history){gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,R.hist.t);}
+    if(cfg.rays){gl.activeTexture(gl.TEXTURE4);gl.bindTexture(gl.TEXTURE_2D,R.rays.t);}
     gl.uniform1f(comp.u.u_aspect,fw/fh);
+    gl.uniform3f(comp.u.u_sun,sun.x,sun.y,sunVis||(cfg.rays?0:sun.vis));
+    gl.uniform3f(comp.u.u_sunCol,sun.col[0],sun.col[1],sun.col[2]);
+    gl.uniform3f(comp.u.u_tint,sun.tint[0],sun.tint[1],sun.tint[2]);
+    gl.uniform3f(comp.u.u_hor,sun.hor[0],sun.hor[1],sun.hor[2]);
+    gl.uniform3f(comp.u.u_haze,sun.haze[0],sun.haze[1],sun.haze[2]);
     for(i=0;i<SH_EFFECTS.length;i++){
       var a=cfg.amount[i];
       if(SH_EFFECTS[i].id==='motion')a=R.histOk?Math.pow(a,dt>0?dt/16.667:1):0;   // same trail at any FPS
@@ -393,6 +547,7 @@
   var shAuto={cap:3,known:false,renderer:'',phase:'steady',warm:2,steadyN:0,prev:3,dir:0,
     before:0,fps:[],accT:0,accN:0,accA:0,lastT:0,probeN:0,blockDown:0,blockUp:0,blockPause:0,paused:false,suspend:false,sig:''};
   // what auto quality / FPS safety decided and why (ThunderClient.shaders.log, newest last)
+  SHS.auto=shAuto;     // diagnostics and tests (e.g. auto.blockPause) - not part of the settings
   function shLog(msg){SHS.log.push(Math.round(now()/100)/10+'s '+msg);if(SHS.log.length>30)SHS.log.shift();}
   function shMedian(n){var a=shAuto.fps.slice(-n).sort(function(x,y){return x-y;});return a.length?a[a.length>>1]:0;}
   function shRestart(){
@@ -491,7 +646,7 @@
   function shSync(gl,fb){gl.bindFramebuffer(gl.READ_FRAMEBUFFER,fb);gl.readPixels(0,0,1,1,gl.RGBA,gl.UNSIGNED_BYTE,shPixel);}
 
   // ---- per frame (called after renderWorld, only while Shaders is on) -----------------------
-  function shFrame(){
+  function shFrame(er,pt){
     var t=now(),A=shAuto,gl=HEl,st=shState;
     if(t-A.lastT>3000){                           // shaders just switched on / world just loaded / long hitch
       if(A.phase!=='steady'&&A.lastT)shLog('measurement interrupted by a '+Math.round((t-A.lastT)/1000)+' s pause; starting over');
@@ -516,12 +671,14 @@
       var fw=st.vp[2],fh=st.vp[3];
       if(st.vp[0]!==0||st.vp[1]!==0||fw<16||fh<16){SHS.state='skipped';return;}
       if(fw*fh>3700000&&cfg.chain&&cfg.res<3)cfg.res++;    // 1440p and up: bloom one step smaller
+      shSunUpdate(er,pt,fw/fh);
       shNeutral(gl,st);
       var comp=SHR.comp[cfg.mask]||(SHR.comp[cfg.mask]=shProgram(SHR,shCompositeSource(cfg.mask),SH_COMP_UNIFORMS,
-        {u_scene:0,u_bloomTex:1,u_wideTex:2,u_histTex:3}));
+        {u_scene:0,u_bloomTex:1,u_wideTex:2,u_histTex:3,u_rayTex:4}));
       var ready=shReady(SHR,comp);
       if(cfg.chain){ready=shReady(SHR,SHR.progs.pre)&&ready;ready=shReady(SHR,SHR.progs.adapt)&&ready;
         ready=shReady(SHR,SHR.progs.down)&&ready;ready=shReady(SHR,SHR.progs.up)&&ready;}
+      if(cfg.rays)ready=shReady(SHR,SHR.progs.rays)&&ready;
       if(!ready){SHS.state='compiling';return;}
       // new targets: check the first frame drawn with them for GL errors (clearing any the
       // game left first, so only ours are counted). Costs two getError calls per re-layout.
@@ -563,7 +720,7 @@
       else res.failed.push(name+': '+((gl.getShaderInfoLog(f)||'')+(gl.getProgramInfoLog(p)||'')).slice(0,200));
       gl.deleteProgram(p);gl.deleteShader(f);
     }
-    one('bright pass',SH_FS_PRE);one('brightness',SH_FS_ADAPT);one('downsample',SH_FS_DOWN);one('upsample',SH_FS_UP);
+    one('bright pass',SH_FS_PRE);one('brightness',SH_FS_ADAPT);one('downsample',SH_FS_DOWN);one('upsample',SH_FS_UP);one('sun rays',SH_SRC.rays);
     for(var m=1;m<(1<<SH_EFFECTS.length);m++)one('composite '+m,shCompositeSource(m));
     for(var d=1;d<SH_DEBUG.length;d++)one('debug view '+d,shCompositeSource(1|(d<<8)));
     gl.deleteShader(vs);
@@ -596,7 +753,7 @@
     origFjk(a,b,c);
     if($rt_suspending())return;
     if(!S.shaders){if(SHR)shRelease();if(SHS.state!=='off')SHS.state='off';return;}
-    try{shFrame();}catch(e){report(e);}
+    try{shFrame(a,b);}catch(e){report(e);}
   };
 
   // ---- menu ----------------------------------------------------------------------------------
@@ -656,7 +813,7 @@
       hint:'Steps quality down when FPS stays under the target and back up when there is room.'}));
     box.appendChild(optRow({id:'shTargetFps',name:'Target FPS',min:20,max:60,step:5,fmt:shFps}));
     box.appendChild(optRow({id:'shPerf',name:'Performance Mode',
-      hint:'Lightest shaders: color grading, contrast and vignette only (no bloom, glow or motion blur).'}));
+      hint:'Lightest shaders: color grading, time-of-day light, contrast and vignette only (no bloom, glow, sun rays or motion blur).'}));
     box.appendChild(el('div','tcm-sub','Custom quality'));
     box.appendChild(optRow({id:'shBloomRes',name:'Bloom resolution',min:1,max:3,step:1,fmt:shRes,invert:true,onChange:shToCustom}));
     box.appendChild(optRow({id:'shBloomLevels',name:'Bloom blur levels',min:1,max:7,step:1,fmt:shLevels,onChange:shToCustom}));
@@ -689,7 +846,11 @@
       onChange:function(on){shFailed=null;shAuto.paused=false;shRestart();SHS.note='';if(!on){shRelease();SHS.state='off';}}},
     {cat:'shaders',id:'shBloom',name:'Bloom',desc:'Soft glow around bright light: torches, lava, glowstone, the sun.',
       opts:[{id:'shBloomStr',name:'Strength',min:0,max:100,step:1,fmt:shPct}]},
-    {cat:'shaders',id:'shGrade',name:'Color Grading',desc:'Warm highlights, cool shadows, gently richer colors.',
+    {cat:'shaders',id:'shRays',name:'Sun Rays',desc:'Light shafts from the sun and moon through leaves, hills and clouds.',
+      opts:[{id:'shRaysStr',name:'Strength',min:0,max:100,step:1,fmt:shPct}]},
+    {cat:'shaders',id:'shAtmos',name:'Atmosphere',desc:'Golden sunrise and sunset, warm days, cool blue nights, and a soft sun haze.',
+      opts:[{id:'shAtmosStr',name:'Strength',min:0,max:100,step:1,fmt:shPct}]},
+    {cat:'shaders',id:'shGrade',name:'Color Grading',desc:'Mellow look: soft film curve, warm light, cool shadows, richer colors.',
       opts:[{id:'shGradeStr',name:'Strength',min:0,max:100,step:1,fmt:shPct}]},
     {cat:'shaders',id:'shContrast',name:'Contrast',desc:'Soft S-curve: deeper shadows and brighter highlights without clipping.',
       opts:[{id:'shContrastStr',name:'Strength',min:0,max:100,step:1,fmt:shPct}]},

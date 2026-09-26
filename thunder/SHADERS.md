@@ -28,6 +28,15 @@ deobfuscation table. The build fails if any name does not match.
 | `HEv` | static written by `PlatformOpenGL.setCurrentContext` | `@staticset` | its GLES version: 200 = WebGL 1, 300 = WebGL 2 |
 | `HEh` `HEi` `HEj` `HEk` | statics written by `GlStateManager.viewport` | `@staticset` | the viewport cache |
 | `KPa` | static written by `GlStateManager.colorMask` | `@staticset` | the color-mask cache (bits r=1 g=2 b=4 a=8) |
+| `Q$` | `World.getCelestialAngle` | `@use` (synchronous) | where the sun and moon are |
+| `R$` | `World.getRainStrength` | `@use` (synchronous) | rain dims the sun and greys the light |
+| `Tv` | `WorldProvider.isSurfaceWorld` | `@virtual` | no sun, moon or sky light in the Nether and the End |
+| `bv` `hI` `X` `b4` | `EntityRenderer.mc`, `Minecraft.renderViewEntity`, `Minecraft.world`, `World.provider` | `@field` | reaching the world and the camera entity |
+| `C` `cy` `bc` `c1` `lu` | entity yaw / previous yaw / pitch / previous pitch, `GameSettings.thirdPersonView` | `@field` | camera direction (interpolated like `orientCamera` does) |
+
+The world camera's field of view is taken from the existing `getFOVModifier` wrapper in
+`thunder-client.js` (the call made with the FOV setting, i.e. for the world camera). All of these
+are read-only: shaders never write to the game.
 
 How it fits into a frame, as the compiled code does it:
 
@@ -77,11 +86,17 @@ WebGL 2 only (GLSL ES 3.00). Every pass is one attribute-less full-screen triang
      glowstone glow. In bright scenes it is high (0.9), so a clear daytime sky does not wash out.
    - **Dual-filter blur.** The image is downsampled `levels` times (5 taps each), then upsampled
      back (8-tap tent), mixing each level in.
-3. **Composite.** One full-screen pass applies every enabled effect, adds a 1/255 dither against
-   banding, and writes the result back into the back buffer.
-4. **Motion blur** (only when on): the composite goes to an off-screen target, is blitted back,
+3. **Sun rays** (only when on, and only while the sun or moon is in or near the view): one pass
+   at bloom resolution. It walks 28 steps from each pixel toward the sun's screen position over
+   the bright-pass level: bright sky and light near the sun count as the source, anything darker
+   (leaves, trunks, hills, walls) blocks. That is what cuts the light into shafts.
+4. **Composite.** One full-screen pass applies every enabled effect. Colors brighter than white
+   are scaled down as a whole, so hue is kept (orange torch light stays orange instead of turning
+   lemon-yellow from red clipping first); only very bright light turns toward white. A 1/255
+   dither is added against banding, and the result is written back into the back buffer.
+5. **Motion blur** (only when on): the composite goes to an off-screen target, is blitted back,
    and becomes the next frame's history.
-5. **State restore.** Framebuffers, viewport, program, vertex array, texture units 0–3 and their
+6. **State restore.** Framebuffers, viewport, program, vertex array, texture units 0–4 and their
    samplers, the enable flags and the color mask are read before the pass and put back exactly.
    Eaglercraft caches GL state (`GlStateManager`, `EaglercraftGPU`), so leaving anything changed
    would make the game draw with the wrong state. After a failure, the `finally` block still
@@ -96,16 +111,32 @@ composite program (one variant per combination, cached).
 All strengths are percentages, multiplied by the master **Intensity** (0–100 %). At 0 % the pass
 is skipped entirely.
 
+The default look is "Mellow": warm, soft and glowing, with deeper blue skies, richer greens, sun
+rays and golden sunsets. Effects run in this order inside the composite:
+
 | Effect | Default | What it does |
 |---|---|---|
-| Bloom | on, 55 % | Soft glow around bright light (torches, lava, glowstone, the sun). Adaptive threshold, see above. |
-| Color Grading | on, 60 % | Warm neutral highlights and cool shadows, then vibrance (dull colors gain the most saturation). The tint is weighted by (1 − chroma), so saturated colors such as the sky keep their hue. |
-| Contrast | on, 45 % | S-curve on luminance, applied by scaling the color, so hue and saturation are preserved and nothing clips. |
-| Vignette | on, 45 % | Slightly darker screen edges. |
+| Bloom | on, 60 % | Soft, slightly warm glow around bright light (torches, lava, glowstone, the sun, which becomes a glowing disc). Adaptive threshold, see above. |
 | Ambient Glow | on, 50 % | Wide, soft spill of bright light into the surroundings, plus a small lift in very dark scenes. |
+| Sun Rays | on, 65 % | Light shafts from the sun (or, fainter and bluish, the moon) through gaps in leaves, trunks, hills and clouds. Added with a screen blend in the sun's color: golden at sunrise/sunset, warm white by day. Off below the horizon, behind the camera, in rain, and in the Nether/End. |
+| Atmosphere | on, 60 % | Time-of-day light: golden sunrise and sunset, warm day, cool blue night, grey rain. Plus a soft haze of sunlight around the sun and an aerial haze along the horizon (placed from the camera pitch, tinted by the low sun when facing it). The tint spares blue sky and, at night, bright light sources; haze and glow only appear where the blurred scene is bright, so caves and walls stay clear. |
+| Color Grading | on, 75 % | The Mellow grade: shadows and mid-tones opened up a little, vibrance (dull colors gain the most), warm light and cool shadows, deeper blue sky and water, slightly lifted blacks, and a soft highlight shoulder that keeps hue. Warmth is weighted by (1 − chroma), so saturated colors keep their hue. |
+| Contrast | on, 35 % | S-curve on luminance, applied by scaling the color, so hue and saturation are preserved and nothing clips. |
+| Vignette | on, 40 % | Slightly darker screen edges. |
 | Motion Blur | off, 35 % | Blends in the previous frame. The weight is scaled by frame time, so the trail looks the same at any FPS; at very low FPS it therefore almost disappears. The history resets after hitches over 0.5 s. |
 
-Defaults: Shaders off, Intensity 70 %, Quality MEDIUM, Auto quality on, Target FPS 30.
+Defaults: Shaders off, Intensity 80 %, Quality MEDIUM, Auto quality on, Target FPS 30.
+
+### Where the sun is
+
+Read once per frame (plain field reads and two small synchronous game methods). The sky is drawn
+rotated by the celestial angle *a* about the east–west axis, so the sun's direction is
+(−sin *a*, cos *a*, 0), east at sunrise; the moon is opposite. It is projected onto the screen
+with the camera's interpolated yaw and pitch and the world FOV (third-person front view looks
+the other way). The horizon's screen height comes from the pitch the same way. View bobbing and
+the hurt-camera tilt are not included, so the sun position can be off by a few pixels while
+walking; the effects are soft enough that this does not show. Any error in this step turns the
+sun effects off for that frame and never stops the pipeline.
 
 ## Quality presets
 
@@ -122,6 +153,8 @@ there are. The effects look the same at every preset; lower presets give a sligh
 
 Notes:
 
+- Sun Rays add one pass at bloom resolution, only on frames where the sun or moon is in or near
+  the view (MEDIUM at 1280×720: +0.06 MPx, 28 texture reads per pixel).
 - Motion Blur adds one pass (+1 full frame of pixels).
 - The copy and the composite are always full resolution, so they are the fixed floor of
   ~1.84 MPx at 1280×720.
@@ -132,7 +165,8 @@ Notes:
 Measured cost of the pass alone ("Measure cost" in the Performance card): the GPU is synchronized
 with a 1-pixel `readPixels` before and after the pass, because WebGL's `finish()` does not wait in
 Chrome. Headless Chromium with SwiftShader (a CPU renderer, far slower than any real GPU),
-1280×720, 30 frames per measurement, three runs:
+1280×720, 30 frames per measurement, three runs, measured with the previous (pre-Mellow) effect
+set; the Mellow effects add one small pass and some composite math:
 
 | Preset | ms per frame |
 |---|---|
@@ -171,8 +205,8 @@ over.
     too low with shaders on this device"). Changing any shader setting, or switching Shaders off
     and on, resumes them.
   - If it is not better, nothing is paused.
-- **Performance Mode** (switch): forces the lightest level (grading, contrast and vignette only)
-  regardless of auto.
+- **Performance Mode** (switch): forces the lightest level (grading, time-of-day light, contrast
+  and vignette only: no bloom, glow, sun rays or motion blur) regardless of auto.
 
 Every decision is logged with its reason in `ThunderClient.shaders.log`, and the last 12 FPS
 samples are in `ThunderClient.shaders.fpsLog`.
@@ -195,11 +229,11 @@ values that differ from the defaults are saved.
 | Key | Default | Meaning |
 |---|---|---|
 | `shaders` | false | master switch |
-| `shIntensity` | 70 | master intensity % |
+| `shIntensity` | 80 | master intensity % |
 | `shPreset` | 1 | 0 LOW, 1 MEDIUM, 2 HIGH, 3 CUSTOM |
 | `shBloomRes`, `shBloomLevels` | 2, 4 | CUSTOM: bloom at 1/2^n, blur levels |
 | `shAuto`, `shTargetFps`, `shPerf` | true, 30, false | auto quality, its target, Performance Mode |
-| `shBloom`/`shBloomStr` … `shMotion`/`shMotionStr` | see Effects | per-effect switch and strength |
+| `shBloom`/`shBloomStr`, `shAmbient`, `shRays`, `shAtmos`, `shGrade`, `shContrast`, `shVignette`, `shMotion` (each with `…Str`) | see Effects | per-effect switch and strength |
 
 **Reset Shader Settings** (two clicks) restores every shader setting except the ON/OFF switch,
 and forgets the level auto quality learned. **Reset all** in the menu footer also switches
@@ -209,9 +243,11 @@ shaders off.
 
 - **No HDR.** The world is rendered into an RGBA8 back buffer, so bloom works from 0–1 colors. The
   adaptive threshold is what separates a torch at night from a sunlit wall.
-- **Only the final image is used.** There are no normals, sky mask, light direction or shadow maps
-  here. Real shadows, SSAO, volumetric light, reflections or waving plants would need changes to
-  the world renderer itself; this module deliberately does not make them.
+- **Only the final image is used.** There are no normals, sky mask or shadow maps here. The sun
+  direction is computed from the world time, but real shadows, SSAO, true volumetric light,
+  reflections or waving plants would need changes to the world renderer itself; this module
+  deliberately does not make them. Sun rays are the screen-space kind: they need the sun (or its
+  glow) on or near the screen.
 - **Depth is not used yet.** The back buffer does have a 32-bit float depth renderbuffer. A future
   effect could copy it with `blitFramebuffer(DEPTH_BUFFER_BIT)` into a matching depth texture, for
   fog or depth of field.
@@ -226,9 +262,12 @@ shaders off.
 1. Add an entry to `SH_EFFECTS` in `thunder-shaders.js`. Give it an id, its on/strength setting
    keys, a `max`, a uniform name, and one GLSL block that modifies `vec3 c` (the pixel color).
    Blocks run in array order inside the composite pass. Available inside the block: `v_uv`,
-   `luma()`, `u_scene`, `u_bloomTex`, `u_wideTex`, `u_histTex`, `u_aspect`.
-2. Set `needs:'chain'` if the effect reads the blurred levels, or `needs:'history'` if it reads the
-   previous frame. Resources are allocated only when some enabled effect needs them.
+   `luma()`, `u_scene`, `u_bloomTex`, `u_wideTex`, `u_histTex`, `u_rayTex`, `u_aspect`, and the
+   sun uniforms `u_sun` (screen x, y, visibility), `u_sunCol`, `u_tint`, `u_hor` (horizon y,
+   falloff, on), `u_haze`. `CHAIN` is `#define`d when the blurred levels exist.
+2. Set `needs:'chain'` if the effect reads the blurred levels, `needs:'rays'` if it reads the sun
+   rays, or `needs:'history'` if it reads the previous frame. Resources are allocated only when
+   some enabled effect needs them.
 3. Add its two settings to `DEFAULTS` in `thunder-client.js`, and a card to `MODULES` (the cards
    at the end of `thunder-shaders.js`).
 
@@ -242,6 +281,12 @@ The composite program for each effect combination is generated and cached automa
 - `ThunderClient.shaders.tune` holds the bloom thresholds, knee, scatter and adaptation speed.
   They take effect live.
 - `ThunderClient.shaders.measure(30)` resolves with the average cost of the pass in ms.
+- `ThunderClient.shaders.palette` holds the time-of-day colors (tint, sun/moon light, haze) and
+  `ThunderClient.shaders.src.rays` the sun-rays shader; after changing them call
+  `ThunderClient.shaders.release()` and the next frame rebuilds. `ThunderClient.shaders.sun` shows
+  the current sun position, visibility and colors; `.effects[i].glsl` can be edited the same way.
+- `ThunderClient.shaders.auto` is the auto-quality/FPS-safety state (for example
+  `auto.blockPause = 1e15` keeps a very slow test machine from pausing shaders).
 - `ThunderClient.shaders.state`, `.level`, `.passes`, `.mpx`, `.fps`, `.log` give live status.
 
 ## What was tested, and where
@@ -263,7 +308,7 @@ repository checkout, with no test code injected.
 - **Failure handling:** a deliberately broken shader stops the pipeline cleanly, with no GL error
   and the game rendering normally, and it recovers with the switch. `getError()` is 0 after
   shader frames.
-- **Self-test:** all 70 shader programs compile.
+- **Self-test:** all 70 shader programs compile (before the Mellow update; 263 now, see below).
 - **FPS safety:** the pause triggered on its own on the software renderer, with its log entries.
 - **Input:** W moves the player with shaders on. Mouse look turns the camera with shaders on and
   off. In this headless browser Playwright's own mouse moves carry no pointer-lock movement, so
@@ -276,6 +321,23 @@ repository checkout, with no test code injected.
   "Not available • needs WebGL 2", ran zero pipeline frames, and the game kept rendering normally.
   The 39 `texParameter` INVALID_ENUM warnings WebGL 1 prints are identical with the clean base
   build, so they are Eaglercraft's own.
+
+Mellow update (Sun Rays, Atmosphere, Mellow grade, hue-preserving highlights):
+
+- **In the game** (same setup, this commit's `classes.js`): world loads with no errors;
+  `selfTest()` compiles all 263 programs (5 passes, 255 effect combinations, 3 debug views) with
+  `getError()` 0; the sun is found where it is on screen (late afternoon facing west: x 0.50,
+  y 0.59, visibility 1) and the pass runs 13 passes at MEDIUM with rays; the Shaders tab shows the
+  Sun Rays and Atmosphere cards. The test machine for this round ran the world at well under
+  1 FPS, so the FPS safety net paused shaders on its own; for the visual checks it was held off
+  with `auto.blockPause`.
+- **Look**, checked frame by frame with an offline copy of the pipeline (the exact GLSL sources
+  and pass order, run on saved world frames): noon (deeper blue sky, richer grass, light horizon
+  haze), late afternoon behind trees (golden light, visible shafts through gaps in the leaves),
+  night (moon glow; torch, window, glowstone and lava light keep their warm color) and sunset
+  behind iron bars (golden glow, warm light). An earlier draft turned orange light lemon-yellow
+  and greyed the sky; both came from per-channel clipping and were fixed by the hue-preserving
+  highlight handling.
 
 Not tested: real GPUs, phones, Firefox and Safari, an actual multiplayer server, or long play
 sessions.

@@ -40,7 +40,10 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
 
 ## Subsystems
 
-- `thunder-client.js` - HUD, Right Shift menu, settings, the hooks listed in its header.
+- `thunder-client.js` - HUD, Right Shift menu, settings, the hooks listed in its header. Among
+  them: Hand Item Size (scales the real first-person sword/shield through
+  `ItemRenderer.renderItemInFirstPerson` + `renderItemSide`, first-person transforms only) and
+  Hitboxes (`RenderManager.debugBoundingBox`, kept in sync with F3+B).
 - `thunder-shaders.js` - optional shader/post-processing system (Right Shift > Shaders). How it
   hooks the renderer, the pipeline, presets, FPS safety and limits: [SHADERS.md](SHADERS.md).
 

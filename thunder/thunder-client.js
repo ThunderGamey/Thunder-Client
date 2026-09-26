@@ -12,6 +12,9 @@
    @hook Ckt net.minecraft.client.gui.GuiIngame.renderHotbar
    @hook EjD net.minecraft.entity.EntityLivingBase.getHeldItemOffhand
    @hook DR$ net.minecraft.client.renderer.texture.TextureAtlasSprite.loadSprite
+   @hook DkZ net.minecraft.client.renderer.ItemRenderer.renderItemInFirstPerson
+   @hook Ch0 net.minecraft.client.renderer.ItemRenderer.renderItemSide
+   @hook Gxt net.minecraft.client.renderer.entity.RenderManager.doRenderEntity
    (thunder-shaders.js adds its own hook and names in its header; build.js reads both.)
 
    Game functions it calls:
@@ -85,6 +88,9 @@
    @static HGM net.minecraft.block.material.Material WATER (the material getFOVModifier checks)
    @clinit BF net.minecraft.block.material.Material
    @class Co net.minecraft.entity.EntityLivingBase
+   @static HFj net.minecraft.util.EnumHand MAIN_HAND
+   @static Lkd net.minecraft.client.renderer.block.model.ItemCameraTransforms$TransformType FIRST_PERSON_LEFT_HAND
+   @static Lke net.minecraft.client.renderer.block.model.ItemCameraTransforms$TransformType FIRST_PERSON_RIGHT_HAND
 
    Instance fields (checked against a method that reads them):
    @field dk net.minecraft.client.gui.GuiIngame.renderHotbarItem GuiIngame.mc
@@ -111,6 +117,7 @@
    @field ee8 net.minecraft.client.resources.data.AnimationMetadataSection.<init> frameHeight
    @field bZY net.minecraft.client.resources.data.AnimationMetadataSection.<init> frameTime
    @field bXS net.minecraft.client.resources.data.AnimationMetadataSection.<init> interpolate
+   @field ck_ net.minecraft.client.renderer.entity.RenderManager.doRenderEntity RenderManager.debugBoundingBox
 
    TeaVM runtime:
    @runtime $rt_globals x
@@ -177,12 +184,16 @@
     heldScale:1.0,heldText:true,heldX:0,heldY:0,
     armorX:0,armorY:0,armorWarn:true,
     shieldX:0,shieldGlow:true,
+    // Hand Item Size: the real first-person items. 1.0 / 0 = vanilla.
+    handItems:true,mainScale:1.0,mainY:0,offScale:1.0,offY:0,
+    hitboxes:false,
     // Shaders (thunder-shaders.js). Off by default; strengths and intensity are percentages.
     // shPreset: 0 LOW, 1 MEDIUM, 2 HIGH, 3 CUSTOM. shBloomRes n = bloom at 1/2^n of the frame.
-    shaders:false,shIntensity:70,shPreset:1,shAuto:true,shTargetFps:30,shPerf:false,
+    shaders:false,shIntensity:80,shPreset:1,shAuto:true,shTargetFps:30,shPerf:false,
     shBloomRes:2,shBloomLevels:4,
-    shBloom:true,shBloomStr:55,shGrade:true,shGradeStr:60,shContrast:true,shContrastStr:45,
-    shVignette:true,shVignetteStr:45,shAmbient:true,shAmbientStr:50,shMotion:false,shMotionStr:35
+    shBloom:true,shBloomStr:60,shGrade:true,shGradeStr:75,shContrast:true,shContrastStr:35,
+    shVignette:true,shVignetteStr:40,shAmbient:true,shAmbientStr:50,shMotion:false,shMotionStr:35,
+    shRays:true,shRaysStr:65,shAtmos:true,shAtmosStr:60
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -220,6 +231,8 @@
   function fmtPx(v){v=Math.round(v);return v===0?'default':(v>0?'+':'')+v+' px';}
   function fmtUp(v){v=Math.round(v);return v===0?'default':(-v)+' px up';}
   function fmtScale(v){return v.toFixed(2)+'x';}
+  function fmtHand(v){return Math.abs(v-1)<0.001?'vanilla':Math.round(v*100)+'%';}
+  function fmtLift(v){return Math.abs(v)<0.001?'vanilla':(v>0?'+':'')+v.toFixed(2);}
   function fmtFire(v){return Math.abs(v)<0.001?'vanilla':(v>0?'+':'')+v.toFixed(2);}
   var CATEGORIES=[
     {id:'hud',name:'HUD'},
@@ -233,12 +246,12 @@
       {id:'armorWarn',name:'Low durability pulse'},
       {id:'armorX',name:'Horizontal position',min:-120,max:120,step:1,fmt:fmtPx},
       {id:'armorY',name:'Height',min:-120,max:0,step:1,fmt:fmtUp,invert:true}]},
-    {cat:'hud',id:'shield',name:'Shield Slot',desc:'Off-hand / shield slot you can move. Glows while you block.',opts:[
+    {cat:'hud',id:'shield',name:'Shield Slot',desc:'Off-hand / shield slot icon you can move. Glows while you block. (In-hand shield size: Visual > Hand Item Size.)',opts:[
       {id:'shieldGlow',name:'Blocking glow'},
       {id:'shieldY',name:'Height',min:-100,max:0,step:1,fmt:fmtUp,invert:true},
       {id:'shieldX',name:'Horizontal position',min:-150,max:150,step:1,fmt:fmtPx}]},
-    {cat:'hud',id:'heldItem',name:'Held Item',desc:'Held item icon with its durability bar, beside the hotbar.',opts:[
-      {id:'heldScale',name:'Size',min:0.5,max:2,step:0.05,fmt:fmtScale},
+    {cat:'hud',id:'heldItem',name:'Held Item',desc:'Held item icon with its durability bar, beside the hotbar. (In-hand sword size: Visual > Hand Item Size.)',opts:[
+      {id:'heldScale',name:'Icon size',min:0.5,max:2,step:0.05,fmt:fmtScale},
       {id:'heldText',name:'Name and durability'},
       {id:'heldX',name:'Horizontal position',min:-150,max:150,step:1,fmt:fmtPx},
       {id:'heldY',name:'Height',min:-120,max:0,step:1,fmt:fmtUp,invert:true}]},
@@ -258,6 +271,12 @@
     {cat:'combat',id:'noFov',name:'No FOV Change',desc:'Keeps FOV fixed while sprinting, with Speed or a bow.'},
     {cat:'movement',id:'toggleSprint',name:'Toggle Sprint',desc:'Sprints automatically while moving forward.'},
     {cat:'movement',id:'noBob',name:'No View Bobbing',desc:'Removes the walking camera bob.'},
+    {cat:'visual',id:'handItems',name:'Hand Item Size',desc:'Resizes the real sword, tools, blocks and shield you hold in first person. 100% is vanilla.',opts:[
+      {id:'mainScale',name:'Main hand (sword) size',min:0.3,max:1.5,step:0.05,fmt:fmtHand},
+      {id:'mainY',name:'Main hand height',min:-0.5,max:0.3,step:0.02,fmt:fmtLift},
+      {id:'offScale',name:'Off hand (shield) size',min:0.3,max:1.5,step:0.05,fmt:fmtHand},
+      {id:'offY',name:'Off hand (shield) height',min:-0.5,max:0.3,step:0.02,fmt:fmtLift}]},
+    {cat:'visual',id:'hitboxes',name:'Hitboxes',desc:'Shows entity hitboxes like F3+B: white box, red eye line, blue look direction.'},
     {cat:'visual',id:null,name:'Fire Height',desc:'Moves the first-person fire overlay. 0 is vanilla, negative is lower.',opts:[
       {id:'fireOffset',name:'Offset',min:-0.55,max:0.45,step:0.05,fmt:fmtFire}]},
     {cat:'visual',id:'fullbright',name:'Fullbright',desc:'Maximum brightness everywhere.'},
@@ -1217,6 +1236,68 @@
     }
   };
 
+  // ------------------------------------------------------------------
+  // Hand Item Size: resizes (and raises/lowers) the real 3D item held in first person - sword,
+  // tools, blocks and the shield. renderItemInFirstPerson (DkZ) runs once per hand after placing
+  // that hand's swing/equip transforms; while it runs we remember which hand it is. It draws the
+  // item through renderItemSide (Ch0) with a FIRST_PERSON transform, and that call is wrapped in
+  // push / translate / scale / pop. The scale pivots on the hand anchor, so a smaller item stays
+  // in the hand. Third-person, GUI, dropped and item-frame rendering use other transform types
+  // and are untouched. Both wrappers keep their state on the thread stack across a suspension.
+  // ------------------------------------------------------------------
+  var fpHand=0;                              // 1 main hand, 2 off hand, while DkZ runs
+  var origDkZ=DkZ;
+  DkZ=function(a,b,c,d,e,f,g,h){
+    var prev=fpHand,mine,t;
+    if($rt_resuming()){t=$rt_nativeThread();mine=t.pop();prev=t.pop();}
+    else mine=e===HFj?1:2;
+    fpHand=mine;
+    try{origDkZ(a,b,c,d,e,f,g,h);}
+    finally{
+      if($rt_suspending())$rt_nativeThread().push(prev,mine);
+      fpHand=prev;
+    }
+  };
+  function handNum(v,def,lo,hi){v=Number(v);return isFinite(v)?clamp(v,lo,hi):def;}
+  var origCh0=Ch0;
+  Ch0=function(a,b,c,d,e){
+    var st=0;
+    if($rt_resuming())st=$rt_nativeThread().pop();
+    else if(fpHand&&S.handItems&&(d===Lke||d===Lkd)){
+      var main=fpHand===1;
+      var sc=handNum(main?S.mainScale:S.offScale,1,0.3,1.5);
+      var dy=handNum(main?S.mainY:S.offY,0,-0.5,0.3);
+      if(Math.abs(sc-1)>=0.001||Math.abs(dy)>=0.001){
+        Eu0();
+        if(Math.abs(dy)>=0.001)DPm(0.0,dy,0.0);
+        if(Math.abs(sc-1)>=0.001)FWK(sc,sc,sc);
+        st=1;
+      }
+    }
+    try{origCh0(a,b,c,d,e);}
+    finally{
+      if($rt_suspending())$rt_nativeThread().push(st);
+      else if(st===1)ECi();
+    }
+  };
+
+  // Hitboxes: RenderManager.debugBoundingBox is what F3+B toggles. The setting is written to it
+  // before each entity is drawn; if the game flips it (F3+B with Block F3 Screen off), the
+  // setting follows so the menu and the game never disagree.
+  var hbApplied=null;
+  var origGxt=Gxt;
+  Gxt=function(a,b,c,d,e,f,g,h){
+    if(!$rt_resuming()&&a){
+      try{
+        var cur=!!a.ck_;
+        if(hbApplied!==null&&cur!==hbApplied){S.hitboxes=cur;save();if(menuOpen)render();}
+        else if(cur!==!!S.hitboxes)a.ck_=S.hitboxes?1:0;
+        hbApplied=!!S.hitboxes;
+      }catch(_){}
+    }
+    return origGxt(a,b,c,d,e,f,g,h);
+  };
+
   var origFN3=FN3;
   FN3=function(a,b){
     if(S.noHurtCam&&!$rt_resuming())return;
@@ -1230,6 +1311,9 @@
   };
 
   // FOV: with No FOV Change the hand FOV modifier is pinned to 1.0 for the duration of the call.
+  // The world camera's final FOV (c = use the FOV setting) is remembered for the shaders, which
+  // project the sun onto the screen with it.
+  var worldFov=70;
   var origDvp=Dvp;
   Dvp=function(a,b,c){
     var o1=0,o2=0,pinned=0,t,r;
@@ -1242,6 +1326,7 @@
       if($rt_suspending())$rt_nativeThread().push(o1,o2,pinned);
       else if(pinned){a.US=o1;a.cQr=o2;}
     }
+    if(c&&typeof r==='number'&&r>1&&r<179)worldFov=r;
     return r;
   };
 
