@@ -138,7 +138,8 @@
   // ------------------------------------------------------------------
   // Settings
   // ------------------------------------------------------------------
-  var KEY='thunderClientSettings_v3';
+  var KEY='thunderClientSettings_v6';
+  var OLD_KEY='thunderClientSettings_v3';    // v4/v5 settings: on/off choices are imported once
   var GAMMA_KEY='thunderSavedGamma_v1';
   var DEFAULTS={
     armor:true,heldItem:true,coords:true,direction:true,speed:false,hunger:true,saturation:true,
@@ -156,20 +157,28 @@
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
+  function applySaved(saved,numbersToo){
+    for(var id in saved){
+      if(!Object.prototype.hasOwnProperty.call(DEFAULTS,id))continue;
+      if(typeof DEFAULTS[id]==='number'){
+        if(!numbersToo)continue;
+        var nv=Number(saved[id]);
+        if(isFinite(nv))S[id]=nv;
+      }else if(typeof DEFAULTS[id]==='boolean')S[id]=!!saved[id];
+    }
+  }
   try{
     var saved=W.localStorage.getItem(KEY);
-    if(saved){
-      saved=JSON.parse(saved);
-      for(k in saved){
-        if(!Object.prototype.hasOwnProperty.call(DEFAULTS,k))continue;
-        if(typeof DEFAULTS[k]==='number'){
-          var nv=Number(saved[k]);
-          if(isFinite(nv))S[k]=nv;
-        }else S[k]=!!saved[k];
-      }
+    if(saved)applySaved(JSON.parse(saved),true);
+    else{
+      // first run of v6: keep the old module on/off choices, but start every slider at its new
+      // default (v4 silently saved Fire Height -0.35 and its sliders had different meanings)
+      var old=W.localStorage.getItem(OLD_KEY);
+      if(old)applySaved(JSON.parse(old),false);
     }
   }catch(_){}
   function save(){try{W.localStorage.setItem(KEY,JSON.stringify(S));}catch(_){}}
+  save();
 
   // Menu layout: [category, [[id, label, description], ...]]
   var CATS=[
@@ -205,7 +214,7 @@
     ]],
     ['VISUAL',[
       ['fullbright','Fullbright','Maximum brightness everywhere'],
-      ['fireOffset','Fire Height','Vertical fire-overlay offset (0 = vanilla)'],
+      ['fireOffset','Fire Height','Moves the first-person fire overlay down (-) or up (+); 0 = vanilla'],
       ['shieldY','Shield Height','Moves the shield / off-hand slot up (0 = vanilla position)'],
       ['shieldX','Shield X','Moves the shield / off-hand slot left/right'],
       ['heldScale','Held Item Size','Changes the size of the held-item text'],
@@ -214,7 +223,7 @@
     ]]
   ];
   var NUMERIC_RANGES={
-    fireOffset:{min:-0.55,max:0.45,step:0.05,format:function(v){return v.toFixed(2);}},
+    fireOffset:{min:-0.55,max:0.45,step:0.05,format:function(v){return Math.abs(v)<0.001?'vanilla':(v>0?'+':'')+v.toFixed(2);}},
     shieldY:{min:-100,max:0,step:1,format:function(v){return v===0?'vanilla':Math.round(-v)+' px up';}},
     shieldX:{min:-150,max:150,step:1,format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}},
     heldScale:{min:0.50,max:1.50,step:0.05,format:function(v){return v.toFixed(2)+'x';}},
