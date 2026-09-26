@@ -48815,6 +48815,7 @@ c.PK;})();
    @field bH net.minecraft.client.gui.GuiIngame.renderHotbar Minecraft.renderEngine
    @field dz net.minecraft.client.gui.GuiIngame.renderHotbar Gui.zLevel
    @field dw net.minecraft.client.gui.GuiIngame.renderGameOverlay Minecraft.playerController
+   @field o4 net.minecraft.client.gui.GuiIngame.renderHotbar GameSettings.attackIndicator
 
    TeaVM runtime:
    @runtime $rt_globals x
@@ -48878,7 +48879,7 @@ c.PK;})();
     fullbright:false,
     fireOffset:0,
     shieldY:0,
-    heldScale:0.85,
+    heldScale:1.0,heldText:true,heldX:0,heldY:0,
     armorX:0,armorY:0,armorWarn:true,
     shieldX:0,shieldGlow:true
   };
@@ -48912,7 +48913,8 @@ c.PK;})();
     ['HUD',[
       ['armor','Armor HUD','Worn armor as item icons with vanilla durability bars, next to the off-hand slot'],
       ['armorWarn','Low Armor Warning','Pulses a slot red when that piece is below 10% durability'],
-      ['heldItem','Held Item','Compact held-item display'],
+      ['heldItem','Held Item','Held item icon (with durability bar) beside the hotbar'],
+      ['heldText','Held Item Name','Item name and durability next to the held-item icon'],
       ['coords','Coordinates','XYZ position'],
       ['direction','Direction','Facing and axis'],
       ['speed','Speed','Horizontal speed in blocks/second'],
@@ -48944,7 +48946,9 @@ c.PK;})();
       ['fireOffset','Fire Height','Moves the first-person fire overlay down (-) or up (+); 0 = vanilla'],
       ['shieldY','Shield Height','Moves the shield / off-hand slot up (0 = vanilla position)'],
       ['shieldX','Shield X','Moves the shield / off-hand slot left/right'],
-      ['heldScale','Held Item Size','Changes the size of the held-item text'],
+      ['heldScale','Held Item Size','Scales the held-item icon, frame and durability bar'],
+      ['heldX','Held Item X','Moves the held-item icon left/right'],
+      ['heldY','Held Item Y','Moves the held-item icon up/down'],
       ['armorX','Armor HUD X','Moves the armor slots left/right'],
       ['armorY','Armor HUD Y','Moves the armor slots up/down']
     ]]
@@ -48953,7 +48957,9 @@ c.PK;})();
     fireOffset:{min:-0.55,max:0.45,step:0.05,format:function(v){return Math.abs(v)<0.001?'vanilla':(v>0?'+':'')+v.toFixed(2);}},
     shieldY:{min:-100,max:0,step:1,format:function(v){return v===0?'vanilla':Math.round(-v)+' px up';}},
     shieldX:{min:-150,max:150,step:1,format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}},
-    heldScale:{min:0.50,max:1.50,step:0.05,format:function(v){return v.toFixed(2)+'x';}},
+    heldScale:{min:0.50,max:2.00,step:0.05,format:function(v){return v.toFixed(2)+'x';}},
+    heldX:{min:-150,max:150,step:1,format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}},
+    heldY:{min:-120,max:0,step:1,format:function(v){return v===0?'hotbar':Math.round(-v)+' px up';}},
     armorX:{min:-120,max:120,step:1,format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}},
     armorY:{min:-120,max:0,step:1,format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}}
   };
@@ -49183,13 +49189,6 @@ c.PK;})();
   // ------------------------------------------------------------------
   function drawStringOp(font,s,x,y,color){return font.eiX(s,x,y,color,1);}
   function text(font,str,x,y,color){op(drawStringOp,font,$rt_str(String(str)),x|0,y|0,color|0);}
-  function textScaled(font,str,x,y,color,scale){
-    var s=(typeof scale==='number'&&isFinite(scale))?scale:1.0;
-    if(s===1){text(font,str,x,y,color);return;}
-    opPush();op(DPm,x|0,y|0,0.0);op(FWK,s,s,s);
-    text(font,str,0,0,color);
-    opPop();
-  }
   function rect(x1,y1,x2,y2,color){op(D49,x1|0,y1|0,x2|0,y2|0,color|0);}
   function textWidth(font,str){return CC(font,$rt_str(String(str)));}
 
@@ -49296,7 +49295,58 @@ c.PK;})();
     itemIcon(ctx,st,left?fx+3:fx+10,fy+4);
     itemsEnd();
   }
-  function pctColor(p){return p<=25?0xFF5555:(p<=50?0xFFFF55:0xFFFFFF);}
+
+  // ------------------------------------------------------------------
+  // Held item: the main-hand item as a real icon in a vanilla slot frame on the free side of the
+  // hotbar (opposite the off-hand). Held Item Size scales frame, icon and durability bar through
+  // the GL matrix, anchored at the bottom corner nearest the hotbar. The label stays unscaled.
+  // ------------------------------------------------------------------
+  function heldHud(ctx){
+    var p=ctx.player,st=EZ6(p);
+    if(!st||CCI(st))return;
+    var sc=clamp(Number(S.heldScale)||1,0.5,2.0);
+    var right=ctx.offLeft;                             // held item goes where the off-hand is not
+    var indicator=false;
+    try{indicator=ctx.mc.G.o4===2;}catch(_){}          // attack indicator drawn beside the hotbar
+    var size=Math.round(22*sc);
+    var ax=right?ctx.cx+91+6+(indicator?24:0):ctx.cx-91-6-(indicator?24:0);
+    ax=Math.round(ax+(Number(S.heldX)||0));
+    ax=right?clamp(ax,0,ctx.w-size):clamp(ax,size,ctx.w);
+    var ay=clamp(Math.round(ctx.h+(Number(S.heldY)||0)),size,ctx.h);
+    var ox=right?0:-22;                                // frame origin relative to the anchor
+
+    opPush();op(DPm,ax,ay,0.0);op(FWK,sc,sc,1.0);
+    widgetsBegin(ctx);
+    blit(ctx,ox,-22,24,23,22,22);                     // single slot frame from widgets.png
+    widgetsEnd(ctx);
+    itemsBegin();
+    itemIcon(ctx,st,ox+3,-19);
+    itemsEnd();
+    opPop();
+
+    if(!S.heldText)return;
+    var name=$rt_ustr(EJu(st)),suffix='',col=0xFFFFFF;
+    var cnt=CRD(st);
+    if(cnt>1)suffix=' x'+cnt;
+    var mx=EjU(st);
+    if(mx>0){
+      var pct=Math.round((mx-EHa(st))*100/mx);
+      suffix=' '+pct+'%';
+      col=pct<=10?0xFF5555:(pct<=25?0xFFAA00:(pct<=50?0xFFFF55:0x55FF55));
+    }
+    var ty=ay-Math.round(size/2)-4;
+    var room=right?ctx.w-(ax+size+4)-2:(ax-size-4)-2;
+    var sw=textWidth(ctx.font,suffix);
+    if(textWidth(ctx.font,name)+sw>room){
+      while(name.length>1&&textWidth(ctx.font,name+'...')+sw>room)name=name.slice(0,-1);
+      name+='...';
+    }
+    var full=textWidth(ctx.font,name)+sw;
+    if(full>room+2)return;                             // no room at all: icon only
+    var tx=right?ax+size+4:ax-size-4-full;
+    text(ctx.font,name,tx,ty,0xFFFFFF);
+    if(suffix)text(ctx.font,suffix,tx+textWidth(ctx.font,name),ty,col);
+  }
   function fmt1(n){return (Math.round(n*10)/10).toFixed(1);}
   function pad2(n){return n<10?'0'+n:''+n;}
 
@@ -49389,7 +49439,6 @@ c.PK;})();
     trimClicks();
 
     var left=[],right=[];
-    var heldDisplay=null;
     var px=player.b,py=player.f,pz=player.c;
     var havePos=typeof px==='number'&&typeof py==='number'&&typeof pz==='number';
     if(havePos)updateSpeed(px,pz);
@@ -49398,23 +49447,6 @@ c.PK;})();
       w:width,h:height,cx:(width/2)|0,offLeft:true};
     try{ctx.offLeft=CiU(DlC(player))===HJu;}catch(_){}
     var itemHud=!YZ(mc.dw)&&!!ctx.ri&&!!ctx.tm;     // no hotbar (so no item HUD) in spectator
-    if(S.heldItem){
-      try{
-        var st=EZ6(player);
-        if(st&&!CCI(st)){
-          var txt=$rt_ustr(EJu(st));
-          var cnt=CRD(st);
-          if(cnt>1)txt+=' x'+cnt;
-          var mx=EjU(st),col=0xFFFFFF;
-          if(mx>0){
-            var durabilityPct=Math.round((mx-EHa(st))*100/mx);
-            txt+=' '+durabilityPct+'%';
-            col=pctColor(durabilityPct);
-          }
-          heldDisplay=['Held '+txt,col];
-        }
-      }catch(_){}
-    }
     if(S.fps)left.push(['FPS '+fpsValue,0xFFFFFF]);
     if(S.cps)left.push(['CPS '+clicks.length,0xFFFFFF]);
     if(S.coords&&havePos)left.push(['XYZ '+fmt1(px)+' / '+fmt1(py)+' / '+fmt1(pz),0xFFFFFF]);
@@ -49475,10 +49507,7 @@ c.PK;})();
     }
     if(S.armor&&itemHud)armorHud(ctx);
     if(S.shield&&itemHud)shieldHud(ctx);
-    if(heldDisplay){
-      var heldScale=(typeof S.heldScale==='number'?S.heldScale:0.85);
-      textScaled(font,heldDisplay[0],Math.max(5,width-textWidth(font,heldDisplay[0])-8),Math.max(5,height-18),heldDisplay[1],heldScale);
-    }
+    if(S.heldItem&&itemHud)heldHud(ctx);
     if(S.keystrokes){
       var ky=height-46,kx=width-51;
       var keys=[
