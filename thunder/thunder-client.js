@@ -1332,4 +1332,7 @@
 
   // Shaders: optional post-processing of the world image (off by default)
   // @include thunder-shaders.js
+
+  // Friends: open this singleplayer world to friends with a join code, or join a friend's world
+  // @include thunder-lan.js
 })();

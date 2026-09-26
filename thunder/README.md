@@ -1,7 +1,7 @@
 # Thunder Client build
 
-`classes.js` is generated. Edit `thunder/thunder-client.js` (and `thunder/thunder-shaders.js`, which
-it pulls in with `// @include thunder-shaders.js`), then run:
+`classes.js` is generated. Edit `thunder/thunder-client.js` (and `thunder/thunder-shaders.js` and
+`thunder/thunder-lan.js`, which it pulls in with `// @include`), then run:
 
 ```
 node thunder/build.js
@@ -46,6 +46,10 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   Hitboxes (`RenderManager.debugBoundingBox`, kept in sync with F3+B).
 - `thunder-shaders.js` - optional shader/post-processing system (Right Shift > Shaders). How it
   hooks the renderer, the pipeline, presets, FPS safety and limits: [SHADERS.md](SHADERS.md).
+- `thunder-lan.js` - Friends: open a singleplayer world to friends with a join code and join a
+  friend's world (EaglerSPRelay signalling + WebRTC, bridged to the integrated server's player
+  channels). How to use it, how it works, what was tested and the limits:
+  [NETWORKING.md](NETWORKING.md).
 
 ## Backups
 
