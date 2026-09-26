@@ -48736,6 +48736,8 @@ c.PK;})();
    @hook Cyx net.minecraft.client.renderer.EntityRenderer.setupViewBobbing
    @hook Dvp net.minecraft.client.renderer.EntityRenderer.getFOVModifier
    @hook G7V net.minecraft.util.datafix.DataFixesManager.createFixer
+   @hook Ckt net.minecraft.client.gui.GuiIngame.renderHotbar
+   @hook EjD net.minecraft.entity.EntityLivingBase.getHeldItemOffhand
 
    Game functions it calls:
    @use Ff$ net.minecraft.init.Bootstrap.register
@@ -48795,6 +48797,7 @@ c.PK;})();
    @clinit Dt net.minecraft.inventory.EntityEquipmentSlot
    @static HJu net.minecraft.util.EnumHandSide LEFT
    @static Lo2 net.minecraft.client.gui.GuiIngame WIDGETS_TEX_PATH (textures/gui/widgets.png)
+   @static HHk net.minecraft.item.ItemStack EMPTY
 
    Instance fields (checked against a method that reads them):
    @field dk net.minecraft.client.gui.GuiIngame.renderHotbarItem GuiIngame.mc
@@ -48875,7 +48878,8 @@ c.PK;})();
     fireOffset:0,
     shieldY:0,
     heldScale:0.85,
-    armorX:0,armorY:0,armorWarn:true
+    armorX:0,armorY:0,armorWarn:true,
+    shieldX:0,shieldGlow:true
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -48907,7 +48911,8 @@ c.PK;})();
       ['saturation','Saturation','Saturation indicator above the hunger bar'],
       ['effects','Potion Effects','Active effects with time left'],
       ['sprintStatus','Sprint Status','Shows whether you are sprinting'],
-      ['shield','Shield / Blocking','Compact blocking indicator'],
+      ['shield','Shield / Off-hand Slot','Draws the off-hand (shield) slot so it can be moved'],
+      ['shieldGlow','Blocking Glow','Cyan glow around the shield slot while you block'],
       ['clock','Clock','Real-world time'],
       ['memory','Memory','JS memory in use'],
       ['fps','FPS','Frames per second'],
@@ -48928,7 +48933,8 @@ c.PK;})();
     ['VISUAL',[
       ['fullbright','Fullbright','Maximum brightness everywhere'],
       ['fireOffset','Fire Height','Vertical fire-overlay offset (0 = vanilla)'],
-      ['shieldY','Shield Height','Moves the blocking indicator higher/lower'],
+      ['shieldY','Shield Height','Moves the shield / off-hand slot up (0 = vanilla position)'],
+      ['shieldX','Shield X','Moves the shield / off-hand slot left/right'],
       ['heldScale','Held Item Size','Changes the size of the held-item text'],
       ['armorX','Armor HUD X','Moves the armor slots left/right'],
       ['armorY','Armor HUD Y','Moves the armor slots up/down']
@@ -48936,7 +48942,8 @@ c.PK;})();
   ];
   var NUMERIC_RANGES={
     fireOffset:{min:-0.55,max:0.45,step:0.05,format:function(v){return v.toFixed(2);}},
-    shieldY:{min:-45,max:45,step:1,format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}},
+    shieldY:{min:-100,max:0,step:1,format:function(v){return v===0?'vanilla':Math.round(-v)+' px up';}},
+    shieldX:{min:-150,max:150,step:1,format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}},
     heldScale:{min:0.50,max:1.50,step:0.05,format:function(v){return v.toFixed(2)+'x';}},
     armorX:{min:-120,max:120,step:1,format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}},
     armorY:{min:-120,max:0,step:1,format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}}
@@ -49244,6 +49251,42 @@ c.PK;})();
     }
     itemsEnd();
   }
+
+  // ------------------------------------------------------------------
+  // Shield / off-hand slot. Thunder draws the off-hand slot itself (vanilla frame, icon and
+  // durability bar) so Shield Height / Shield X really move it; vanilla's copy is hidden only
+  // while renderHotbar runs (see the Ckt/EjD hooks). While blocking the slot glows cyan.
+  // ------------------------------------------------------------------
+  function ring(x1,y1,x2,y2,color){
+    rect(x1,y1,x2,y1+1,color);rect(x1,y2-1,x2,y2,color);
+    rect(x1,y1+1,x1+1,y2-1,color);rect(x2-1,y1+1,x2,y2-1,color);
+  }
+  function shieldHud(ctx){
+    var p=ctx.player,st=null,blocking=false;
+    st=origEjD(p);
+    if(!st||CCI(st))return;
+    try{blocking=!!Ctr(p);}catch(_){}
+    // vanilla: 29x24 region of widgets.png at (cx-91-29, h-23) [left] or (cx+91, h-23) [right]
+    var left=ctx.offLeft;
+    var fx=left?ctx.cx-91-29:ctx.cx+91,fy=ctx.h-23;
+    fx=clamp(Math.round(fx+(Number(S.shieldX)||0)),0,ctx.w-29);
+    fy=clamp(Math.round(fy+(Number(S.shieldY)||0)),0,ctx.h-24);
+    var bx=fx+(left?0:7),by=fy+1;                     // the visible 22x22 frame inside the region
+
+    widgetsBegin(ctx);
+    blit(ctx,fx,fy,left?24:53,22,29,24);
+    widgetsEnd(ctx);
+    if(blocking&&S.shieldGlow){
+      var pulse=0.75+0.25*Math.sin(now()/120);
+      ring(bx-3,by-3,bx+25,by+25,(Math.round(0x22*pulse)<<24)|0x55E8FF);
+      ring(bx-2,by-2,bx+24,by+24,(Math.round(0x55*pulse)<<24)|0x55E8FF);
+      ring(bx-1,by-1,bx+23,by+23,(Math.round(0xBB*pulse)<<24)|0x7FF0FF);
+      ring(bx,by,bx+22,by+22,0xFFB8F8FF);
+    }
+    itemsBegin();
+    itemIcon(ctx,st,left?fx+3:fx+10,fy+4);
+    itemsEnd();
+  }
   function pctColor(p){return p<=25?0xFF5555:(p<=50?0xFFFF55:0xFFFFFF);}
   function fmt1(n){return (Math.round(n*10)/10).toFixed(1);}
   function pad2(n){return n<10?'0'+n:''+n;}
@@ -49394,10 +49437,6 @@ c.PK;})();
       var sp=!!CBg(player);
       left.push(['Sprint '+(sp?'ON':'OFF'),sp?0x55FF55:0xAAAAAA]);
     }
-    var blockingNow=false;
-    if(S.shield){
-      try{blockingNow=!!Ctr(player);}catch(_){}
-    }
     if(S.clock){
       var d=new Date();
       right.push([pad2(d.getHours())+':'+pad2(d.getMinutes())+':'+pad2(d.getSeconds()),0xFFFFFF]);
@@ -49426,15 +49465,7 @@ c.PK;})();
       y+=dy;
     }
     if(S.armor&&itemHud)armorHud(ctx);
-    if(blockingNow){
-      var shText='BLOCKING';
-      var shW=textWidth(font,shText)+12;
-      var shX=Math.round(width/2-shW/2);
-      var shY=Math.round(height-54+S.shieldY);
-      rect(shX,shY-2,shX+shW,shY+10,0x99080F17);
-      rect(shX,shY-2,shX+2,shY+10,0xFF55E8FF);
-      text(font,shText,shX+7,shY,0xFF8AF3FF);
-    }
+    if(S.shield&&itemHud)shieldHud(ctx);
     if(heldDisplay){
       var heldScale=(typeof S.heldScale==='number'?S.heldScale:0.85);
       textScaled(font,heldDisplay[0],Math.max(5,width-textWidth(font,heldDisplay[0])-8),Math.max(5,height-18),heldDisplay[1],heldScale);
@@ -49482,6 +49513,22 @@ c.PK;})();
       catch(e){report(e);i=-1;unwindOps();}
       if(i>=0){$rt_nativeThread().push(a,b,1,list,i);return;}
     }
+  };
+
+  // renderHotbar: while it runs (and the Thunder shield slot is on), getHeldItemOffhand reports
+  // an empty hand so vanilla skips its own off-hand frame/icon; Thunder draws it instead.
+  // Both wrappers are stateless, so a suspended renderHotbar simply resumes through them.
+  var hideVanillaOffhand=false;
+  var origCkt=Ckt;
+  Ckt=function(a,b,c){
+    hideVanillaOffhand=!!S.shield;
+    try{return origCkt(a,b,c);}
+    finally{hideVanillaOffhand=false;}
+  };
+  var origEjD=EjD;
+  EjD=function(a){
+    if(hideVanillaOffhand&&!$rt_resuming()&&HHk)return HHk;
+    return origEjD(a);
   };
 
   // Fire overlay: 0.00 is vanilla, negative moves the first-person fire down, positive up.
