@@ -199,64 +199,64 @@
       if(old)applySaved(JSON.parse(old),false);
     }
   }catch(_){}
-  function save(){try{W.localStorage.setItem(KEY,JSON.stringify(S));}catch(_){}}
-  save();
+  // only values that differ from the defaults are stored, so settings you never touched follow
+  // future default changes
+  function save(){
+    var out={};
+    for(var id in DEFAULTS)if(S[id]!==DEFAULTS[id])out[id]=S[id];
+    try{W.localStorage.setItem(KEY,JSON.stringify(out));}catch(_){}
+  }
 
-  // Menu layout: [category, [[id, label, description], ...]]
-  var CATS=[
-    ['HUD',[
-      ['armor','Armor HUD','Worn armor as item icons with vanilla durability bars, next to the off-hand slot'],
-      ['armorWarn','Low Armor Warning','Pulses a slot red when that piece is below 10% durability'],
-      ['heldItem','Held Item','Held item icon (with durability bar) beside the hotbar'],
-      ['heldText','Held Item Name','Item name and durability next to the held-item icon'],
-      ['coords','Coordinates','XYZ position'],
-      ['direction','Direction','Facing and axis'],
-      ['speed','Speed','Horizontal speed in blocks/second'],
-      ['hunger','Hunger','Food level'],
-      ['saturation','Saturation','Gold saturation bar just above the hunger icons'],
-      ['effects','Potion Effects','Active effects with time left'],
-      ['sprintStatus','Sprint Status','Shows whether you are sprinting'],
-      ['shield','Shield / Off-hand Slot','Draws the off-hand (shield) slot so it can be moved'],
-      ['shieldGlow','Blocking Glow','Cyan glow around the shield slot while you block'],
-      ['clock','Clock','Real-world time'],
-      ['memory','Memory','JS memory in use'],
-      ['fps','FPS','Frames per second'],
-      ['cps','CPS','Left clicks per second'],
-      ['keystrokes','Keystrokes','WASD and mouse buttons']
-    ]],
-    ['PVP',[
-      ['noHurtCam','No Hurt Camera','Removes camera shake when damaged'],
-      ['noFov','No FOV Change','Keeps FOV fixed during sprint/speed/bow']
-    ]],
-    ['MOVEMENT',[
-      ['toggleSprint','Toggle Sprint','Sprints while moving forward'],
-      ['noBob','No View Bobbing','Removes walking camera bob']
-    ]],
-    ['UTILITY',[
-      ['blockF3','Block F3 Screen','Stops the built-in F3 screen']
-    ]],
-    ['VISUAL',[
-      ['fullbright','Fullbright','Maximum brightness everywhere'],
-      ['fireOffset','Fire Height','Moves the first-person fire overlay down (-) or up (+); 0 = vanilla'],
-      ['shieldY','Shield Height','Moves the shield / off-hand slot up (0 = vanilla position)'],
-      ['shieldX','Shield X','Moves the shield / off-hand slot left/right'],
-      ['heldScale','Held Item Size','Scales the held-item icon, frame and durability bar'],
-      ['heldX','Held Item X','Moves the held-item icon left/right'],
-      ['heldY','Held Item Y','Moves the held-item icon up/down'],
-      ['armorX','Armor HUD X','Moves the armor slots left/right'],
-      ['armorY','Armor HUD Y','Moves the armor slots up/down']
-    ]]
+  // Menu layout. A module with an id has an on/off switch; opts are its settings (a number
+  // setting becomes a slider, a boolean one a switch). Every entry maps to a setting that the
+  // HUD/hooks below actually read.
+  function fmtPx(v){v=Math.round(v);return v===0?'default':(v>0?'+':'')+v+' px';}
+  function fmtUp(v){v=Math.round(v);return v===0?'default':(-v)+' px up';}
+  function fmtScale(v){return v.toFixed(2)+'x';}
+  function fmtFire(v){return Math.abs(v)<0.001?'vanilla':(v>0?'+':'')+v.toFixed(2);}
+  var CATEGORIES=[
+    {id:'hud',name:'HUD'},
+    {id:'combat',name:'Combat'},
+    {id:'movement',name:'Movement'},
+    {id:'visual',name:'Visual'},
+    {id:'utility',name:'Utility'}
   ];
-  var NUMERIC_RANGES={
-    fireOffset:{min:-0.55,max:0.45,step:0.05,format:function(v){return Math.abs(v)<0.001?'vanilla':(v>0?'+':'')+v.toFixed(2);}},
-    shieldY:{min:-100,max:0,step:1,format:function(v){return v===0?'vanilla':Math.round(-v)+' px up';}},
-    shieldX:{min:-150,max:150,step:1,format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}},
-    heldScale:{min:0.50,max:2.00,step:0.05,format:function(v){return v.toFixed(2)+'x';}},
-    heldX:{min:-150,max:150,step:1,format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}},
-    heldY:{min:-120,max:0,step:1,format:function(v){return v===0?'hotbar':Math.round(-v)+' px up';}},
-    armorX:{min:-120,max:120,step:1,format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}},
-    armorY:{min:-120,max:0,step:1,format:function(v){return (v>0?'+':'')+Math.round(v)+' px';}}
-  };
+  var MODULES=[
+    {cat:'hud',id:'armor',name:'Armor HUD',desc:'Worn armor as item icons with vanilla durability bars, beside the off-hand slot.',opts:[
+      {id:'armorWarn',name:'Low durability pulse'},
+      {id:'armorX',name:'Horizontal position',min:-120,max:120,step:1,fmt:fmtPx},
+      {id:'armorY',name:'Height',min:-120,max:0,step:1,fmt:fmtUp,invert:true}]},
+    {cat:'hud',id:'shield',name:'Shield Slot',desc:'Off-hand / shield slot you can move. Glows while you block.',opts:[
+      {id:'shieldGlow',name:'Blocking glow'},
+      {id:'shieldY',name:'Height',min:-100,max:0,step:1,fmt:fmtUp,invert:true},
+      {id:'shieldX',name:'Horizontal position',min:-150,max:150,step:1,fmt:fmtPx}]},
+    {cat:'hud',id:'heldItem',name:'Held Item',desc:'Held item icon with its durability bar, beside the hotbar.',opts:[
+      {id:'heldScale',name:'Size',min:0.5,max:2,step:0.05,fmt:fmtScale},
+      {id:'heldText',name:'Name and durability'},
+      {id:'heldX',name:'Horizontal position',min:-150,max:150,step:1,fmt:fmtPx},
+      {id:'heldY',name:'Height',min:-120,max:0,step:1,fmt:fmtUp,invert:true}]},
+    {cat:'hud',id:'saturation',name:'Saturation',desc:'Gold saturation bar just above the hunger icons.'},
+    {cat:'hud',id:'effects',name:'Potion Effects',desc:'Active effects and time left, top right.'},
+    {cat:'hud',id:'coords',name:'Coordinates',desc:'Your XYZ position.'},
+    {cat:'hud',id:'direction',name:'Direction',desc:'Facing direction and axis.'},
+    {cat:'hud',id:'speed',name:'Speed',desc:'Horizontal speed in blocks per second.'},
+    {cat:'hud',id:'hunger',name:'Food Level',desc:'Food points as text.'},
+    {cat:'hud',id:'sprintStatus',name:'Sprint Status',desc:'Shows whether you are sprinting.'},
+    {cat:'hud',id:'fps',name:'FPS',desc:'Frames per second.'},
+    {cat:'hud',id:'cps',name:'CPS',desc:'Left clicks per second.'},
+    {cat:'hud',id:'keystrokes',name:'Keystrokes',desc:'WASD and mouse buttons.'},
+    {cat:'hud',id:'clock',name:'Clock',desc:'Real-world time.'},
+    {cat:'hud',id:'memory',name:'Memory',desc:'JavaScript memory in use.'},
+    {cat:'combat',id:'noHurtCam',name:'No Hurt Camera',desc:'Removes the camera shake when you take damage.'},
+    {cat:'combat',id:'noFov',name:'No FOV Change',desc:'Keeps FOV fixed while sprinting, with Speed or a bow.'},
+    {cat:'movement',id:'toggleSprint',name:'Toggle Sprint',desc:'Sprints automatically while moving forward.'},
+    {cat:'movement',id:'noBob',name:'No View Bobbing',desc:'Removes the walking camera bob.'},
+    {cat:'visual',id:null,name:'Fire Height',desc:'Moves the first-person fire overlay. 0 is vanilla, negative is lower.',opts:[
+      {id:'fireOffset',name:'Offset',min:-0.55,max:0.45,step:0.05,fmt:fmtFire}]},
+    {cat:'visual',id:'fullbright',name:'Fullbright',desc:'Maximum brightness everywhere.'},
+    {cat:'utility',id:'blockF3',name:'Block F3 Screen',desc:'Stops the built-in F3 debug screen from opening.'},
+    {cat:'utility',id:null,special:'packs',name:'Resource Pack Check',desc:'Animated textures this session had to repair because a pack was missing or had broken .mcmeta files.'}
+  ];
 
   // ------------------------------------------------------------------
   // Input tracking
@@ -333,118 +333,320 @@
   }
 
   // ------------------------------------------------------------------
-  // Menu (Right Shift)
+  // Menu (Right Shift): compact dark panel, category sidebar, module cards with switches,
+  // expandable settings and sliders. Plain DOM + one stylesheet; nothing here touches the game.
   // ------------------------------------------------------------------
-  var backdrop=null,panel=null,tabsEl=null,listEl=null,currentTab=0,searchInput=null,searchQuery='';
+  var ICONS={
+    bolt:'<path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12z" fill="currentColor" stroke="none"/>',
+    hud:'<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 15h18M9 15v5"/>',
+    combat:'<path d="M20 4v5L9.5 19.5l-5-5L15 4z"/><path d="M6.5 13.5l4 4M4.5 19.5 3 21"/>',
+    movement:'<path d="M4 12h13M12 6l6 6-6 6"/><path d="M4 7h4M4 17h4"/>',
+    visual:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    utility:'<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/>',
+    search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/>',
+    chevron:'<path d="M6 9l6 6 6-6"/>',
+    reset:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>'
+  };
+  function svg(name,size){
+    return '<svg viewBox="0 0 24 24" width="'+(size||16)+'" height="'+(size||16)+'" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+ICONS[name]+'</svg>';
+  }
+  var CSS=[
+    '#thunder-client-menu{position:fixed;inset:0;z-index:2147483646;display:none;align-items:center;justify-content:center;',
+      'background:radial-gradient(ellipse at 50% 40%,rgba(6,14,24,.55),rgba(1,4,9,.82));font:13px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;',
+      'color:#e4f3ff;user-select:none;-webkit-user-select:none;opacity:0;transition:opacity .12s ease}',
+    '#thunder-client-menu.tcm-open{opacity:1}',
+    '#thunder-client-menu *{box-sizing:border-box}',
+    '.tcm-panel{display:flex;width:min(780px,calc(100vw - 24px));height:min(500px,calc(100vh - 24px));border-radius:14px;overflow:hidden;',
+      'background:linear-gradient(180deg,rgba(14,21,32,.97),rgba(9,14,22,.98));border:1px solid rgba(79,209,255,.28);',
+      'box-shadow:0 20px 70px rgba(0,0,0,.7),0 0 0 1px rgba(0,0,0,.4),0 0 40px rgba(79,209,255,.10);transform:scale(.985);transition:transform .12s ease}',
+    '#thunder-client-menu.tcm-open .tcm-panel{transform:none}',
+    '.tcm-side{flex:0 0 176px;display:flex;flex-direction:column;background:rgba(5,9,15,.55);border-right:1px solid rgba(79,209,255,.10);padding:16px 10px}',
+    '.tcm-brand{display:flex;align-items:center;gap:9px;padding:2px 8px 16px}',
+    '.tcm-logo{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:#061019;',
+      'background:linear-gradient(135deg,#8cecff,#3fb6ff 55%,#2a6cff);box-shadow:0 0 18px rgba(79,209,255,.45)}',
+    '.tcm-brand b{display:block;font-size:13px;letter-spacing:.2em;color:#f1faff}',
+    '.tcm-brand small{display:block;font-size:10px;letter-spacing:.24em;color:#5fb9e6}',
+    '.tcm-tab{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;margin:2px 0;border:0;border-radius:9px;background:transparent;',
+      'color:#90a8bb;font:inherit;font-weight:600;cursor:pointer;text-align:left;position:relative;transition:background .12s,color .12s}',
+    '.tcm-tab:hover{background:rgba(79,209,255,.07);color:#d9f2ff}',
+    '.tcm-tab.tcm-on{background:linear-gradient(90deg,rgba(79,209,255,.16),rgba(79,209,255,.03));color:#f0fbff}',
+    '.tcm-tab.tcm-on:before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:3px;background:#4fd1ff;box-shadow:0 0 10px #4fd1ff}',
+    '.tcm-tab .tcm-count{margin-left:auto;font-size:10px;color:#5d7487;font-weight:600}',
+    '.tcm-tab.tcm-on .tcm-count{color:#7fdcff}',
+    '.tcm-side-foot{margin-top:auto;padding:10px 8px 0;font-size:10.5px;color:#5d7487;line-height:1.6}',
+    '.tcm-kbd{display:inline-block;padding:1px 6px;border-radius:5px;border:1px solid rgba(127,151,170,.35);color:#a9c2d4;font-size:10px;margin-right:4px}',
+    '.tcm-main{flex:1;display:flex;flex-direction:column;min-width:0}',
+    '.tcm-head{display:flex;align-items:center;gap:12px;padding:16px 18px 12px}',
+    '.tcm-head h2{margin:0;font-size:17px;font-weight:700;letter-spacing:.02em;color:#f3fbff;white-space:nowrap}',
+    '.tcm-search{margin-left:auto;display:flex;align-items:center;gap:7px;width:min(240px,48%);height:32px;padding:0 10px;border-radius:9px;',
+      'background:rgba(3,7,12,.6);border:1px solid rgba(110,140,160,.28);color:#6f889b;transition:border-color .12s,box-shadow .12s}',
+    '.tcm-search:focus-within{border-color:rgba(79,209,255,.65);box-shadow:0 0 0 3px rgba(79,209,255,.12)}',
+    '.tcm-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:#e8f6ff;font:inherit}',
+    '.tcm-search input::placeholder{color:#5c7385}',
+    '.tcm-list{flex:1;overflow-y:auto;padding:2px 18px 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;align-content:start;align-items:start;',
+      'scrollbar-width:thin;scrollbar-color:#2c4556 transparent}',
+    '.tcm-list::-webkit-scrollbar{width:8px}.tcm-list::-webkit-scrollbar-thumb{background:#2c4556;border-radius:8px}',
+    '.tcm-card{border-radius:11px;background:rgba(19,28,41,.9);border:1px solid rgba(120,150,175,.13);transition:border-color .12s,background .12s,box-shadow .12s}',
+    '.tcm-card:hover{background:rgba(23,34,49,.95);border-color:rgba(79,209,255,.28)}',
+    '.tcm-card.tcm-active{border-color:rgba(79,209,255,.42);box-shadow:inset 0 0 0 1px rgba(79,209,255,.06),0 0 16px rgba(79,209,255,.07)}',
+    '.tcm-card-top{display:flex;align-items:center;gap:10px;padding:11px 12px;cursor:pointer}',
+    '.tcm-card-top.tcm-static{cursor:default}',
+    '.tcm-card-text{flex:1;min-width:0}',
+    '.tcm-card-name{font-weight:650;font-size:13px;color:#eef8ff;display:flex;align-items:center;gap:6px}',
+    '.tcm-cat{font-size:9.5px;font-weight:700;letter-spacing:.08em;color:#5fb9e6;text-transform:uppercase}',
+    '.tcm-card-desc{font-size:11px;color:#7c95a8;margin-top:2px}',
+    '.tcm-more{width:26px;height:26px;display:grid;place-items:center;border:0;border-radius:7px;background:transparent;color:#7c95a8;cursor:pointer;transition:background .12s,color .12s,transform .15s}',
+    '.tcm-more:hover{background:rgba(79,209,255,.1);color:#bfeaff}',
+    '.tcm-card.tcm-open-opts .tcm-more{transform:rotate(180deg);color:#7fdcff}',
+    '.tcm-switch{position:relative;flex:0 0 34px;width:34px;height:19px;border-radius:19px;border:0;padding:0;cursor:pointer;',
+      'background:#233142;box-shadow:inset 0 0 0 1px rgba(255,255,255,.04);transition:background .15s,box-shadow .15s}',
+    '.tcm-switch:after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#8aa1b3;transition:transform .15s,background .15s}',
+    '.tcm-switch.tcm-on{background:linear-gradient(90deg,#2fa9ff,#4fd1ff);box-shadow:0 0 12px rgba(79,209,255,.45)}',
+    '.tcm-switch.tcm-on:after{transform:translateX(15px);background:#fff}',
+    '.tcm-opts{display:none;padding:2px 12px 12px;border-top:1px solid rgba(120,150,175,.10)}',
+    '.tcm-card.tcm-open-opts .tcm-opts,.tcm-card.tcm-always .tcm-opts{display:block}',
+    '.tcm-card.tcm-always .tcm-opts{border-top:0;padding-top:0}',
+    '.tcm-row{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:12px;color:#b7cad8}',
+    '.tcm-row span{flex:1}',
+    '.tcm-row em{font-style:normal;font-size:11px;font-weight:700;color:#7fdcff;min-width:62px;text-align:right}',
+    '.tcm-slider{display:block;width:100%;margin-top:6px}',
+    '.tcm-range{-webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:4px;outline:0;cursor:pointer;',
+      'background:linear-gradient(90deg,#4fd1ff var(--p,0%),#243345 var(--p,0%))}',
+    '.tcm-range::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#eaf9ff;border:2px solid #4fd1ff;box-shadow:0 0 10px rgba(79,209,255,.6)}',
+    '.tcm-range::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#eaf9ff;border:2px solid #4fd1ff;box-shadow:0 0 10px rgba(79,209,255,.6)}',
+    '.tcm-reset-one{border:0;background:transparent;color:#5d7487;cursor:pointer;padding:2px;display:grid;place-items:center;border-radius:5px}',
+    '.tcm-reset-one:hover{color:#bfeaff;background:rgba(79,209,255,.1)}',
+    '.tcm-foot{display:flex;align-items:center;gap:10px;padding:10px 18px 12px;border-top:1px solid rgba(79,209,255,.08);font-size:11px;color:#6c8497}',
+    '.tcm-btn{margin-left:auto;display:flex;align-items:center;gap:6px;border:1px solid rgba(120,150,175,.28);background:rgba(14,22,33,.9);color:#cfe6f5;',
+      'font:inherit;font-weight:600;padding:6px 11px;border-radius:8px;cursor:pointer;transition:border-color .12s,background .12s}',
+    '.tcm-btn:hover{border-color:rgba(79,209,255,.5);background:rgba(20,32,46,.95)}',
+    '.tcm-btn.tcm-danger{border-color:rgba(255,120,120,.5);color:#ffb3b3}',
+    '.tcm-empty{grid-column:1/-1;text-align:center;color:#61798c;padding:40px 0}',
+    '.tcm-note{font-size:11.5px;color:#9db4c6;margin-top:8px;line-height:1.5}',
+    '.tcm-note code{color:#bfe9ff;font-size:11px}',
+    '.tcm-note a{color:#7fdcff}',
+    '@media (max-width:640px){.tcm-side{flex-basis:58px;padding:14px 7px}.tcm-brand{justify-content:center;padding:2px 0 14px}',
+      '.tcm-brand>div:not(.tcm-logo),.tcm-tab .tcm-label,.tcm-tab .tcm-count,.tcm-side-foot{display:none}.tcm-tab{justify-content:center;padding:10px 0}',
+      '.tcm-head{flex-wrap:wrap}.tcm-search{width:100%}}',
+    '@media (prefers-reduced-motion:reduce){#thunder-client-menu,#thunder-client-menu *{transition:none!important}}'
+  ].join('');
+
+  var backdrop=null,listEl=null,titleEl=null,searchInput=null,footInfo=null,resetBtn=null;
+  var currentCat='hud',searchQuery='',openOpts={},resetArmed=0;
 
   function toggleMenu(){if(menuOpen)hideMenu();else showMenu();}
   function hideMenu(){
     menuOpen=false;
-    if(backdrop)backdrop.style.display='none';
+    if(!backdrop)return;
+    backdrop.classList.remove('tcm-open');
+    W.setTimeout(function(){if(!menuOpen)backdrop.style.display='none';},130);
   }
   function showMenu(){
     if(!backdrop)buildMenu();
     menuOpen=true;
-    renderTabs();
-    renderList();
+    resetArmed=0;
+    render();
     backdrop.style.display='flex';
+    W.requestAnimationFrame(function(){if(menuOpen)backdrop.classList.add('tcm-open');});
     try{if(D.exitPointerLock&&D.pointerLockElement)D.exitPointerLock();}catch(_){}
   }
-  function el(tag,css,text){
+  function el(tag,cls,text){
     var n=D.createElement(tag);
-    if(css)n.style.cssText=css;
+    if(cls)n.className=cls;
     if(text!==undefined)n.textContent=text;
     return n;
   }
+  function iconEl(tag,cls,name,size){var n=el(tag,cls);n.innerHTML=svg(name,size);return n;}
+
   function buildMenu(){
-    backdrop=el('div','position:fixed;inset:0;z-index:2147483646;background:radial-gradient(circle at 50% 35%,rgba(20,34,50,.34),rgba(2,6,12,.84) 68%);backdrop-filter:blur(7px);display:none;align-items:center;justify-content:center;font-family:Arial,sans-serif;overflow:hidden;');
-    backdrop.id='thunder-client-menu';
+    if(!D.getElementById('thunder-client-menu-style')){
+      var st=D.createElement('style');st.id='thunder-client-menu-style';st.textContent=CSS;
+      (D.head||D.documentElement).appendChild(st);
+    }
+    backdrop=el('div');backdrop.id='thunder-client-menu';
     backdrop.addEventListener('mousedown',function(e){if(e.target===backdrop)hideMenu();});
+    backdrop.addEventListener('contextmenu',function(e){e.preventDefault();});
+    var panel=el('div','tcm-panel');
 
-    panel=el('div','position:relative;z-index:2;width:820px;max-width:94vw;height:78vh;max-height:720px;display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(18,23,34,.965),rgba(9,13,21,.985));border:1px solid rgba(79,209,255,.62);border-radius:14px;box-shadow:0 24px 90px rgba(0,0,0,.82),0 0 36px rgba(79,209,255,.10);color:#ecf7ff;user-select:none;overflow:hidden;');
+    var side=el('aside','tcm-side');
+    var brand=el('div','tcm-brand');
+    brand.appendChild(iconEl('div','tcm-logo','bolt',18));
+    var bt=el('div');bt.appendChild(el('b',null,'THUNDER'));bt.appendChild(el('small',null,'CLIENT'));
+    brand.appendChild(bt);
+    side.appendChild(brand);
+    var tabs=el('nav');tabs.id='tcm-tabs';
+    CATEGORIES.forEach(function(c){
+      var b=el('button','tcm-tab');b.type='button';b.setAttribute('data-cat',c.id);
+      b.innerHTML=svg(c.id,16);
+      b.appendChild(el('span','tcm-label',c.name));
+      b.appendChild(el('span','tcm-count',''));
+      b.addEventListener('click',function(){currentCat=c.id;searchQuery='';searchInput.value='';render();});
+      tabs.appendChild(b);
+    });
+    side.appendChild(tabs);
+    var sf=el('div','tcm-side-foot');
+    sf.appendChild(el('span','tcm-kbd','R-Shift'));sf.appendChild(D.createTextNode('open / close'));
+    sf.appendChild(el('br'));
+    sf.appendChild(el('span','tcm-kbd','Esc'));sf.appendChild(D.createTextNode('close'));
+    side.appendChild(sf);
+    panel.appendChild(side);
 
-    var head=el('div','padding:18px 20px 10px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;');
-    var titleWrap=el('div','min-width:0;');
-    titleWrap.appendChild(el('div','font-weight:800;font-size:21px;letter-spacing:.13em;color:#f4fbff;','THUNDER CLIENT'));
-    titleWrap.appendChild(el('div','font-size:11px;color:#8ca8ba;margin-top:5px;','Right Shift opens \u2022 Esc closes \u2022 changes save instantly'));
-    head.appendChild(titleWrap);
-    panel.appendChild(head);
-
-    tabsEl=el('div','display:flex;gap:7px;padding:0 20px 10px;flex-wrap:wrap;');
-    panel.appendChild(tabsEl);
-
-    var searchWrap=el('div','padding:0 20px 12px;');
-    searchInput=el('input','box-sizing:border-box;width:100%;height:38px;border:1px solid rgba(106,136,157,.42);border-radius:8px;background:rgba(4,8,14,.68);color:#eef8ff;padding:0 12px;font:12px Arial;outline:none;');
-    searchInput.type='text';
-    searchInput.placeholder='Search modules or settings\u2026';
-    searchInput.value=searchQuery;
-    searchInput.addEventListener('input',function(){searchQuery=String(searchInput.value||'').toLowerCase();renderList();});
-    searchWrap.appendChild(searchInput);
-    panel.appendChild(searchWrap);
-
-    listEl=el('div','overflow-y:auto;padding:0 20px 14px;flex:1 1 auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:min-content;gap:9px;align-content:start;');
-    panel.appendChild(listEl);
-
-    var foot=el('div','display:flex;justify-content:flex-end;align-items:center;gap:12px;padding:9px 20px 14px;border-top:1px solid rgba(79,209,255,.14);');
-    var reset=el('button','border:1px solid #46677a;background:#101c27;color:#eaf6ff;padding:7px 11px;border-radius:7px;font:11px Arial;cursor:pointer;','Reset all');
-    reset.type='button';
-    reset.onclick=function(){for(var id in DEFAULTS)S[id]=DEFAULTS[id];save();renderList();};
-    foot.appendChild(reset);
-    panel.appendChild(foot);
+    var main=el('section','tcm-main');
+    var head=el('div','tcm-head');
+    titleEl=el('h2',null,'HUD');
+    head.appendChild(titleEl);
+    var search=iconEl('label','tcm-search','search',14);
+    searchInput=el('input');searchInput.type='text';searchInput.placeholder='Search modules';searchInput.spellcheck=false;
+    searchInput.addEventListener('input',function(){searchQuery=String(searchInput.value||'').trim().toLowerCase();render();});
+    search.appendChild(searchInput);
+    head.appendChild(search);
+    main.appendChild(head);
+    listEl=el('div','tcm-list');
+    main.appendChild(listEl);
+    var foot=el('div','tcm-foot');
+    footInfo=el('span');
+    foot.appendChild(footInfo);
+    resetBtn=el('button','tcm-btn');resetBtn.type='button';
+    resetBtn.addEventListener('click',function(){
+      if(!resetArmed){resetArmed=1;paintReset();return;}
+      resetArmed=0;
+      for(var id in DEFAULTS)S[id]=DEFAULTS[id];
+      save();render();
+    });
+    foot.appendChild(resetBtn);
+    main.appendChild(foot);
+    panel.appendChild(main);
     backdrop.appendChild(panel);
     (D.body||D.documentElement).appendChild(backdrop);
   }
-  function renderTabs(){
-    while(tabsEl.firstChild)tabsEl.removeChild(tabsEl.firstChild);
-    CATS.forEach(function(cat,i){
-      var on=i===currentTab;
-      var b=el('button','border:1px solid '+(on?'#4fd1ff':'rgba(91,119,138,.45)')+';background:'+(on?'rgba(79,209,255,.16)':'rgba(8,14,22,.82)')+';color:'+(on?'#eaffff':'#9bb3c3')+';padding:7px 14px;border-radius:7px;font:bold 11px Arial;letter-spacing:.06em;cursor:pointer;',cat[0]);
-      b.type='button';
-      b.onclick=function(){currentTab=i;searchQuery='';if(searchInput)searchInput.value='';renderTabs();renderList();};
-      tabsEl.appendChild(b);
-    });
+  function paintReset(){
+    resetBtn.className='tcm-btn'+(resetArmed?' tcm-danger':'');
+    resetBtn.innerHTML=svg('reset',13);
+    resetBtn.appendChild(D.createTextNode(resetArmed?'Click again to reset everything':'Reset all'));
   }
-  function renderList(){
+  function moduleMatches(m,q){
+    if(!q)return true;
+    var hay=(m.name+' '+m.desc+' '+(m.opts||[]).map(function(o){return o.name;}).join(' ')).toLowerCase();
+    return hay.indexOf(q)>=0;
+  }
+  function render(){
+    if(!backdrop)return;
+    var q=searchQuery,shown=MODULES.filter(function(m){return q?moduleMatches(m,q):m.cat===currentCat;});
+    var cat=CATEGORIES.filter(function(c){return c.id===currentCat;})[0];
+    titleEl.textContent=q?'Search':cat.name;
+    var tabs=D.getElementById('tcm-tabs').children;
+    for(var i=0;i<tabs.length;i++){
+      var id=tabs[i].getAttribute('data-cat');
+      tabs[i].className='tcm-tab'+(!q&&id===currentCat?' tcm-on':'');
+      var on=0,all=0;
+      MODULES.forEach(function(m){if(m.cat===id&&m.id){all++;if(S[m.id])on++;}});
+      tabs[i].lastChild.textContent=all?on+'/'+all:'';
+    }
     while(listEl.firstChild)listEl.removeChild(listEl.firstChild);
-    var q=searchQuery;
-    var mods=CATS[currentTab][1].filter(function(m){return !q||String(m[1]).toLowerCase().indexOf(q)>=0||String(m[2]).toLowerCase().indexOf(q)>=0;});
-    mods.forEach(function(m){
-      var id=m[0];
-      var card=el('div','min-height:82px;padding:11px 12px;background:linear-gradient(180deg,rgba(23,29,41,.94),rgba(15,20,29,.94));border:1px solid rgba(101,129,148,.22);border-radius:9px;display:flex;flex-direction:column;justify-content:space-between;gap:9px;');
-      var top=el('div','display:flex;justify-content:space-between;gap:8px;align-items:flex-start;');
-      var txt=el('div','min-width:0;');
-      txt.appendChild(el('div','font-size:12px;font-weight:700;color:#f2f7fb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',m[1]));
-      txt.appendChild(el('div','font-size:9px;line-height:1.3;color:#7690a0;margin-top:3px;',m[2]));
-      top.appendChild(txt);
-      if(Object.prototype.hasOwnProperty.call(NUMERIC_RANGES,id)){
-        var info=NUMERIC_RANGES[id];
-        var val=Number(S[id]);
-        var valLabel=el('span','font-size:10px;font-weight:700;color:#ffd95c;',info.format(val));
-        top.appendChild(valLabel);
-        card.appendChild(top);
-        var range=D.createElement('input');
-        range.type='range';range.min=String(info.min);range.max=String(info.max);range.step=String(info.step);range.value=String(val);
-        range.style.cssText='width:100%;accent-color:#4fd1ff;cursor:pointer;';
-        range.addEventListener('input',(function(id,info,valLabel,range){return function(){var nv=parseFloat(range.value);S[id]=nv;valLabel.textContent=info.format(nv);save();};})(id,info,valLabel,range));
-        card.appendChild(range);
-      }else{
-        var btn=el('button','');btn.type='button';
-        var paint=(function(btn,id){return function(){
-          var on=!!S[id];
-          btn.textContent=on?'ON':'OFF';
-          btn.style.cssText='min-width:48px;height:24px;border:1px solid '+(on?'#59db71':'#465765')+';border-radius:999px;background:'+(on?'rgba(70,208,96,.15)':'rgba(80,96,108,.12)')+';color:'+(on?'#a8ffb7':'#8da0ac')+';padding:0 8px;font:bold 10px Arial;cursor:pointer;flex:0 0 auto;';
-        };})(btn,id);
-        paint();
-        btn.onclick=(function(id,paint){return function(){S[id]=!S[id];save();paint();};})(id,paint);
-        top.appendChild(btn);
-        card.appendChild(top);
-      }
-      listEl.appendChild(card);
-    });
-    if(!mods.length)listEl.appendChild(el('div','grid-column:1/-1;padding:30px;text-align:center;color:#718b9c;font-size:12px;','No matching modules.'));
+    shown.forEach(function(m){listEl.appendChild(card(m,!!q));});
+    if(!shown.length)listEl.appendChild(el('div','tcm-empty','No module matches "'+searchQuery+'".'));
+    var total=0,enabled=0;
+    MODULES.forEach(function(m){if(m.id){total++;if(S[m.id])enabled++;}});
+    footInfo.textContent=enabled+' of '+total+' modules on \u2022 changes save instantly';
+    paintReset();
+  }
+  function card(m,showCat){
+    var c=el('div','tcm-card');
+    var key=m.id||m.name;
+    var hasOpts=!!(m.opts&&m.opts.length)||m.special==='packs';
+    if(!m.id)c.className+=' tcm-always';
+    else if(openOpts[key])c.className+=' tcm-open-opts';
+    if(m.id&&S[m.id])c.className+=' tcm-active';
+    var top=el('div','tcm-card-top'+(m.id?'':' tcm-static'));
+    var txt=el('div','tcm-card-text');
+    var nm=el('div','tcm-card-name',m.name);
+    if(showCat)nm.appendChild(el('span','tcm-cat',m.cat));
+    txt.appendChild(nm);
+    txt.appendChild(el('div','tcm-card-desc',m.desc));
+    top.appendChild(txt);
+    if(m.id&&hasOpts){
+      var more=iconEl('button','tcm-more','chevron',15);more.type='button';more.title='Settings';
+      more.addEventListener('click',function(e){
+        e.stopPropagation();
+        openOpts[key]=!openOpts[key];
+        c.className=c.className.replace(/ ?tcm-open-opts/g,'')+(openOpts[key]?' tcm-open-opts':'');
+      });
+      top.appendChild(more);
+    }
+    if(m.id){
+      var sw=el('button','tcm-switch'+(S[m.id]?' tcm-on':''));sw.type='button';sw.setAttribute('aria-label',m.name);
+      top.appendChild(sw);
+      top.addEventListener('click',function(){
+        S[m.id]=!S[m.id];save();
+        sw.className='tcm-switch'+(S[m.id]?' tcm-on':'');
+        c.className=c.className.replace(/ ?tcm-active/g,'')+(S[m.id]?' tcm-active':'');
+        render();
+      });
+    }
+    c.appendChild(top);
+    if(hasOpts){
+      var box=el('div','tcm-opts');
+      if(m.special==='packs')packsNote(box);
+      (m.opts||[]).forEach(function(o){box.appendChild(typeof DEFAULTS[o.id]==='number'?sliderRow(o):switchRow(o));});
+      c.appendChild(box);
+    }
+    return c;
+  }
+  function switchRow(o){
+    var r=el('div','tcm-row');
+    r.appendChild(el('span',null,o.name));
+    var sw=el('button','tcm-switch'+(S[o.id]?' tcm-on':''));sw.type='button';sw.setAttribute('aria-label',o.name);
+    sw.addEventListener('click',function(){S[o.id]=!S[o.id];save();sw.className='tcm-switch'+(S[o.id]?' tcm-on':'');});
+    r.appendChild(sw);
+    return r;
+  }
+  function sliderRow(o){
+    var wrap=el('div');
+    var r=el('div','tcm-row');
+    r.appendChild(el('span',null,o.name));
+    var val=el('em',null,'');
+    r.appendChild(val);
+    var rs=iconEl('button','tcm-reset-one','reset',12);rs.type='button';rs.title='Reset to default';
+    r.appendChild(rs);
+    wrap.appendChild(r);
+    var lab=el('label','tcm-slider');
+    // invert: the slider shows -value, so dragging right moves an element up (Height sliders)
+    var sign=o.invert?-1:1,lo=o.invert?-o.max:o.min,hi=o.invert?-o.min:o.max;
+    var range=el('input','tcm-range');range.type='range';
+    range.min=String(lo);range.max=String(hi);range.step=String(o.step);
+    lab.appendChild(range);
+    wrap.appendChild(lab);
+    function paint(v){
+      val.textContent=o.fmt(v);
+      range.value=String(sign*v);
+      range.style.setProperty('--p',((sign*v-lo)*100/(hi-lo)).toFixed(1)+'%');
+    }
+    paint(clamp(Number(S[o.id]),o.min,o.max));
+    range.addEventListener('input',function(){var v=sign*parseFloat(range.value);S[o.id]=v;paint(v);save();});
+    rs.addEventListener('click',function(){S[o.id]=DEFAULTS[o.id];paint(DEFAULTS[o.id]);save();});
+    return wrap;
+  }
+  function packsNote(box){
+    var fixes=TC.textureFixes||[];
+    var n=el('div','tcm-note');
+    if(!fixes.length){
+      n.textContent='No broken animated textures were found in your active resource packs this session.';
+    }else{
+      n.appendChild(D.createTextNode('Repaired while loading ('+fixes.length+'): '));
+      fixes.slice(0,6).forEach(function(f,i){
+        if(i)n.appendChild(D.createTextNode(', '));
+        n.appendChild(el('code',null,String(f).split(':')[0].replace(/^minecraft:/,'')));
+      });
+      if(fixes.length>6)n.appendChild(D.createTextNode(' and '+(fixes.length-6)+' more'));
+      n.appendChild(D.createTextNode('. They render correctly in Thunder; to fix the pack itself for other clients, run it through the '));
+      var a=el('a',null,'Pack Doctor');a.href='thunder-pack-doctor.html';a.target='_blank';a.rel='noopener';
+      n.appendChild(a);
+      n.appendChild(D.createTextNode('.'));
+    }
+    box.appendChild(n);
   }
   TC.openMenu=showMenu;TC.closeMenu=hideMenu;TC.toggleMenu=toggleMenu;
-  TC.reset=function(){for(var id in DEFAULTS)S[id]=DEFAULTS[id];save();if(menuOpen)renderList();};
+  TC.reset=function(){for(var id in DEFAULTS)S[id]=DEFAULTS[id];save();if(menuOpen)render();};
 
   // ------------------------------------------------------------------
   // Suspension-safe draw list
