@@ -12,6 +12,7 @@
    @hook Ckt net.minecraft.client.gui.GuiIngame.renderHotbar
    @hook EjD net.minecraft.entity.EntityLivingBase.getHeldItemOffhand
    @hook DR$ net.minecraft.client.renderer.texture.TextureAtlasSprite.loadSprite
+   @hook Dc_ net.minecraft.client.resources.ResourcePackListEntry.proceedWithBs
    @hook DkZ net.minecraft.client.renderer.ItemRenderer.renderItemInFirstPerson
    @hook Ch0 net.minecraft.client.renderer.ItemRenderer.renderItemSide
    @hook Gxt net.minecraft.client.renderer.entity.RenderManager.doRenderEntity
@@ -88,6 +89,12 @@
    @static HGM net.minecraft.block.material.Material WATER (the material getFOVModifier checks)
    @clinit BF net.minecraft.block.material.Material
    @class Co net.minecraft.entity.EntityLivingBase
+   @class YW net.minecraft.client.renderer.texture.DynamicTexture
+   @use Fl7 net.minecraft.client.renderer.texture.DynamicTexture.<init>
+   @use Egf net.minecraft.client.renderer.texture.DynamicTexture.updateDynamicTexture
+   @use EpG net.minecraft.client.renderer.texture.TextureManager.getDynamicTextureLocation
+   @use DzG net.minecraft.client.gui.Gui.drawModalRectWithCustomSizedTexture
+   @field a45 net.minecraft.client.renderer.texture.DynamicTexture.<init> DynamicTexture.dynamicTextureData (ARGB int[])
    @static HFj net.minecraft.util.EnumHand MAIN_HAND
    @static Lkd net.minecraft.client.renderer.block.model.ItemCameraTransforms$TransformType FIRST_PERSON_LEFT_HAND
    @static Lke net.minecraft.client.renderer.block.model.ItemCameraTransforms$TransformType FIRST_PERSON_RIGHT_HAND
@@ -172,7 +179,7 @@
   var OLD_KEY='thunderClientSettings_v3';    // v4/v5 settings: on/off choices are imported once
   var GAMMA_KEY='thunderSavedGamma_v1';
   var DEFAULTS={
-    armor:true,heldItem:true,coords:true,direction:true,speed:false,hunger:true,saturation:true,
+    armor:true,heldItem:true,coords:true,direction:true,speed:false,hunger:true,saturation:true,satStyle:0,
     effects:true,sprintStatus:true,shield:true,clock:false,memory:false,
     fps:false,cps:false,keystrokes:false,
     noHurtCam:false,noFov:false,
@@ -183,7 +190,7 @@
     shieldY:0,
     heldScale:1.0,heldText:true,heldX:0,heldY:0,
     armorX:0,armorY:0,armorWarn:true,
-    shieldX:0,shieldGlow:true,
+    shieldX:0,shieldGlow:true,shieldScale:1.0,
     // Hand Item Size: the real first-person items. 1.0 / 0 = vanilla.
     handItems:true,mainScale:1.0,mainY:0,offScale:1.0,offY:0,
     hitboxes:false,
@@ -246,8 +253,9 @@
       {id:'armorWarn',name:'Low durability pulse'},
       {id:'armorX',name:'Horizontal position',min:-120,max:120,step:1,fmt:fmtPx},
       {id:'armorY',name:'Height',min:-120,max:0,step:1,fmt:fmtUp,invert:true}]},
-    {cat:'hud',id:'shield',name:'Shield Slot',desc:'Off-hand / shield slot icon you can move. Glows while you block. (In-hand shield size: Visual > Hand Item Size.)',opts:[
+    {cat:'hud',id:'shield',name:'Shield Slot',desc:'Off-hand / shield slot you can move and resize. Glows while you block. (In-hand shield size: Visual > Hand Item Size.)',opts:[
       {id:'shieldGlow',name:'Blocking glow'},
+      {id:'shieldScale',name:'Size',min:0.5,max:2,step:0.05,fmt:fmtScale},
       {id:'shieldY',name:'Height',min:-100,max:0,step:1,fmt:fmtUp,invert:true},
       {id:'shieldX',name:'Horizontal position',min:-150,max:150,step:1,fmt:fmtPx}]},
     {cat:'hud',id:'heldItem',name:'Held Item',desc:'Held item icon with its durability bar, beside the hotbar. (In-hand sword size: Visual > Hand Item Size.)',opts:[
@@ -255,7 +263,8 @@
       {id:'heldText',name:'Name and durability'},
       {id:'heldX',name:'Horizontal position',min:-150,max:150,step:1,fmt:fmtPx},
       {id:'heldY',name:'Height',min:-120,max:0,step:1,fmt:fmtUp,invert:true}]},
-    {cat:'hud',id:'saturation',name:'Saturation',desc:'Gold saturation bar just above the hunger icons.'},
+    {cat:'hud',id:'saturation',name:'Saturation',desc:'Hidden hunger (saturation) as small gold drumsticks just above the hunger bar.',opts:[
+      {id:'satStyle',name:'Style',choices:['Gold icons','Slim bar']}]},
     {cat:'hud',id:'effects',name:'Potion Effects',desc:'Active effects and time left, top right.'},
     {cat:'hud',id:'coords',name:'Coordinates',desc:'Your XYZ position.'},
     {cat:'hud',id:'direction',name:'Direction',desc:'Facing direction and axis.'},
@@ -277,7 +286,7 @@
       {id:'offScale',name:'Off hand (shield) size',min:0.3,max:1.5,step:0.05,fmt:fmtHand},
       {id:'offY',name:'Off hand (shield) height',min:-0.5,max:0.3,step:0.02,fmt:fmtLift}]},
     {cat:'visual',id:'hitboxes',name:'Hitboxes',desc:'Shows entity hitboxes like F3+B: white box, red eye line, blue look direction.'},
-    {cat:'visual',id:null,name:'Fire Height',desc:'Moves the first-person fire overlay. 0 is vanilla, negative is lower.',opts:[
+    {cat:'visual',id:null,name:'Fire Height',desc:'Moves the first-person fire overlay up or down. 0 is vanilla; negative is lower, and about -0.30 or lower hides it.',opts:[
       {id:'fireOffset',name:'Offset',min:-0.55,max:0.45,step:0.05,fmt:fmtFire}]},
     {cat:'visual',id:'fullbright',name:'Fullbright',desc:'Maximum brightness everywhere.'},
     {cat:'utility',id:'blockF3',name:'Block F3 Screen',desc:'Stops the built-in F3 debug screen from opening.'},
@@ -851,8 +860,8 @@
 
   // ------------------------------------------------------------------
   // Shield / off-hand slot. Thunder draws the off-hand slot itself (vanilla frame, icon and
-  // durability bar) so Shield Height / Shield X really move it; vanilla's copy is hidden only
-  // while renderHotbar runs (see the Ckt/EjD hooks). While blocking the slot glows cyan.
+  // durability bar) so Shield Height / Shield X / Size really move and resize it; vanilla's copy
+  // is hidden only while renderHotbar runs (see the Ckt/EjD hooks). While blocking it glows cyan.
   // ------------------------------------------------------------------
   function ring(x1,y1,x2,y2,color){
     rect(x1,y1,x2,y1+1,color);rect(x1,y2-1,x2,y2,color);
@@ -863,13 +872,19 @@
     st=origEjD(p);
     if(!st||CCI(st))return;
     try{blocking=!!Ctr(p);}catch(_){}
-    // vanilla: 29x24 region of widgets.png at (cx-91-29, h-23) [left] or (cx+91, h-23) [right]
-    var left=ctx.offLeft;
-    var fx=left?ctx.cx-91-29:ctx.cx+91,fy=ctx.h-23;
-    fx=clamp(Math.round(fx+(Number(S.shieldX)||0)),0,ctx.w-29);
-    fy=clamp(Math.round(fy+(Number(S.shieldY)||0)),0,ctx.h-24);
+    // vanilla: 29x24 region of widgets.png at (cx-91-29, h-23) [left] or (cx+91, h-23) [right].
+    // Size scales it (through the GL matrix) about its bottom corner that touches the hotbar;
+    // Height and Horizontal position move that corner.
+    var left=ctx.offLeft,sc=clamp(Number(S.shieldScale)||1,0.5,2.0);
+    var w=Math.round(29*sc),h=Math.round(24*sc);
+    var ax=Math.round((left?ctx.cx-91:ctx.cx+91)+(Number(S.shieldX)||0));
+    var ay=Math.round(ctx.h+1+(Number(S.shieldY)||0));
+    ax=left?clamp(ax,w,ctx.w):clamp(ax,0,ctx.w-w);
+    ay=clamp(ay,h,ctx.h+1);
+    var fx=left?-29:0,fy=-24;                         // region origin relative to the corner
     var bx=fx+(left?0:7),by=fy+1;                     // the visible 22x22 frame inside the region
 
+    opPush();op(DPm,ax,ay,0.0);op(FWK,sc,sc,1.0);
     widgetsBegin(ctx);
     blit(ctx,fx,fy,left?24:53,22,29,24);
     widgetsEnd(ctx);
@@ -883,10 +898,49 @@
     itemsBegin();
     itemIcon(ctx,st,left?fx+3:fx+10,fy+4);
     itemsEnd();
+    opPop();
   }
 
   // ------------------------------------------------------------------
-  // Saturation: a slim gold bar split into 10 segments, one directly above each hunger icon
+  // Thunder sprite sheet: pixel art the game does not have (gold saturation drumsticks). It lives
+  // in a DynamicTexture created once, from inside the HUD draw list (so on the render thread),
+  // and is drawn with the game's own Gui.drawModalRectWithCustomSizedTexture.
+  // Sprites are 9x9, left to right: gold drumstick full, half, empty (a faint silhouette). They
+  // are the vanilla hunger icon's silhouette and shading recoloured to a gold palette.
+  // ------------------------------------------------------------------
+  var SPR_W=32,SPR_H=16;
+  var SPR_PAL=[0x00000000,0xFF3A2805,0xFFFFD23F,0xFFE0A114,0xFFFFF1A8,0xFFF4BB2A,0xFFD99A16,0xFF8F5A07,
+    0xFFB8780C,0xFFFFF4CC,0xFFFFFFFF,0xFF6B4708,0xFFF7C43A,0x99000000,0x55000000];
+  var SPR_DATA=[
+    '0011000000123100001242510001325651000178661000017881000001119110000001a1000000110',
+    '00110000001b3100001b42310001bbc2510001b336100001b781000001119110000001a1000000110',
+    '00dd000000deed0000deeeed000deeeeed000deeeed0000deeed00000dddedd000000ded000000dd0'];
+  var sprTex=null,sprLoc=null,sprState=0;           // 0 not made, 1 being made, 2 ready
+  // the palette is ARGB; this build's DynamicTexture uploads its int[] as ABGR (bytes R,G,B,A)
+  function sprFill(){
+    var d=sprTex.a45.data,i,s,x,y,c;
+    for(i=0;i<d.length;i++)d[i]=0;
+    for(s=0;s<SPR_DATA.length;s++)for(y=0;y<9;y++)for(x=0;x<9;x++){
+      c=SPR_PAL[parseInt(SPR_DATA[s].charAt(y*9+x),36)];
+      d[y*SPR_W+s*9+x]=(c&0xFF00FF00)|((c>>>16)&0xFF)|((c&0xFF)<<16);
+    }
+  }
+  function sprLocate(tm){var r=EpG(tm,$rt_str('thunder_sprites'),sprTex);if(!$rt_suspending()){sprLoc=r;sprState=2;}}
+  // true when the sheet can be drawn; otherwise queues its creation into this frame's list
+  function spritesReady(ctx){
+    if(sprState===2)return true;
+    if(sprState===0){
+      sprState=1;sprTex=new YW();
+      op(Fl7,sprTex,SPR_W,SPR_H);op(sprFill);op(Egf,sprTex);op(sprLocate,ctx.tm);
+    }
+    return false;
+  }
+
+  // ------------------------------------------------------------------
+  // Saturation, style "Gold icons": ten small gold drumsticks in a row just above the hunger
+  // icons, one centred over each hunger icon (vanilla draws food right-to-left from cx+91 at
+  // h-39, 8px apart), filled from the right like the hunger bar (full / half / empty), at 8/11
+  // size so the row stays compact. Style "Slim bar": a slim gold bar split into 10 segments.
   // (vanilla draws food icons right-to-left from cx+91 at h-39, 8px apart). Each segment is two
   // saturation points and fills from the right like the hunger bar. Underwater it moves above
   // the air bubbles (h-49). Shown only where vanilla shows the hunger bar.
@@ -898,11 +952,22 @@
     if(mount!==null&&mount instanceof Co)return;       // riding a mob: mount health replaces food
     var sat=clamp(A1i(FAU(p)),0,20);
     BF();
-    var y=ctx.h-43;
-    if(DBe(p,HGM))y=ctx.h-53;                          // air bubbles occupy h-49..h-41
-    var right=ctx.cx+91;
-    for(var k=0;k<10;k++){
-      var x0=right-9-8*k+1,x1=x0+7;                   // 7px under hunger icon k (k=0 rightmost)
+    var wet=DBe(p,HGM);                                // air bubbles occupy h-49..h-41
+    var right=ctx.cx+91,k;
+    if((S.satStyle|0)===0&&spritesReady(ctx)){
+      var sc=8/11,yb=wet?ctx.h-50:ctx.h-40;           // row bottom 1px above the icons below it
+      op(D17,ctx.tm,sprLoc);op(CFi,1.0,1.0,1.0,1.0);op(CyN);op(B$o,770,771,1,0);
+      opPush();op(DPm,right,yb,0.0);op(FWK,sc,sc,1.0);
+      for(k=0;k<10;k++){                              // local pitch 11 = 8 screen px
+        var fk=clamp(sat/2-k,0,1);
+        op(DzG,-11-11*k,-9,(fk>=0.75?0:(fk>=0.25?1:2))*9,0,9,9,SPR_W,SPR_H);
+      }
+      opPop();op(CTO);
+      return;
+    }
+    var y=wet?ctx.h-53:ctx.h-43;
+    for(k=0;k<10;k++){
+      var x0=right-9-8*k+1,x1=x0+7;                   // 7px over hunger icon k (k=0 rightmost)
       rect(x0,y,x1,y+3,0x90000000);
       var f=clamp(sat/2-k,0,1);
       if(f<=0)continue;
@@ -1197,6 +1262,16 @@
     return Bqh(kept,meta.emZ,meta.ee8,meta.bZY,meta.bXS);   // empty list => all frames in order
   }
   var origLoadSprite=DR$;
+  // Resource pack format: this build paints a pack red ("incompatible") in the list unless its
+  // pack_format is 3, the 1.12 value its own default pack reports, but asks "made for a newer
+  // version, are you sure?" when adding one unless pack_format is 1 (left over from the 1.8
+  // port). Packs made for 1.12 (format 3) are added without that prompt; other formats still get it.
+  var origDc_=Dc_;
+  Dc_=function(a,b,c){
+    if(!$rt_resuming()&&b===3)b=1;
+    return origDc_(a,b,c);
+  };
+
   DR$=function(a,b,c){
     if(!$rt_resuming()){
       try{c=fixSpriteAnimation(a,b,c);}catch(e){report(e);}

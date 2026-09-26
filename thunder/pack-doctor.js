@@ -12,7 +12,8 @@
  *   - The file must be called "<name>.png.mcmeta"; "<name>.mcmeta" is never looked at.
  *   - Invalid JSON in a .mcmeta makes the whole texture fail.
  *   - pack_format does not affect loading here. (This client paints the pack red in the list
- *     unless pack_format is 3, and asks for confirmation when selecting unless it is 1.)
+ *     unless pack_format is 3; plain Eaglercraft also asks for confirmation when selecting unless
+ *     it is 1, which Thunder Client changes so that 3, the 1.12 value, needs no confirmation.)
  *
  * Works in browsers and Node. No dependencies: the caller supplies raw-deflate helpers
  * (browser: CompressionStream/DecompressionStream, Node: zlib).
