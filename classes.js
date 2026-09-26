@@ -48781,6 +48781,9 @@ c.PK;})();
    @use DlC net.minecraft.entity.player.EntityPlayer.getPrimaryHand
    @use CiU net.minecraft.util.EnumHandSide.opposite
    @use YZ net.minecraft.client.multiplayer.PlayerControllerMP.isSpectator
+   @use Bvs net.minecraft.client.multiplayer.PlayerControllerMP.shouldDrawHUD
+   @use CqZ net.minecraft.entity.Entity.getRidingEntity
+   @use DBe net.minecraft.entity.Entity.isInsideOfMaterial
 
    Virtual (prototype) methods it calls:
    @virtual eiX net.minecraft.client.gui.FontRenderer drawString
@@ -48798,6 +48801,9 @@ c.PK;})();
    @static HJu net.minecraft.util.EnumHandSide LEFT
    @static Lo2 net.minecraft.client.gui.GuiIngame WIDGETS_TEX_PATH (textures/gui/widgets.png)
    @static HHk net.minecraft.item.ItemStack EMPTY
+   @static HGM net.minecraft.block.material.Material WATER (the material getFOVModifier checks)
+   @clinit BF net.minecraft.block.material.Material
+   @class Co net.minecraft.entity.EntityLivingBase
 
    Instance fields (checked against a method that reads them):
    @field dk net.minecraft.client.gui.GuiIngame.renderHotbarItem GuiIngame.mc
@@ -48919,7 +48925,7 @@ c.PK;})();
       ['direction','Direction','Facing and axis'],
       ['speed','Speed','Horizontal speed in blocks/second'],
       ['hunger','Hunger','Food level'],
-      ['saturation','Saturation','Saturation indicator above the hunger bar'],
+      ['saturation','Saturation','Gold saturation bar just above the hunger icons'],
       ['effects','Potion Effects','Active effects with time left'],
       ['sprintStatus','Sprint Status','Shows whether you are sprinting'],
       ['shield','Shield / Off-hand Slot','Draws the off-hand (shield) slot so it can be moved'],
@@ -49297,6 +49303,33 @@ c.PK;})();
   }
 
   // ------------------------------------------------------------------
+  // Saturation: a slim gold bar split into 10 segments, one directly above each hunger icon
+  // (vanilla draws food icons right-to-left from cx+91 at h-39, 8px apart). Each segment is two
+  // saturation points and fills from the right like the hunger bar. Underwater it moves above
+  // the air bubbles (h-49). Shown only where vanilla shows the hunger bar.
+  // ------------------------------------------------------------------
+  function saturationHud(ctx){
+    var p=ctx.player,mc=ctx.mc;
+    if(!Bvs(mc.dw))return;                            // creative / spectator: no hunger bar
+    var mount=CqZ(p);
+    if(mount!==null&&mount instanceof Co)return;       // riding a mob: mount health replaces food
+    var sat=clamp(A1i(FAU(p)),0,20);
+    BF();
+    var y=ctx.h-43;
+    if(DBe(p,HGM))y=ctx.h-53;                          // air bubbles occupy h-49..h-41
+    var right=ctx.cx+91;
+    for(var k=0;k<10;k++){
+      var x0=right-9-8*k+1,x1=x0+7;                   // 7px under hunger icon k (k=0 rightmost)
+      rect(x0,y,x1,y+3,0x90000000);
+      var f=clamp(sat/2-k,0,1);
+      if(f<=0)continue;
+      var fx=x1-Math.max(1,Math.round(7*f));          // partial segments fill from the right
+      rect(fx,y,x1,y+1,0xFFFFE27A);
+      rect(fx,y+1,x1,y+2,0xFFF0AE1C);
+    }
+  }
+
+  // ------------------------------------------------------------------
   // Held item: the main-hand item as a real icon in a vanilla slot frame on the free side of the
   // hotbar (opposite the off-hand). Held Item Size scales frame, icon and durability bar through
   // the GL matrix, anchored at the bottom corner nearest the hotbar. The label stays unscaled.
@@ -49456,23 +49489,8 @@ c.PK;})();
       left.push(['Facing '+dirs[f],0xFFFFFF]);
     }
     if(S.speed)left.push(['Speed '+fmt1(speed)+' b/s',0xFFFFFF]);
-    var saturationValue=0;
-    if(S.hunger||S.saturation){
-      try{
-        var fs=FAU(player);
-        saturationValue=A1i(fs);
-        if(S.hunger)left.push(['Food '+ZP(fs),0xFFAA00]);
-      }catch(_){}
-    }
-    if(S.saturation){
-      var satUnits=Math.max(0,Math.min(20,saturationValue))/2.0;
-      var satX=Math.round(width/2+46),satY=height-31;
-      for(var spip=0;spip<10;spip++){
-        var fill=Math.max(0,Math.min(1,satUnits-spip));
-        var px0=satX+spip*8;
-        rect(px0,satY,px0+6,satY+3,0xFF3A3A3A);
-        if(fill>0)rect(px0,satY,px0+Math.max(2,Math.round(6*fill)),satY+3,0xFFFFC928);
-      }
+    if(S.hunger){
+      try{left.push(['Food '+ZP(FAU(player)),0xFFAA00]);}catch(_){}
     }
     if(S.sprintStatus){
       var sp=!!CBg(player);
@@ -49508,6 +49526,7 @@ c.PK;})();
     if(S.armor&&itemHud)armorHud(ctx);
     if(S.shield&&itemHud)shieldHud(ctx);
     if(S.heldItem&&itemHud)heldHud(ctx);
+    if(S.saturation&&itemHud)saturationHud(ctx);
     if(S.keystrokes){
       var ky=height-46,kx=width-51;
       var keys=[
