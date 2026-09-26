@@ -271,6 +271,11 @@ repository checkout, with no test code injected.
   delivers under pointer lock.
 - **Auto quality logic:** verified deterministically by simulating seven FPS scenarios through
   the exact controller source.
+- **WebGL 1 fallback:** a second Chromium instance was started with WebGL 2 disabled and a fresh
+  profile, and a new world was created. The game ran on WebGL 1.0. Switching Shaders on showed
+  "Not available • needs WebGL 2", ran zero pipeline frames, and the game kept rendering normally.
+  The 39 `texParameter` INVALID_ENUM warnings WebGL 1 prints are identical with the clean base
+  build, so they are Eaglercraft's own.
 
 Not tested: real GPUs, phones, Firefox and Safari, an actual multiplayer server, or long play
 sessions.
