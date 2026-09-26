@@ -165,13 +165,33 @@ function hasTopLevel(src, name) {
 // ---------------------------------------------------------------------------------------------
 // 3. Thunder source + manifest
 // ---------------------------------------------------------------------------------------------
-const thunder = fs.readFileSync(SRC, 'utf8');
+// A line "// @include name.js" inside thunder-client.js is replaced by that file (same folder), so
+// larger subsystems (thunder-shaders.js) can live in their own file but share the client scope.
+const includes = [];
+const lineMap = [];   // line number in the assembled source -> "file:line"
+const thunder = (function assemble() {
+  const out = [];
+  fs.readFileSync(SRC, 'utf8').split('\n').forEach((line, i) => {
+    const inc = /^\s*\/\/ @include ([A-Za-z0-9_.-]+\.js)\s*$/.exec(line);
+    if (!inc) { out.push(line); lineMap.push(path.basename(SRC) + ':' + (i + 1)); return; }
+    const file = path.join(path.dirname(SRC), inc[1]);
+    if (!fs.existsSync(file)) fail('@include ' + inc[1] + ': file not found');
+    if (includes.indexOf(inc[1]) >= 0) fail('@include ' + inc[1] + ' appears twice');
+    includes.push(inc[1]);
+    fs.readFileSync(file, 'utf8').replace(/\n$/, '').split('\n').forEach((l, j) => {
+      if (/^\s*\/\/ @include /.test(l)) fail('nested @include in ' + inc[1]);
+      out.push(l); lineMap.push(inc[1] + ':' + (j + 1));
+    });
+  });
+  return out.join('\n');
+})();
+function where(lines) { return lines.map((n) => lineMap[n - 1] || n).join(', '); }
 if (thunder.indexOf(MARKER) !== 0) fail('thunder-client.js must start with the Thunder marker comment');
 if (/[^\x00-\x7f]/.test(thunder)) fail('thunder-client.js must be ASCII only (use \\u escapes)');
 const manifest = new Map();   // name -> {kind, target, extra}
 const errors = [];
 for (const line of thunder.split('\n')) {
-  const m = /^\s*\*?\s*@(hook|use|static|clinit|class|new|field|virtual|runtime)\s+(\S+)\s+(\S+)(?:\s+(.*))?$/.exec(line);
+  const m = /^\s*\*?\s*@(hook|use|static|staticset|clinit|class|new|field|virtual|runtime)\s+(\S+)\s+(\S+)(?:\s+(.*))?$/.exec(line);
   if (!m) continue;
   const [, kind, name, target, extra] = m;
   if (kind === 'field' || kind === 'virtual') {
@@ -222,6 +242,14 @@ for (const [name, e] of manifest) {
     const clinit = jsOf(e.target + '.<clinit>');
     const ok = clinit.some((j) => { const b = topFunctionBody(base, j); return b && new RegExp('[^A-Za-z0-9_$.]' + name.replace(/\$/g, '\\$') + '=').test(b); });
     if (!ok) errors.push('@static ' + name + ' is not assigned in ' + e.target + '.<clinit>');
+  } else if (e.kind === 'staticset') {
+    // a static field written by one specific (non-initializer) method, e.g. the WebGL context
+    const js = jsOf(e.target);
+    if (!js.length) errors.push('@staticset ' + name + ': method ' + e.target + ' not in base');
+    else if (!js.some((j) => { const b = topFunctionBody(base, j); return b && new RegExp('[^A-Za-z0-9_$.]' + name.replace(/\$/g, '\\$') + '=(?!=)').test(b); })) {
+      errors.push('@staticset ' + name + ' is not assigned in ' + e.target + ' (' + js.join(',') + ')');
+    }
+    if (!hasTopLevel(base, name)) errors.push('@staticset ' + name + ' is not a top-level variable in base');
   } else if (e.kind === 'clinit') {
     const clinit = jsOf(e.target + '.<clinit>');
     const b = topFunctionBody(base, name);
@@ -313,16 +341,21 @@ for (const [name, lines] of used) {
   const decl = manifest.get(name);
   if (decl && !Array.isArray(decl)) continue;
   if (JS_GLOBALS.has(name)) continue;
-  errors.push('undeclared global/game name "' + name + '" used at line(s) ' + lines.join(','));
+  errors.push('undeclared global/game name "' + name + '" used at ' + where(lines));
 }
 const hooks = [];
 for (const [name, lines] of assigned) {
   const e = manifest.get(name);
-  if (!e || e.kind !== 'hook') errors.push('"' + name + '" is reassigned at line(s) ' + lines.join(',') + ' but is not declared @hook');
+  if (!e || e.kind !== 'hook') errors.push('"' + name + '" is reassigned at ' + where(lines) + ' but is not declared @hook');
+  else if (lines.length !== 1) errors.push('@hook ' + name + ' is installed ' + lines.length + ' times (' + where(lines) + '); exactly one wrapper is allowed');
   else hooks.push(name);
 }
 for (const [name, e] of manifest) {
   if (e.kind === 'hook' && !assigned.has(name)) errors.push('@hook ' + name + ' is declared but never installed');
+  if (e.kind === 'hook' || e.kind === 'use') {
+    const defs = base.match(new RegExp('(^|[\\n;}])function ' + name.replace(/\$/g, '\\$') + '\\(', 'g'));
+    if (!defs || defs.length !== 1) errors.push('@' + e.kind + ' ' + name + ' is defined ' + (defs ? defs.length : 0) + ' times in the base (expected exactly 1)');
+  }
 }
 if (errors.length) { errors.forEach((e) => console.error('  - ' + e)); fail(errors.length + ' verification error(s)'); }
 
@@ -332,12 +365,13 @@ if (errors.length) { errors.forEach((e) => console.error('  - ' + e)); fail(erro
 const block = thunder.endsWith('\n') ? thunder : thunder + '\n';
 const out = base.slice(0, tailAt + 1) + block + base.slice(tailAt + 1);
 if (out.slice(0, tailAt + 1) !== base.slice(0, tailAt + 1) || out.slice(tailAt + 1 + block.length) !== base.slice(tailAt + 1)) fail('assembly check failed');
+if (out.split(MARKER).length !== 2) fail('output must contain exactly one Thunder block');
 try { new vm.Script(out, { filename: 'classes.js' }); } catch (e) { fail('output does not parse: ' + e.message); }
 
-console.log('thunder ' + path.relative(ROOT, SRC) + '  ' + block.length + ' bytes, ' + block.split('\n').length + ' lines');
+console.log('thunder ' + path.relative(ROOT, SRC) + (includes.length ? ' + ' + includes.join(' + ') : '') + '  ' + block.length + ' bytes, ' + block.split('\n').length + ' lines');
 console.log('hooks  ' + hooks.map((h) => h + '=' + (javaOf(h) || '?').replace(/^net\.minecraft\.|^net\.lax1dude\.eaglercraft\./, '')).join('  '));
 console.log('uses   ' + [...manifest.values()].filter((e) => e.kind === 'use').length + ' game functions, ' +
-  [...manifest.values()].filter((e) => e.kind === 'static').length + ' static fields, ' +
+  [...manifest.values()].filter((e) => e.kind === 'static' || e.kind === 'staticset').length + ' static fields, ' +
   [...manifest.values()].filter((e) => e.kind === 'class').length + ' classes, ' +
   [...manifest.values()].filter((e) => e.kind === 'new').length + ' constructors, ' +
   [...manifest.keys()].filter((k) => k[0] === '#').length + ' virtual methods, ' +
