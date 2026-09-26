@@ -48738,6 +48738,7 @@ c.PK;})();
    @hook G7V net.minecraft.util.datafix.DataFixesManager.createFixer
    @hook Ckt net.minecraft.client.gui.GuiIngame.renderHotbar
    @hook EjD net.minecraft.entity.EntityLivingBase.getHeldItemOffhand
+   @hook DR$ net.minecraft.client.renderer.texture.TextureAtlasSprite.loadSprite
 
    Game functions it calls:
    @use Ff$ net.minecraft.init.Bootstrap.register
@@ -48784,6 +48785,12 @@ c.PK;})();
    @use Bvs net.minecraft.client.multiplayer.PlayerControllerMP.shouldDrawHUD
    @use CqZ net.minecraft.entity.Entity.getRidingEntity
    @use DBe net.minecraft.entity.Entity.isInsideOfMaterial
+   @use CAB net.minecraft.client.renderer.texture.TextureAtlasSprite.getIconName
+   @use Bq com.google.common.collect.Lists.newArrayList
+   @use Y java.util.ArrayList.add
+   @use EH java.util.ArrayList.size
+   @use Bm java.util.ArrayList.get
+   @new Bqh net.minecraft.client.resources.data.AnimationMetadataSection
 
    Virtual (prototype) methods it calls:
    @virtual eiX net.minecraft.client.gui.FontRenderer drawString
@@ -48822,6 +48829,14 @@ c.PK;})();
    @field dz net.minecraft.client.gui.GuiIngame.renderHotbar Gui.zLevel
    @field dw net.minecraft.client.gui.GuiIngame.renderGameOverlay Minecraft.playerController
    @field o4 net.minecraft.client.gui.GuiIngame.renderHotbar GameSettings.attackIndicator
+   @field jb net.minecraft.client.renderer.texture.TextureAtlasSprite.loadSprite ImageData.width
+   @field lS net.minecraft.client.renderer.texture.TextureAtlasSprite.loadSprite ImageData.height
+   @field bA2 net.minecraft.client.resources.data.AnimationMetadataSection.getFrameIndex AnimationMetadataSection.animationFrames
+   @field cve net.minecraft.client.resources.data.AnimationMetadataSection.getFrameIndex AnimationFrame.frameIndex
+   @field emZ net.minecraft.client.resources.data.AnimationMetadataSection.<init> frameWidth
+   @field ee8 net.minecraft.client.resources.data.AnimationMetadataSection.<init> frameHeight
+   @field bZY net.minecraft.client.resources.data.AnimationMetadataSection.<init> frameTime
+   @field bXS net.minecraft.client.resources.data.AnimationMetadataSection.<init> interpolate
 
    TeaVM runtime:
    @runtime $rt_globals x
@@ -49570,6 +49585,55 @@ c.PK;})();
       catch(e){report(e);i=-1;unwindOps();}
       if(i>=0){$rt_nativeThread().push(a,b,1,list,i);return;}
     }
+  };
+
+  // ------------------------------------------------------------------
+  // Resource-pack animation safety net (TextureAtlasSprite.loadSprite).
+  // 1.12 only accepts a non-square atlas texture as an animation when <name>.png.mcmeta comes
+  // from the same pack (or one above it), and every frame index it lists must exist in the
+  // strip. Otherwise loadSprite throws ("broken aspect ratio and not an animation" /
+  // "invalid frameindex N"), TextureMap logs "Unable to parse metadata from ..." and the sprite
+  // becomes the purple/black missing texture - on fire blocks, burning entities and the
+  // first-person fire overlay alike. Packs converted without their .mcmeta files hit this for
+  // fire_layer_0/1, lava, portal, magma, sea lantern and prismarine.
+  // For vertical frame strips only, supply what the pack forgot: the metadata vanilla uses for
+  // {"animation":{}} when the file is missing, or just the frames that exist when indices point
+  // past the strip. Square textures and valid animations are passed through untouched.
+  // ------------------------------------------------------------------
+  var animNoted={};
+  TC.textureFixes=[];
+  function animNote(sprite,msg){
+    var name='?';
+    try{name=$rt_ustr(CAB(sprite));}catch(_){}
+    if(animNoted[name+'|'+msg])return;
+    animNoted[name+'|'+msg]=1;
+    TC.textureFixes.push(name+': '+msg);
+    if(W.console&&W.console.warn)W.console.warn('[Thunder] texture '+name+': '+msg);
+  }
+  function fixSpriteAnimation(sprite,images,meta){
+    var arr=images&&images.data,img=arr&&arr[0];
+    if(!img)return meta;
+    var w=img.jb,h=img.lS;
+    if(!(w>0&&h>=2*w))return meta;                   // not a vertical frame strip
+    var frames=(h/w)|0,i,fr;
+    if(meta===null){
+      animNote(sprite,'no .png.mcmeta for a '+frames+'-frame strip; animating it (add the .mcmeta to the pack to fix it there)');
+      return Bqh(Bq(),-1,-1,1,0);                     // == {"animation":{}}
+    }
+    var list=meta.bA2,n=list?EH(list):0,bad=0;
+    for(i=0;i<n;i++)if(Bm(list,i).cve>=frames)bad++;
+    if(!bad)return meta;
+    var kept=Bq();
+    for(i=0;i<n;i++){fr=Bm(list,i);if(fr.cve<frames)Y(kept,fr);}
+    animNote(sprite,bad+' frame index(es) past the end of the '+frames+'-frame strip were ignored (fix the .mcmeta)');
+    return Bqh(kept,meta.emZ,meta.ee8,meta.bZY,meta.bXS);   // empty list => all frames in order
+  }
+  var origLoadSprite=DR$;
+  DR$=function(a,b,c){
+    if(!$rt_resuming()){
+      try{c=fixSpriteAnimation(a,b,c);}catch(e){report(e);}
+    }
+    return origLoadSprite(a,b,c);
   };
 
   // renderHotbar: while it runs (and the Thunder shield slot is on), getHeldItemOffhand reports
