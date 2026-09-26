@@ -1,6 +1,7 @@
 # Thunder Client build
 
-`classes.js` is generated. Edit `thunder/thunder-client.js`, then run:
+`classes.js` is generated. Edit `thunder/thunder-client.js` (and `thunder/thunder-shaders.js`, which
+it pulls in with `// @include thunder-shaders.js`), then run:
 
 ```
 node thunder/build.js
@@ -14,12 +15,15 @@ Before writing anything the build refuses to continue unless:
 
 - the base is clean (no Thunder code in it);
 - every obfuscated game name used by the Thunder source is listed in its header
-  (`@hook`, `@use`, `@virtual`, `@static`, `@clinit`, `@field`, `@runtime`) and each one maps
-  to the stated Java method/class in that base. The mapping comes from the base's own
-  deobfuscation table (the data Eaglercraft uses to print readable stack traces), so no name
-  is guessed;
-- every game function the Thunder source replaces is declared `@hook`;
-- the output is the base plus exactly one inserted block, and it parses.
+  (`@hook`, `@use`, `@virtual`, `@static`, `@staticset`, `@clinit`, `@field`, `@runtime`) and
+  each one maps to the stated Java method/class in that base. The mapping comes from the base's
+  own deobfuscation table (the data Eaglercraft uses to print readable stack traces), so no name
+  is guessed. `@staticset` names a static field written by one specific method (for example the
+  WebGL context, set by `PlatformOpenGL.setCurrentContext`);
+- every game function the Thunder source replaces is declared `@hook`, installed exactly once, and
+  defined exactly once in the base;
+- the output is the base plus exactly one inserted block (everything around it byte-identical),
+  and it parses.
 
 ## Building on a different base
 
@@ -33,6 +37,12 @@ If that file is a different compile, the build stops and lists every name that d
 (and what that base calls the method instead) instead of producing a broken file.
 
 Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
+
+## Subsystems
+
+- `thunder-client.js` - HUD, Right Shift menu, settings, the hooks listed in its header.
+- `thunder-shaders.js` - optional shader/post-processing system (Right Shift > Shaders). How it
+  hooks the renderer, the pipeline, presets, FPS safety and limits: [SHADERS.md](SHADERS.md).
 
 ## Backups
 

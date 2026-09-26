@@ -1,7 +1,8 @@
 name: Thunder build check
 
-# Rebuilds classes.js from backups/classes.clean-base.js + thunder/thunder-client.js with the
-# name verifier and fails if the committed classes.js is not exactly that output.
+# Rebuilds classes.js from backups/classes.clean-base.js + thunder/thunder-client.js (which
+# includes thunder/thunder-shaders.js) with the name verifier, and fails if the committed
+# classes.js is not exactly that output.
 # It never commits anything.
 
 on:

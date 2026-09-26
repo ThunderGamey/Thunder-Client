@@ -12,6 +12,7 @@
    @hook Ckt net.minecraft.client.gui.GuiIngame.renderHotbar
    @hook EjD net.minecraft.entity.EntityLivingBase.getHeldItemOffhand
    @hook DR$ net.minecraft.client.renderer.texture.TextureAtlasSprite.loadSprite
+   (thunder-shaders.js adds its own hook and names in its header; build.js reads both.)
 
    Game functions it calls:
    @use Ff$ net.minecraft.init.Bootstrap.register
@@ -175,7 +176,13 @@
     shieldY:0,
     heldScale:1.0,heldText:true,heldX:0,heldY:0,
     armorX:0,armorY:0,armorWarn:true,
-    shieldX:0,shieldGlow:true
+    shieldX:0,shieldGlow:true,
+    // Shaders (thunder-shaders.js). Off by default; strengths and intensity are percentages.
+    // shPreset: 0 LOW, 1 MEDIUM, 2 HIGH, 3 CUSTOM. shBloomRes n = bloom at 1/2^n of the frame.
+    shaders:false,shIntensity:70,shPreset:1,shAuto:true,shTargetFps:30,shPerf:false,
+    shBloomRes:2,shBloomLevels:4,
+    shBloom:true,shBloomStr:55,shGrade:true,shGradeStr:60,shContrast:true,shContrastStr:45,
+    shVignette:true,shVignetteStr:45,shAmbient:true,shAmbientStr:50,shMotion:false,shMotionStr:35
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -425,6 +432,27 @@
     '.tcm-note{font-size:11.5px;color:#9db4c6;margin-top:8px;line-height:1.5}',
     '.tcm-note code{color:#bfe9ff;font-size:11px}',
     '.tcm-note a{color:#7fdcff}',
+    '.tcm-card.tcm-wide{grid-column:1/-1}',
+    '.tcm-btn:active,.tcm-seg button:active,.tcm-tab:active,.tcm-more:active{transform:translateY(1px)}',
+    '.tcm-switch:active:after{width:18px}.tcm-switch.tcm-on:active:after{transform:translateX(12px)}',
+    '.tcm-seg{display:flex;gap:3px;margin-top:7px;padding:3px;border-radius:9px;background:rgba(3,7,12,.6);border:1px solid rgba(110,140,160,.22)}',
+    '.tcm-seg button{flex:1;min-width:0;border:0;border-radius:6px;padding:6px 0;background:transparent;color:#8ea6b9;font:inherit;font-size:10.5px;',
+      'font-weight:700;letter-spacing:.07em;cursor:pointer;transition:background .12s,color .12s,box-shadow .12s}',
+    '.tcm-seg button:hover{color:#e1f5ff;background:rgba(79,209,255,.09)}',
+    '.tcm-seg button.tcm-on{color:#f3fbff;background:linear-gradient(180deg,rgba(79,209,255,.30),rgba(47,140,255,.16));',
+      'box-shadow:inset 0 0 0 1px rgba(79,209,255,.5),0 0 12px rgba(79,209,255,.22)}',
+    '.tcm-status{display:flex;align-items:center;gap:8px;margin-top:10px;padding:7px 10px;border-radius:8px;background:rgba(3,7,12,.5);',
+      'border:1px solid rgba(110,140,160,.14);font-size:11.5px;color:#a9c0d2;min-height:32px}',
+    '.tcm-status b{color:#e9f7ff;font-weight:650}',
+    '.tcm-dot{flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:#4a5a68}',
+    '.tcm-dot.tcm-ok{background:#4fd1ff;box-shadow:0 0 8px #4fd1ff}',
+    '.tcm-dot.tcm-warn{background:#ffc35c;box-shadow:0 0 8px rgba(255,195,92,.7)}',
+    '.tcm-dot.tcm-bad{background:#ff6b6b;box-shadow:0 0 8px rgba(255,107,107,.6)}',
+    '.tcm-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}',
+    '.tcm-actions .tcm-btn{margin-left:0}',
+    '.tcm-kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin-top:10px;font-size:11px;color:#7f98ab}',
+    '.tcm-kv b{color:#cfe8f8;font-weight:600;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '.tcm-sub{margin-top:12px;font-size:10px;font-weight:700;letter-spacing:.12em;color:#5fb9e6;text-transform:uppercase}',
     '@media (max-width:640px){.tcm-side{flex-basis:58px;padding:14px 7px}.tcm-brand{justify-content:center;padding:2px 0 14px}',
       '.tcm-brand>div:not(.tcm-logo),.tcm-tab .tcm-label,.tcm-tab .tcm-count,.tcm-side-foot{display:none}.tcm-tab{justify-content:center;padding:10px 0}',
       '.tcm-head{flex-wrap:wrap}.tcm-search{width:100%}}',
@@ -433,10 +461,18 @@
 
   var backdrop=null,listEl=null,titleEl=null,searchInput=null,footInfo=null,resetBtn=null;
   var currentCat='hud',searchQuery='',openOpts={},resetArmed=0;
+  // liveFns refresh status text while the menu is open; painters[id] redraw the controls of
+  // setting id after it changes elsewhere (a preset button moving the custom sliders)
+  var liveFns=[],painters={},liveTimer=0;
+  function addLive(fn){liveFns.push(fn);try{fn();}catch(_){}}
+  function addPainter(id,fn){(painters[id]||(painters[id]=[])).push(fn);}
+  function repaint(id){(painters[id]||[]).forEach(function(fn){try{fn();}catch(_){}});}
+  function runLive(){for(var i=0;i<liveFns.length;i++){try{liveFns[i]();}catch(_){}}}
 
   function toggleMenu(){if(menuOpen)hideMenu();else showMenu();}
   function hideMenu(){
     menuOpen=false;
+    if(liveTimer){W.clearInterval(liveTimer);liveTimer=0;}
     if(!backdrop)return;
     backdrop.classList.remove('tcm-open');
     W.setTimeout(function(){if(!menuOpen)backdrop.style.display='none';},130);
@@ -447,6 +483,7 @@
     resetArmed=0;
     render();
     backdrop.style.display='flex';
+    if(!liveTimer)liveTimer=W.setInterval(runLive,400);
     W.requestAnimationFrame(function(){if(menuOpen)backdrop.classList.add('tcm-open');});
     try{if(D.exitPointerLock&&D.pointerLockElement)D.exitPointerLock();}catch(_){}
   }
@@ -543,6 +580,7 @@
       tabs[i].lastChild.textContent=all?on+'/'+all:'';
     }
     while(listEl.firstChild)listEl.removeChild(listEl.firstChild);
+    liveFns=[];painters={};
     shown.forEach(function(m){listEl.appendChild(card(m,!!q));});
     if(!shown.length)listEl.appendChild(el('div','tcm-empty','No module matches "'+searchQuery+'".'));
     var total=0,enabled=0;
@@ -551,10 +589,10 @@
     paintReset();
   }
   function card(m,showCat){
-    var c=el('div','tcm-card');
+    var c=el('div','tcm-card'+(m.wide?' tcm-wide':''));
     var key=m.id||m.name;
-    var hasOpts=!!(m.opts&&m.opts.length)||m.special==='packs';
-    if(!m.id)c.className+=' tcm-always';
+    var hasOpts=!!(m.opts&&m.opts.length)||!!m.special;
+    if(!m.id||m.always)c.className+=' tcm-always';
     else if(openOpts[key])c.className+=' tcm-open-opts';
     if(m.id&&S[m.id])c.className+=' tcm-active';
     var top=el('div','tcm-card-top'+(m.id?'':' tcm-static'));
@@ -564,7 +602,7 @@
     txt.appendChild(nm);
     txt.appendChild(el('div','tcm-card-desc',m.desc));
     top.appendChild(txt);
-    if(m.id&&hasOpts){
+    if(m.id&&hasOpts&&!m.always){
       var more=iconEl('button','tcm-more','chevron',15);more.type='button';more.title='Settings';
       more.addEventListener('click',function(e){
         e.stopPropagation();
@@ -580,24 +618,58 @@
         S[m.id]=!S[m.id];save();
         sw.className='tcm-switch'+(S[m.id]?' tcm-on':'');
         c.className=c.className.replace(/ ?tcm-active/g,'')+(S[m.id]?' tcm-active':'');
+        if(m.onChange)m.onChange(S[m.id]);
         render();
       });
     }
     c.appendChild(top);
     if(hasOpts){
       var box=el('div','tcm-opts');
-      if(m.special==='packs')packsNote(box);
-      (m.opts||[]).forEach(function(o){box.appendChild(typeof DEFAULTS[o.id]==='number'?sliderRow(o):switchRow(o));});
+      if(m.special&&SPECIALS[m.special])SPECIALS[m.special](box,m);
+      (m.opts||[]).forEach(function(o){box.appendChild(optRow(o));});
       c.appendChild(box);
     }
     return c;
+  }
+  // one settings row: choices -> segmented buttons, number -> slider, boolean -> switch
+  function optRow(o){
+    if(o.choices)return segRow(o);
+    return typeof DEFAULTS[o.id]==='number'?sliderRow(o):switchRow(o);
+  }
+  function segRow(o){
+    var wrap=el('div');
+    var r=el('div','tcm-row');
+    r.appendChild(el('span',null,o.name));
+    wrap.appendChild(r);
+    var seg=el('div','tcm-seg'),btns=[];
+    o.choices.forEach(function(label,i){
+      var b=el('button',null,label);b.type='button';
+      b.addEventListener('click',function(){S[o.id]=i;save();paint();if(o.onChange)o.onChange(i);});
+      seg.appendChild(b);btns.push(b);
+    });
+    function paint(){var v=S[o.id]|0;for(var i=0;i<btns.length;i++)btns[i].className=i===v?'tcm-on':'';}
+    paint();addPainter(o.id,paint);
+    wrap.appendChild(seg);
+    return wrap;
+  }
+  // a button that asks for a second click before it acts (used for resets)
+  function confirmButton(label,armedLabel,action){
+    var armed=0,b=el('button','tcm-btn');b.type='button';
+    function paint(){b.className='tcm-btn'+(armed?' tcm-danger':'');b.innerHTML=svg('reset',13);b.appendChild(D.createTextNode(armed?armedLabel:label));}
+    b.addEventListener('click',function(){if(!armed){armed=1;paint();return;}armed=0;paint();action();});
+    b.addEventListener('mouseleave',function(){if(armed){armed=0;paint();}});
+    paint();
+    return b;
   }
   function switchRow(o){
     var r=el('div','tcm-row');
     r.appendChild(el('span',null,o.name));
     var sw=el('button','tcm-switch'+(S[o.id]?' tcm-on':''));sw.type='button';sw.setAttribute('aria-label',o.name);
-    sw.addEventListener('click',function(){S[o.id]=!S[o.id];save();sw.className='tcm-switch'+(S[o.id]?' tcm-on':'');});
+    function paint(){sw.className='tcm-switch'+(S[o.id]?' tcm-on':'');}
+    sw.addEventListener('click',function(){S[o.id]=!S[o.id];save();paint();if(o.onChange)o.onChange(S[o.id]);});
+    addPainter(o.id,paint);
     r.appendChild(sw);
+    if(o.hint){var w=el('div');w.appendChild(r);w.appendChild(el('div','tcm-card-desc',o.hint));return w;}
     return r;
   }
   function sliderRow(o){
@@ -622,8 +694,9 @@
       range.style.setProperty('--p',((sign*v-lo)*100/(hi-lo)).toFixed(1)+'%');
     }
     paint(clamp(Number(S[o.id]),o.min,o.max));
-    range.addEventListener('input',function(){var v=sign*parseFloat(range.value);S[o.id]=v;paint(v);save();});
-    rs.addEventListener('click',function(){S[o.id]=DEFAULTS[o.id];paint(DEFAULTS[o.id]);save();});
+    addPainter(o.id,function(){paint(clamp(Number(S[o.id]),o.min,o.max));});
+    range.addEventListener('input',function(){var v=sign*parseFloat(range.value);S[o.id]=v;paint(v);save();if(o.onChange)o.onChange(v);});
+    rs.addEventListener('click',function(){S[o.id]=DEFAULTS[o.id];paint(DEFAULTS[o.id]);save();if(o.onChange)o.onChange(S[o.id]);});
     return wrap;
   }
   function packsNote(box){
@@ -645,6 +718,7 @@
     }
     box.appendChild(n);
   }
+  var SPECIALS={packs:packsNote};   // m.special -> function(box,m) that fills a card body
   TC.openMenu=showMenu;TC.closeMenu=hideMenu;TC.toggleMenu=toggleMenu;
   TC.reset=function(){for(var id in DEFAULTS)S[id]=DEFAULTS[id];save();if(menuOpen)render();};
 
@@ -1170,4 +1244,7 @@
     }
     return r;
   };
+
+  // Shaders: optional post-processing of the world image (off by default)
+  // @include thunder-shaders.js
 })();
