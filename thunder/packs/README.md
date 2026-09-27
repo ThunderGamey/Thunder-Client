@@ -41,10 +41,17 @@ Both use `pack_format` 3 (1.12) and pass the Pack Doctor (`node thunder/pack-doc
 
 These are original textures, made by `pvp.py` from the 1.21.11 ones.
 
-- **Plain armor:** worn diamond, iron and gold armor in one flat colour per piece with a darker
-  edge around every face, and matching flat armor icons.
-- **Swords and tools:** swords, axes and pickaxes (wood to diamond) with one tone per material, a
-  dark outline and a light top-left edge. Ender pearls, golden apples and snowballs match.
+- **Plain armor:** worn diamond, iron, gold and netherite armor in one flat colour per piece with
+  a darker edge around every face, and matching flat armor icons.
+- **Swords and tools:** swords, axes, pickaxes, shovels and hoes (wood to netherite) and the
+  spears with one tone per material, a dark outline and a light top-left edge. Snowballs match.
+  Netherite and the spears are the newer items of Thunder 1.21.11, so this needs both packs on.
+- **Animated items:**
+  - the totem of undying glows light blue: the glow pulses and a short light-blue flash goes over
+    the totem at its brightest (1.6 s)
+  - three small ender pearls go round the ender pearl on a tilted ring, in front of it and behind
+    it, with a short flash every 2.4 s
+  - a light band sweeps over the golden apple every 2 s
 - **Calmer blocks:** grass, dirt, stone, cobblestone, planks, logs, sand, gravel, sandstone,
   wool, bricks, end stone, netherrack, snow and clay with fewer tones and no stray pixels.
 - **Particles:** crit hits are a small clean plus, sharpness hits a small x.
@@ -55,8 +62,8 @@ These are original textures, made by `pvp.py` from the 1.21.11 ones.
 - **Cobweb:** bright white.
 - **Glass:** clear, with only the frame.
 - **Fire:** low, for fire blocks, burning mobs and the first-person overlay.
-- **Totem of undying:** smaller in the hotbar (72%) and in the hand (38% of vanilla). The pop
-  animation is half size.
+- **Totem of undying:** smaller in the hotbar (72%) and in the hand (38% of vanilla), drawn at twice
+  the detail for the glow. The pop animation is half size.
 - **Shield:** a little lower and smaller in first person.
 - **Removed or reduced clutter:**
   - no pumpkin blur, no vignette, and no sweep or damage-heart particles
@@ -68,7 +75,9 @@ These are original textures, made by `pvp.py` from the 1.21.11 ones.
 The mace, the spears, the wind charge, netherite gear and the other items added after 1.12 do not
 exist in this game version. On a newer server the proxy (ViaVersion / ViaBackwards) sends each of
 them to a 1.12 client as an old item with a name in front of it, such as "1.21.11 Netherite Spear"
-or "1.21 Mace".
+or "1.21 Mace". When the server gave the item a name of its own (a kit item called "Spear", say),
+that name stays, but ViaBackwards still keeps the item's real id in its data, under
+`VB|Protocol<newer>To<older>|id`.
 
 - **In the pack:** Thunder 1.21.11 has a model and a texture for every item added since 1.12
   (`models/item/thunder/` and `textures/items/thunder/`), named after the item's English name in
@@ -81,10 +90,14 @@ or "1.21 Mace".
   as overrides of `models/item/barrier.json` with a predicate that never matches. Barriers look the
   same as before.
 - **How they are drawn:** `thunder/thunder-items.js` (Right Shift > Visual > Newer Items on Servers,
-  on by default) draws the matching model for any item with such a name: in the hotbar and
-  inventories, in the hand, dropped on the ground and on other players, and it gives worn armor
-  named that way its texture. Items without such a name are left alone, so a real iron sword still
-  looks like an iron sword.
+  on by default) finds the item from its name ("1.21.11 Netherite Spear", or "vb.item.mace") or,
+  failing that, from the ViaBackwards id, and draws the matching model: in the hotbar and
+  inventories, in the hand, dropped on the ground and on other players; worn armor gets its
+  texture too. `thunder/thunder-items-data.js` turns the ids back into items; it is written by
+  `python3 thunder/packs/item_ids.py` from the item lists of each version (PrismarineJS
+  minecraft-data). Everything else is left alone, so a real iron sword still looks like an iron
+  sword. The card's "Check the item in my hand" button says what the item in your hand was seen
+  as, and why.
 - **Not covered:** blocks added after 1.12, and thrown wind charges, tridents and other newer
   entities. Only items are re-skinned.
 

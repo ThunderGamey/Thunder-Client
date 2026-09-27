@@ -229,6 +229,8 @@
     // World shader effects (thunder-world.js): waving plants, water; see-through leaves (Visual)
     shWave:true,shWaveStr:60,shWater:true,shWaterStr:70,clearLeaves:true,
     newItems:true,           // thunder-items.js: newer items on servers drawn with the 1.21.11 pack's models
+    // thunder-hitfx.js: lightning where you left-click, extra hit particles (Visual)
+    hitFx:false,hitFxBlocks:false,hitFxSound:true,hitFxGap:0.5,hitParts:0,hitPartsAmt:1,
     titleBg:true,titleLogo:true,titleSplash:true,titleLightning:true,titleParallax:60,titleQuality:0,
     menuTheme:true,menuStorm:true,menuButtons:true
   };
@@ -1439,7 +1441,11 @@
   // @include thunder-hud.js
 
   // Newer items on servers (maces, spears, wind charges, netherite gear) with their 1.21.11 models
+  // @include thunder-items-data.js
   // @include thunder-items.js
+
+  // Hit effects: lightning where you left-click, extra particles on what you hit
+  // @include thunder-hitfx.js
 
   // Shaders: optional post-processing of the world image (off by default)
   // @include thunder-shaders.js

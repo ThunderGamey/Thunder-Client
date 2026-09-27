@@ -14,7 +14,8 @@ the title screen, in the Right Shift menu and in Utility > About Thunder Client.
 
 - **`index-js.html`** - Thunder Client on the Eaglercraft 1.12 JavaScript runtime: a Thunder-style
   HUD you can rearrange (drag boxes to move them, scroll to resize them), Right Shift menu (HUD,
-  combat, movement, visual options including Hand Item Size, Hitboxes and See-through Leaves,
+  combat, movement, visual options including Hand Item Size, Hitboxes, See-through Leaves,
+  Thunder Hits (a lightning bolt where you left-click, only you see it) and Hit Particles,
   and a one-click Max FPS that also tests whether VSync on or off is faster on your device),
   optional shaders (LOW / MEDIUM / HIGH looks, glowing lava and torches, underwater rays, waving
   plants and leaves, reflective waves on water), an animated Thunder title screen (storm clouds,
@@ -31,9 +32,10 @@ the title screen, in the Right Shift menu and in Utility > About Thunder Client.
   - **Thunder 1.21.11** (switched on for you): Minecraft 1.21.11 textures converted for 1.12. On
     servers it also shows maces, spears, wind charges, netherite gear and the other items added
     since 1.12 with their real textures (they arrive renamed, like "1.21.11 Netherite Spear").
-  - **Thunder PvP** (off until you pick it): plain armor, flat swords and tools, calmer blocks,
-    clean crit particles, small totem, low fire, wireframe crystals and a clean hotbar. Put it
-    above Thunder 1.21.11.
+  - **Thunder PvP** (off until you pick it): plain armor and flat swords and tools (netherite
+    too), a glowing light-blue totem, small pearls circling the ender pearl, a shining golden
+    apple, calmer blocks, clean crit particles, low fire, wireframe crystals and a clean hotbar.
+    Put it above Thunder 1.21.11.
 
   What is in them and how they are built: [`thunder/packs/README.md`](thunder/packs/README.md).
 - **`Thunder-Updated-Textures-FIXED.zip`** - the older Thunder resource pack (newer-style

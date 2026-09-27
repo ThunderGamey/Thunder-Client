@@ -5,7 +5,8 @@ Thunder Client is created and owned by Jayvardhan Ginni (ThunderGamey).
 `classes.js` is generated. Edit `thunder/thunder-client.js` (and `thunder/thunder-hud.js`,
 `thunder/thunder-shaders.js`, `thunder/thunder-world.js`, `thunder/thunder-lan.js`,
 `thunder/thunder-title.js`, `thunder/thunder-theme.js`, `thunder/thunder-packs.js`,
-`thunder/thunder-items.js` and `thunder/thunder-perf.js`, which it pulls in with `// @include`),
+`thunder/thunder-items.js`, `thunder/thunder-items-data.js`, `thunder/thunder-hitfx.js` and
+`thunder/thunder-perf.js`, which it pulls in with `// @include`),
 then run:
 
 ```
@@ -100,13 +101,25 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   [packs/README.md](packs/README.md).
 - `thunder-items.js` - Newer Items on Servers (Right Shift > Visual, on by default). A newer server
   sends every item 1.12 does not have (mace, spears, wind charge, netherite gear, ...) as an old
-  item named like "1.21.11 Netherite Spear". For such a name, the model
+  item named like "1.21.11 Netherite Spear", and keeps the real id in the item's data
+  (`VB|Protocol<newer>To<older>|id`, read with `NBTTagCompound.hasKey` / `getInteger` and turned
+  back into the item by `thunder-items-data.js`, made by `thunder/packs/item_ids.py`). For such an
+  item, the model
   `item/thunder/<name in lower_case_words>` from the resource packs is drawn instead
   (`RenderItem.getItemModelWithOverrides`): in the GUI, in the hand (`<name>_in_hand` first, the
   long spears), on the ground and on other players. Worn netherite, copper and turtle armor named
   that way gets the pack's armor texture (`LayerArmorBase.renderArmorLayer` +
   `getArmorResource`). Items without such a name, or when no loaded pack has the model, are left
-  to the game. The models are in Thunder 1.21.11 (see [packs/README.md](packs/README.md)).
+  to the game. The models are in Thunder 1.21.11 (see [packs/README.md](packs/README.md)). The
+  card's "Check the item in my hand" says what the held item was seen as.
+- `thunder-hitfx.js` - Right Shift > Visual > Thunder Hits and Hit Particles (both off by default).
+  `Minecraft.clickMouse` is wrapped to read what you left-clicked; between frames (runOnGame) the
+  game's own `EntityLightningBolt` is made "effect only" in your client's world at that spot
+  (`World.addWeatherEffect`; it cannot burn or hurt anything and the server never hears of it),
+  flickering a few times, with a quieter thunder crack (`WorldClient.playSound`). Hit Particles
+  adds `ParticleManager.emitParticleAtEntity` bursts (crit, magic, flame, hearts, sparkles, end
+  rod or totem) on the player or mob you hit. Options: also on blocks, sound, time between bolts,
+  particle type and amount.
 - `thunder-perf.js` - Max FPS (Right Shift > Utility): one click applies the fastest settings.
   - Game settings: render distance 6 or less, Fast graphics, smooth lighting, clouds and entity
     shadows off, minimal particles and unlimited framerate. These go through the game's own

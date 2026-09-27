@@ -4,8 +4,11 @@ Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
 Every texture here is built by this script from the 1.21.11 ones (nothing is copied from other
 packs):
   - plain armor: worn armor in one flat colour per piece with a darker edge on every face, and
-    matching flat armor icons
-  - flat swords and tools: one tone per material with a dark outline and a light top edge
+    matching flat armor icons (diamond, iron, gold and netherite)
+  - flat swords and tools: one tone per material with a dark outline and a light top edge (wood to
+    netherite, and the spears)
+  - animated: the totem glows light blue and flashes, three small pearls go round the ender pearl,
+    a light band sweeps over the golden apple
   - calmer blocks: grass, dirt, stone, cobblestone, planks, sand, gravel, wool and more with
     less noise
   - small clean crit and sharpness particles
@@ -21,12 +24,13 @@ packs):
 import colorsys
 import io
 import json
+import math
 
 from PIL import Image, ImageDraw
 
 
 def build(lib, v12, m, base):
-    pk = lib.Pack('Thunder PvP', 'Thunder PvP - small totem, low fire, wire crystals')
+    pk = lib.Pack('Thunder PvP', 'Thunder PvP - plain gear, glowing totem, orbiting pearls')
     T = pk.tex
 
     def b121(path):
@@ -155,19 +159,30 @@ def build(lib, v12, m, base):
     pk.put_png(T('particle/particles.png'), pa)
 
     # Plain armor, flat swords and tools --------------------------------------------------------
-    for mat in ('diamond', 'iron', 'gold'):
+    # (netherite and the spears are the newer items of Thunder 1.21.11, under items/thunder/)
+    for mat, icons in (('diamond', 'items/'), ('iron', 'items/'), ('gold', 'items/'), ('netherite', 'items/thunder/')):
         for layer in (1, 2):
             n = 'models/armor/%s_layer_%d.png' % (mat, layer)
             pk.put_png(T(n), _flat_armor(b121(n)))
         for piece in ('helmet', 'chestplate', 'leggings', 'boots'):
-            n = 'items/%s_%s.png' % (mat, piece)
+            n = '%s%s_%s.png' % (icons, mat, piece)
             pk.put_png(T(n), _flat_item(b121(n), 2))
-    for mat in ('wood', 'stone', 'iron', 'gold', 'diamond'):
-        for tool in ('sword', 'axe', 'pickaxe'):
-            n = 'items/%s_%s.png' % (mat, tool)
+    for mat in ('wood', 'stone', 'iron', 'gold', 'diamond', 'netherite'):
+        for tool in ('sword', 'axe', 'pickaxe', 'shovel', 'hoe'):
+            n = ('items/thunder/%s_%s.png' if mat == 'netherite' else 'items/%s_%s.png') % (mat, tool)
             pk.put_png(T(n), _flat_item(b121(n), 3))
-    for n, k in (('ender_pearl', 3), ('apple_golden', 3), ('snowball', 2)):
-        pk.put_png(T('items/%s.png' % n), _flat_item(b121('items/%s.png' % n), k))
+    for mat in ('wooden', 'stone', 'copper', 'iron', 'golden', 'diamond', 'netherite'):
+        for n in ('items/thunder/%s_spear.png' % mat, 'items/thunder/%s_spear_in_hand.png' % mat):
+            if T(n) in base.files:
+                pk.put_png(T(n), _flat_item(b121(n), 3))
+    pk.put_png(T('items/snowball.png'), _flat_item(b121('items/snowball.png'), 2))
+
+    # Animated items: glowing totem, pearl with pearls going round it, shining golden apple -------
+    for n, frames, meta in (('totem', *_totem_frames(b121('items/totem.png'))),
+                            ('ender_pearl', *_pearl_frames(_flat_item(b121('items/ender_pearl.png'), 3))),
+                            ('apple_golden', *_shine_frames(_flat_item(b121('items/apple_golden.png'), 3)))):
+        pk.put_png(T('items/%s.png' % n), frames)
+        pk.put(T('items/%s.png.mcmeta' % n), json.dumps({'animation': meta}, sort_keys=True).encode())
 
     # Calmer blocks: fewer tones, single stray pixels removed ----------------------------------------
     for n in _CLEAN_BLOCKS:
@@ -256,6 +271,121 @@ def _flat_item(im, k, dark=0.42, light=1.28):
         c = base[max(set(nb), key=nb.count)] if nb else px[x, y][:3]
         op[x, y] = _shade(c, dark) + (255,)
     return out
+
+
+def _strip(frames):
+    """Frames stacked top to bottom, the layout of an animated texture."""
+    w, h = frames[0].size
+    out = Image.new('RGBA', (w, h * len(frames)), (0, 0, 0, 0))
+    for i, f in enumerate(frames):
+        out.paste(f, (0, i * h))
+    return out
+
+
+def _mix(c, t, a):
+    return tuple(int(round(c[i] + (t[i] - c[i]) * a)) for i in range(3))
+
+
+_GLOW = (125, 225, 255)      # light blue
+
+
+def _totem_frames(src):
+    """Totem at twice the detail with a light-blue glow around it that pulses, and a short flash
+    of light blue over the totem at the brightest moment (16 frames, 1.6 s)."""
+    body = src.crop(src.getbbox())
+    body = body.resize((body.width * 2, body.height * 2), Image.NEAREST)
+    base = Image.new('RGBA', (32, 32), (0, 0, 0, 0))
+    base.paste(body, ((32 - body.width) // 2, (32 - body.height) // 2))
+    bp = base.load()
+    solid = {(x, y) for y in range(32) for x in range(32) if bp[x, y][3] >= 128}
+
+    def ring(inner):
+        return {(x + dx, y + dy) for (x, y) in inner for dx in (-1, 0, 1) for dy in (-1, 0, 1)
+                if 0 <= x + dx < 32 and 0 <= y + dy < 32} - inner
+    r1 = ring(solid)
+    r2 = ring(solid | r1)
+    frames = []
+    n = 16
+    for i in range(n):
+        pulse = 0.5 - 0.5 * math.cos(2 * math.pi * i / n)
+        f = base.copy()
+        fp = f.load()
+        flash = pulse ** 4 * 0.45
+        for (x, y) in solid:
+            c = fp[x, y]
+            fp[x, y] = _mix(c, _GLOW, flash) + (c[3],)
+        for (x, y) in r1:
+            fp[x, y] = _GLOW + (int(70 + 170 * pulse),)
+        for (x, y) in r2:
+            fp[x, y] = _GLOW + (int(20 + 90 * pulse),)
+        frames.append(f)
+    return _strip(frames), {'frametime': 2}
+
+
+def _pearl_frames(src):
+    """The pearl in the middle with three small copies of it going round it on a tilted ring
+    (in front of it on the lower half, behind it on the upper half), and a short flash every
+    second turn (24 frames, 2.4 s)."""
+    body = src.crop(src.getbbox())
+    big = body.resize((body.width * 3, body.height * 3), Image.NEAREST)
+    small = body.resize((15, 15), Image.LANCZOS)
+    sp = small.load()
+    for y in range(15):                      # keep the small pearls crisp: no half-see-through edge
+        for x in range(15):
+            c = sp[x, y]
+            sp[x, y] = c[:3] + ((255,) if c[3] >= 110 else (0,))
+    behind = small.copy()
+    bhp = behind.load()
+    for y in range(15):
+        for x in range(15):
+            c = bhp[x, y]
+            if c[3]:
+                bhp[x, y] = _shade(c[:3], 0.62) + (255,)
+    frames = []
+    n = 24
+    for i in range(n):
+        f = Image.new('RGBA', (64, 64), (0, 0, 0, 0))
+        spots = []
+        for k in range(3):
+            a = 2 * math.pi * (k / 3 + i / (n / 2) / 3)      # a third of a turn every 12 frames
+            spots.append((math.sin(a), 32 + 24 * math.cos(a), 32 + 11 * math.sin(a)))
+        for sn, x, y in spots:
+            if sn < 0:
+                f.alpha_composite(behind, (int(round(x)) - 7, int(round(y)) - 7))
+        mid = big
+        if i in (0, 1):
+            mid = big.copy()
+            mp = mid.load()
+            for y in range(mid.height):
+                for x in range(mid.width):
+                    c = mp[x, y]
+                    if c[3]:
+                        mp[x, y] = _mix(c, (150, 255, 225), 0.3 if i == 0 else 0.15) + (c[3],)
+        f.alpha_composite(mid, ((64 - mid.width) // 2, (64 - mid.height) // 2))
+        for sn, x, y in spots:
+            if sn >= 0:
+                f.alpha_composite(small, (int(round(x)) - 7, int(round(y)) - 7))
+        frames.append(f)
+    return _strip(frames), {'frametime': 2}
+
+
+def _shine_frames(src):
+    """A light band that sweeps over the item, then a pause (20 frames, 2 s)."""
+    w, h = src.size
+    frames = []
+    for i in range(20):
+        f = src.copy()
+        if i < 10:
+            pos = -3 + i * (w + h + 6) / 9.0
+            fp = f.load()
+            for y in range(h):
+                for x in range(w):
+                    c = fp[x, y]
+                    d = abs(x + y - pos)
+                    if c[3] >= 128 and d < 2.5:
+                        fp[x, y] = _mix(c, (255, 255, 235), 0.6 if d < 1 else 0.3) + (c[3],)
+        frames.append(f)
+    return _strip(frames), {'frametime': 2}
 
 
 # armor model boxes (u, v, w, h, d) on the 64x32 sheet: head, head overlay, body, arm, leg
