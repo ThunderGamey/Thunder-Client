@@ -19,6 +19,8 @@
      small synchronous methods:
      @use Q$ net.minecraft.world.World.getCelestialAngle
      @use R$ net.minecraft.world.World.getRainStrength
+     @use FLc net.minecraft.entity.Entity.getPosition
+     @use CZY net.minecraft.world.World.canSeeSky
      @virtual Tv net.minecraft.world.WorldProvider isSurfaceWorld
      @field bv net.minecraft.client.renderer.EntityRenderer.renderWorld EntityRenderer.mc
      @field hI net.minecraft.client.renderer.EntityRenderer.renderWorld Minecraft.renderViewEntity
@@ -96,7 +98,7 @@
         'c*=mix(vec3(1.0),u_tint,u_atm*(1.0-0.7*sk)*(1.0-lt));\n'+
         '#ifdef CHAIN\n'+
         'vec2 q=(v_uv-u_sun.xy)*vec2(u_aspect,1.0);float r2=dot(q,q);'+
-        'float sv=smoothstep(0.3,0.75,texture(u_wideTex,clamp(u_sun.xy,0.0,1.0)).a);'+
+        'float sv=max(smoothstep(0.3,0.75,texture(u_wideTex,clamp(u_sun.xy,0.0,1.0)).a),u_sunOff*0.6);'+
         'vec3 a=clamp(u_sunCol*((exp(-r2*3.0)*0.35+exp(-r2*25.0)*0.5)*u_sun.z*sv*u_atm*0.8),0.0,1.0);'+
         'c+=a*(1.0-min(c,vec3(1.0)));'+
         'float dh=v_uv.y-u_hor.x,hb=exp(dh>0.0?-dh*30.0:dh*u_hor.y)*u_hor.z*smoothstep(0.12,0.45,texture(u_wideTex,v_uv).a);'+
@@ -175,19 +177,19 @@
   // Bright sky and light sources near the sun are the source; anything darker (terrain, leaves,
   // walls) blocks, which is what cuts the light into shafts. Samples off screen count as blocked.
   var SH_FS_RAYS=SH_HEAD+
-    'uniform sampler2D u_src;uniform vec3 u_sun;uniform float u_aspect;\n'+
+    'uniform sampler2D u_src;uniform vec3 u_sun;uniform float u_aspect,u_lo;\n'+
     'float hash(vec2 p){vec3 q=fract(vec3(p.xyx)*0.1031);q+=dot(q,q.yzx+33.33);return fract((q.x+q.y)*q.z);}\n'+
     'void main(){vec2 st=(u_sun.xy-v_uv)*(0.9/28.0),p=v_uv+st*hash(gl_FragCoord.xy);float w=1.0,sum=0.0,acc=0.0;'+
       'for(int i=0;i<28;i++){'+
         'vec2 q=(p-u_sun.xy)*vec2(u_aspect,1.0);'+
-        'float m=smoothstep(0.5,0.92,texture(u_src,p).a)*(0.1+0.9*exp(-dot(q,q)*6.0));'+
+        'float m=smoothstep(u_lo,0.92,texture(u_src,p).a)*(0.1+0.9*exp(-dot(q,q)*6.0));'+
         'm*=step(0.0,p.x)*step(p.x,1.0)*step(0.0,p.y)*step(p.y,1.0);'+
         'acc+=m*w;sum+=w;w*=0.95;p+=st;}'+
       'o_col=vec4(vec3(min(acc/sum*1.6,1.0)),1.0);}\n';
   // pass sources that can be swapped from the console while designing (ThunderClient.shaders.src,
   // then ThunderClient.shaders.release() to rebuild)
   var SH_SRC={rays:SH_FS_RAYS};
-  var SH_COMP_UNIFORMS=['u_scene','u_bloomTex','u_wideTex','u_histTex','u_rayTex','u_aspect','u_sun','u_sunCol','u_tint','u_hor','u_haze'];
+  var SH_COMP_UNIFORMS=['u_scene','u_bloomTex','u_wideTex','u_histTex','u_rayTex','u_aspect','u_sun','u_sunCol','u_tint','u_hor','u_haze','u_sunOff'];
   SH_EFFECTS.forEach(function(e){SH_COMP_UNIFORMS.push(e.u);});
   // debug views (console: ThunderClient.shaders.debug = n): 1 bloom, 2 wide glow level, 3 blurred
   // brightness. They replace the image and are never saved.
@@ -199,12 +201,15 @@
     return SH_HEAD.replace('\n','\n'+(chain?'#define CHAIN\n':''))+
       'uniform sampler2D u_scene;uniform sampler2D u_bloomTex;uniform sampler2D u_wideTex;uniform sampler2D u_histTex;uniform sampler2D u_rayTex;\n'+
       'uniform vec3 u_sun,u_sunCol,u_tint,u_hor,u_haze;\n'+
-      'uniform float u_aspect,'+SH_EFFECTS.map(function(e){return e.u;}).join(',')+';\n'+
+      'uniform float u_aspect,u_sunOff,'+SH_EFFECTS.map(function(e){return e.u;}).join(',')+';\n'+
       'float hash(vec2 p){vec3 q=fract(vec3(p.xyx)*0.1031);q+=dot(q,q.yzx+33.33);return fract((q.x+q.y)*q.z);}\n'+
       'void main(){vec4 src=texture(u_scene,v_uv);vec3 c=src.rgb;\n'+body+
       // over-bright colors are scaled down as a whole (hue kept) and only very bright ones turn
       // toward white, instead of clipping each channel (which turns orange light lemon-yellow)
       'float mx=max(c.r,max(c.g,c.b));if(mx>1.0)c=mix(c/mx,vec3(1.0),clamp((mx-1.0)*0.25,0.0,0.5));\n'+
+      // what was pure white stays pure white (the sun's disk): graded warm and compressed it came
+      // out darker than its own glow, so the middle of the sun looked dark
+      'c=mix(c,vec3(1.0),smoothstep(0.93,0.99,min(src.r,min(src.g,src.b))));\n'+
       'c+=(hash(gl_FragCoord.xy)-0.5)*(1.0/255.0);\n'+     // dither: no banding from the grading
       'o_col=vec4(clamp(c,0.0,1.0),src.a);}\n';
   }
@@ -227,7 +232,7 @@
     R.progs.adapt=shProgram(R,SH_FS_ADAPT,['u_src','u_expo','u_rate'],{u_src:0,u_expo:1});
     R.progs.down=shProgram(R,SH_FS_DOWN,['u_src','u_px'],{u_src:0});
     R.progs.up=shProgram(R,SH_FS_UP,['u_src','u_base','u_px','u_scatter'],{u_src:0,u_base:1});
-    R.progs.rays=shProgram(R,SH_SRC.rays,['u_src','u_sun','u_aspect'],{u_src:0});
+    R.progs.rays=shProgram(R,SH_SRC.rays,['u_src','u_sun','u_aspect','u_lo'],{u_src:0});
     return R;
   }
   function shProgram(R,fs,names,samplers){
@@ -389,7 +394,7 @@
   // (third-person front view looks the other way). x, y: screen position (0..1, may be off
   // screen); vis: how much sun/moon light the effects may add (0 = none: below the horizon,
   // behind the camera, raining, or no sky in this dimension).
-  var shSun={x:0.5,y:0.5,vis:0,col:[1,0.9,0.7],tint:[1,1,1],haze:[0.86,0.9,0.98],hor:[0.5,7,0],sky:false,height:0,rain:0,err:0};
+  var shSun={x:0.5,y:0.5,vis:0,off:0,col:[1,0.9,0.7],tint:[1,1,1],haze:[0.86,0.9,0.98],hor:[0.5,7,0],sky:false,height:0,rain:0,err:0};
   SHS.sun=shSun;SHS.src=SH_SRC;
   function shStep(a,b,x){var t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);}
   function shMix3(o,a,b,t){o[0]=a[0]+(b[0]-a[0])*t;o[1]=a[1]+(b[1]-a[1])*t;o[2]=a[2]+(b[2]-a[2])*t;}
@@ -399,9 +404,19 @@
     colDay:[1.0,0.86,0.62],colDusk:[1.0,0.62,0.32],colMoon:[0.5,0.62,0.9],
     hazeDay:[0.75,0.84,0.97],hazeDusk:[1.0,0.64,0.38],hazeNight:[0.1,0.12,0.2],hazeRain:[0.68,0.7,0.74]};
   SHS.palette=SH_PAL;
+  // eased 0..1: whether the camera stands under open sky (the sun light kept while the sun is out
+  // of view needs it: no sunlight from the screen edge inside caves, houses or under trees)
+  var shOpen={k:1,t:0};
+  function shSkyOpen(w,e){
+    var target=1,tn=now(),dt=shOpen.t?clamp((tn-shOpen.t)/1000,0,0.25):0.25;
+    shOpen.t=tn;
+    try{target=CZY(w,FLc(e))?1:0;}catch(_){}
+    shOpen.k+=(target-shOpen.k)*Math.min(1,dt*2.5);
+    return shOpen.k;
+  }
   function shSunUpdate(er,pt,aspect){
     var O=shSun;
-    O.vis=0;O.sky=false;O.tint[0]=O.tint[1]=O.tint[2]=1;O.hor[2]=0;
+    O.vis=0;O.off=0;O.sky=false;O.tint[0]=O.tint[1]=O.tint[2]=1;O.hor[2]=0;
     try{
       var mc=er&&er.bv,w=mc&&mc.X,e=mc&&mc.hI,prov=w&&w.b4;
       if(!w||!e||!prov||!prov.Tv())return;          // no world yet, or the Nether / the End
@@ -436,12 +451,25 @@
       if(Math.abs(hp)<1.4){O.hor[0]=0.5+0.5*Math.tan(hp)/t;O.hor[1]=7;O.hor[2]=1;}
       if(strength<=0.001)return;
       var ux=-rz*fy,uy=rz*fx-rx*fz;                                   // up = right x forward (z unused: sun z = 0)
-      var z=dx*fx+dy*fy;
-      if(z<0.05)return;                                               // behind the camera
-      shMix3(O.haze,O.haze,O.col,clamp(z,0,1)*dusk*0.5);                // facing a low sun: haze takes its color
-      var X=(dx*rx)/(z*t*aspect),Y=(dx*ux+dy*uy)/(z*t);
+      var z=dx*fx+dy*fy,ex=dx*rx/aspect,ey=dx*ux+dy*uy,X=0,Y=1.15,direct=0;
+      if(z>=0.05){
+        shMix3(O.haze,O.haze,O.col,clamp(z,0,1)*dusk*0.5);              // facing a low sun: haze takes its color
+        X=ex/(z*t);Y=ey/(z*t);
+        direct=shStep(0.05,0.3,z)*(1-shStep(1.2,2.2,Math.max(Math.abs(X),Math.abs(Y))));
+      }
+      // Out of view (behind, above or beside the screen), half of the sun's light stays: rays and
+      // haze then come in from just past the screen edge on the sun's side (from the top when the
+      // sun is straight behind). Inside the view the sun's own position and visibility are used.
+      var keep=up?0.5*shSkyOpen(w,e):0;
+      if(direct<keep){
+        if(z<0.05){X=ex;Y=ey+0.25;}                                   // behind: its side, biased up
+        var m=Math.max(Math.abs(X),Math.abs(Y));
+        if(m>1.15){X*=1.15/m;Y*=1.15/m;}else if(m<1e-6){X=0;Y=1.15;}
+        else if(z<0.05){X*=1.15/m;Y*=1.15/m;}
+        O.off=(keep-direct)/0.5;
+      }
       O.x=X*0.5+0.5;O.y=Y*0.5+0.5;
-      O.vis=strength*shStep(0.05,0.3,z)*(1-shStep(1.2,2.2,Math.max(Math.abs(X),Math.abs(Y))));
+      O.vis=strength*Math.max(direct,keep);
     }catch(err){
       O.vis=0;O.sky=false;O.tint[0]=O.tint[1]=O.tint[2]=1;O.hor[2]=0;
       if(!O.err++){if(W.console&&W.console.warn)W.console.warn('[Thunder] shaders: sun position unavailable',err);}
@@ -498,7 +526,7 @@
       var rp=R.progs.rays;
       shDraw(gl,rp,R.rays,R.down[0].t);
       gl.uniform3f(rp.u.u_sun,sun.x,sun.y,sunVis);
-      gl.uniform1f(rp.u.u_aspect,fw/fh);
+      gl.uniform1f(rp.u.u_aspect,fw/fh);gl.uniform1f(rp.u.u_lo,0.5-0.22*sun.off);
       gl.drawArrays(gl.TRIANGLES,0,3);n++;px+=R.rays.w*R.rays.h;
     }
     // 3. composite every enabled effect in one full-screen pass
@@ -516,6 +544,7 @@
     gl.uniform3f(comp.u.u_tint,sun.tint[0],sun.tint[1],sun.tint[2]);
     gl.uniform3f(comp.u.u_hor,sun.hor[0],sun.hor[1],sun.hor[2]);
     gl.uniform3f(comp.u.u_haze,sun.haze[0],sun.haze[1],sun.haze[2]);
+    gl.uniform1f(comp.u.u_sunOff,sun.off);
     for(i=0;i<SH_EFFECTS.length;i++){
       var a=cfg.amount[i];
       if(SH_EFFECTS[i].id==='motion')a=R.histOk?Math.pow(a,dt>0?dt/16.667:1):0;   // same trail at any FPS

@@ -79,7 +79,7 @@
   var TB_BOLT_N=30;
   var TB_FS_SCENE=
     'precision highp float;\nin vec2 v_uv;\nout vec4 o_col;\n'+
-    'uniform sampler2D u_clouds;uniform float u_aspect,u_time,u_boltN,u_boltA,u_spark;uniform vec2 u_par,u_px;\n'+
+    'uniform sampler2D u_clouds;uniform float u_aspect,u_time,u_boltN,u_boltA,u_spark,u_dim;uniform vec2 u_par,u_px;\n'+
     'uniform vec4 u_flash,u_boltBox;uniform vec2 u_bolt['+TB_BOLT_N+'];\n'+TB_COMMON+
     'float n1(float x){float i=floor(x),f=fract(x);return mix(hash1(i),hash1(i+1.0),f*f*(3.0-2.0*f));}\n'+
     'float fbm1(float x){float s=0.0,a=0.5;for(int i=0;i<4;i++){s+=a*n1(x);x*=2.03;a*=0.5;}return s;}\n'+
@@ -127,12 +127,16 @@
     '  col+=vec3(0.12,0.50,0.66)*step(sky2-2.0*px,yy)*step(yy,sky2)*solid*(0.30+0.9*u_flash.z)*0.55;\n'+
     '  float v=smoothstep(1.25,0.35,length(p*vec2(0.85,1.25)));col*=mix(0.55,1.0,v);\n'+
     '  col+=vec3(0.30,0.45,0.60)*u_flash.z*0.06;\n'+
-    '  o_col=vec4(col,1.0);\n'+
+    '  o_col=vec4(col*u_dim,1.0);\n'+
     '}\n';
   var TB_VS='#version 300 es\nout vec2 v_uv;\n'+
     'void main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));v_uv=p;gl_Position=vec4(p*2.0-1.0,0.0,1.0);}\n';
-  // quality: 1 low, 2 medium, 3 high -> cloud resolution divisor and fbm octaves
-  var TB_Q={1:{div:4,oct:3,spark:1},2:{div:3,oct:4,spark:1},3:{div:2,oct:5,spark:1}};
+  // copies the finished storm (drawn once per frame into its own texture) to the screen
+  var TB_FS_COPY='precision highp float;\nin vec2 v_uv;\nout vec4 o_col;\nuniform sampler2D u_src;uniform float u_dim;\n'+
+    'void main(){o_col=vec4(texture(u_src,v_uv).rgb*u_dim,1.0);}\n';
+  // quality: 1 low, 2 medium, 3 high -> cloud resolution divisor, fbm octaves and the storm's own
+  // resolution divisor (Low draws it at half size: a quarter of the pixels)
+  var TB_Q={1:{div:4,oct:3,spark:1,sdiv:2},2:{div:3,oct:4,spark:1,sdiv:1},3:{div:2,oct:5,spark:1,sdiv:1}};
 
   // ---- GL resources ---------------------------------------------------------------------------
   var TB=null,tbFail=null,tbDrawn=false,tbFrames=0,tbHold=0,tbSt={tex:[],smp:[],caps:[],vp:[0,0,0,0],done:false};
@@ -146,9 +150,10 @@
     var vs=gl.createShader(gl.VERTEX_SHADER);
     gl.shaderSource(vs,TB_VS);gl.compileShader(vs);
     var R={gl:gl,vs:vs,vao:gl.createVertexArray(),par:gl.getExtension('KHR_parallel_shader_compile'),clouds:{},
-      scene:null,fbo:null,tex:null,w:0,h:0,t0:now(),last:0,dtAvg:16,slow:0,auto:2};
-    R.scene=tbProgram(gl,vs,TB_FS_SCENE,['u_clouds','u_aspect','u_time','u_boltN','u_boltA','u_spark','u_par','u_px',
+      scene:null,copy:null,tc:null,ts:null,t0:now(),last:0,dtAvg:16,slow:0,auto:2,fid:-1,fw:0,fh:0,q:0,lv:[0,0],sb:null,skipN:0};
+    R.scene=tbProgram(gl,vs,TB_FS_SCENE,['u_clouds','u_aspect','u_time','u_boltN','u_boltA','u_spark','u_dim','u_par','u_px',
       'u_flash','u_boltBox','u_bolt'],{u_clouds:0});
+    R.copy=tbProgram(gl,vs,TB_FS_COPY,['u_src','u_dim'],{u_src:0});
     return R;
   }
   function tbCloudProg(R,q){
@@ -172,21 +177,22 @@
     pr.u=u;
     return true;
   }
-  function tbTarget(R,w,h){
-    if(R.tex&&R.w===w&&R.h===h)return;
-    var gl=R.gl;
-    if(R.fbo){gl.deleteFramebuffer(R.fbo);gl.deleteTexture(R.tex);}
-    R.tex=gl.createTexture();R.fbo=gl.createFramebuffer();R.w=w;R.h=h;
+  // an RGBA8 render target (t: previous one, reused while the size is the same)
+  function tbTarget(gl,t,w,h,filter){
+    if(t&&t.w===w&&t.h===h)return t;
+    if(t){gl.deleteFramebuffer(t.fbo);gl.deleteTexture(t.tex);}
+    t={tex:gl.createTexture(),fbo:gl.createFramebuffer(),w:w,h:h};
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D,R.tex);
+    gl.bindTexture(gl.TEXTURE_2D,t.tex);
     gl.texStorage2D(gl.TEXTURE_2D,1,gl.RGBA8,w,h);
-    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,filter);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,filter);
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
-    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER,R.fbo);
-    gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,R.tex,0);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER,t.fbo);
+    gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t.tex,0);
     if(gl.checkFramebufferStatus(gl.DRAW_FRAMEBUFFER)!==gl.FRAMEBUFFER_COMPLETE)throw new Error('title background framebuffer is incomplete');
+    return t;
   }
 
   // ---- mouse parallax -------------------------------------------------------------------------
@@ -260,49 +266,77 @@
     if(R.dtAvg>34)R.slow+=dtMs;else R.slow=Math.max(0,R.slow-dtMs);
     if(R.slow>4000){R.auto--;R.slow=0;R.dtAvg=16;}
   }
-  function tbDraw(a){
+  // Draws the storm into the game's framebuffer. dim: 1 on the title screen, lower behind other
+  // menus so their text stays easy to read. clip: null, or [x,y,w,h] in framebuffer pixels
+  // (origin bottom left) to paint only that region (list headers and footers repaint the storm
+  // over rows scrolled under them). The storm itself (timing, auto quality, parallax, lightning,
+  // the low-resolution cloud pass and the scene pass into its own texture) is made once per
+  // frame; every call then only copies that texture, so a menu that shows it several times
+  // (background, list area, list header and footer) pays for it once.
+  var tbFrameId=0;
+  frameTasks.push(function(){tbFrameId++;});
+  function tbStorm(mc,dim,clip){
     tbDrawn=false;
     if(tbFail)return false;
     var gl=HEl;
-    if(!gl||HEv<300||typeof gl.createVertexArray!=='function'||!a||!a.j)return false;
-    var mc=a.j,fw=mc.gj|0,fh=mc.fU|0;
+    if(!gl||HEv<300||typeof gl.createVertexArray!=='function'||!mc)return false;
+    var fw=mc.gj|0,fh=mc.fU|0;
     if(fw<2||fh<2)return false;
     try{
       if(!TB||TB.gl!==gl)TB=tbInit(gl);
       var R=TB,q=tbQuality(R),Q=TB_Q[q],cp=tbCloudProg(R,q);
       shSave(gl,tbSt);                                            // tbReady may switch programs
-      if(!tbReady(R,R.scene)||!tbReady(R,cp)){shRestore(gl,tbSt);return false;}   // still compiling: vanilla this frame
-      var tn=now(),t=(tn-R.t0)/1000,dtMs=R.last?tn-R.last:16;R.last=tn;
-      if(dtMs>1000)dtMs=16;          // back on the title screen after a while: not a slow frame
-      tbAutoTune(R,dtMs);
-      var k=1-Math.exp(-Math.min(dtMs,100)/1000*3.2),ps=clamp(Number(S.titleParallax)||0,0,100)/100;
-      tbMouse.x+=(tbMouse.tx*ps-tbMouse.x)*k;tbMouse.y+=(tbMouse.ty*ps-tbMouse.y)*k;
-      var aspect=fw/fh,B=tbBolt;
-      if(S.titleLightning){if(!B.next)B.next=t+1.5;if(t>=B.next)tbStrike(t,aspect);}
-      else B.start=-1;
-      var lv=tbStrikeLevel(B.start<0?-1:(tbHold>tn?0.03:t-B.start)),flash=lv[0],bolt=B.n?lv[1]:0;
-      var cw=Math.max(8,Math.ceil(fw/Q.div)),ch=Math.max(8,Math.ceil(fh/Q.div));
-
+      if(!tbReady(R,R.scene)||!tbReady(R,cp)||!tbReady(R,R.copy)){shRestore(gl,tbSt);return false;}   // still compiling: vanilla this frame
+      var tn=now(),t=(tn-R.t0)/1000,aspect=fw/fh,B=tbBolt;
       shNeutral(gl,tbSt);
-      tbTarget(R,cw,ch);
       gl.bindVertexArray(R.vao);
-      // pass 1: clouds at low resolution
-      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER,R.fbo);gl.viewport(0,0,cw,ch);
-      gl.useProgram(cp.p);
-      gl.uniform1f(cp.u.u_aspect,aspect);gl.uniform1f(cp.u.u_time,t);
-      gl.uniform2f(cp.u.u_par,tbMouse.x,tbMouse.y);gl.uniform4f(cp.u.u_flash,B.cx,B.cy,flash,B.rad);
-      gl.drawArrays(gl.TRIANGLES,0,3);
-      // pass 2: full resolution into the game's framebuffer
+      var fresh=R.fid!==tbFrameId;
+      if(fresh){                        // once per frame: timing, auto quality, parallax, lightning
+        R.fid=tbFrameId;R.skipN++;
+        var dtMs=R.last?tn-R.last:16;R.last=tn;
+        if(dtMs>1000)dtMs=16;          // back on a storm screen after a while: not a slow frame
+        tbAutoTune(R,dtMs);
+        var k=1-Math.exp(-Math.min(dtMs,100)/1000*3.2),ps=clamp(Number(S.titleParallax)||0,0,100)/100;
+        tbMouse.x+=(tbMouse.tx*ps-tbMouse.x)*k;tbMouse.y+=(tbMouse.ty*ps-tbMouse.y)*k;
+        if(S.titleLightning){if(!B.next)B.next=t+1.5;if(t>=B.next)tbStrike(t,aspect);}
+        else B.start=-1;
+        R.lv=tbStrikeLevel(B.start<0?-1:(tbHold>tn?0.03:t-B.start));
+      }
+      // redrawn every frame, or every other frame on Low while frames are still slow (the copy
+      // below still runs every frame); at once after a size or quality change
+      if(!R.ts||R.fw!==fw||R.fh!==fh||R.q!==q||(fresh&&R.skipN>=(q===1&&R.dtAvg>30?2:1))){
+        R.fw=fw;R.fh=fh;R.q=q;R.skipN=0;
+        var cw=Math.max(8,Math.ceil(fw/Q.div)),ch=Math.max(8,Math.ceil(fh/Q.div));
+        var sw=Math.max(8,Math.ceil(fw/Q.sdiv)),sh=Math.max(8,Math.ceil(fh/Q.sdiv));
+        R.tc=tbTarget(gl,R.tc,cw,ch,gl.LINEAR);
+        R.ts=tbTarget(gl,R.ts,sw,sh,gl.NEAREST);
+        // pass 1: clouds at low resolution
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER,R.tc.fbo);gl.viewport(0,0,cw,ch);
+        gl.useProgram(cp.p);
+        gl.uniform1f(cp.u.u_aspect,aspect);gl.uniform1f(cp.u.u_time,t);
+        gl.uniform2f(cp.u.u_par,tbMouse.x,tbMouse.y);gl.uniform4f(cp.u.u_flash,B.cx,B.cy,R.lv[0],B.rad);
+        gl.drawArrays(gl.TRIANGLES,0,3);
+        // pass 2: the storm (stars, lightning, sparks, hills, skyline) into its own texture
+        var flash=R.lv[0],bolt=B.n?R.lv[1]:0;
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER,R.ts.fbo);gl.viewport(0,0,sw,sh);
+        var sp=R.scene;gl.useProgram(sp.p);
+        gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,R.tc.tex);
+        gl.uniform1f(sp.u.u_aspect,aspect);gl.uniform1f(sp.u.u_time,t);gl.uniform1f(sp.u.u_dim,1.0);
+        gl.uniform1f(sp.u.u_boltN,bolt>0.001?B.n:0);gl.uniform1f(sp.u.u_boltA,bolt);gl.uniform1f(sp.u.u_spark,Q.spark);
+        gl.uniform2f(sp.u.u_par,tbMouse.x,tbMouse.y);gl.uniform2f(sp.u.u_px,1/sw,1/sh);
+        gl.uniform4f(sp.u.u_flash,B.cx,B.cy,flash,B.rad);
+        gl.uniform4f(sp.u.u_boltBox,B.box[0],B.box[1],B.box[2],B.box[3]);
+        gl.uniform2fv(sp.u.u_bolt,B.pts);
+        gl.drawArrays(gl.TRIANGLES,0,3);
+      }
+      // copy to the game's framebuffer
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER,tbSt.draw);gl.viewport(0,0,fw,fh);
-      var sp=R.scene;gl.useProgram(sp.p);
-      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,R.tex);
-      gl.uniform1f(sp.u.u_aspect,aspect);gl.uniform1f(sp.u.u_time,t);
-      gl.uniform1f(sp.u.u_boltN,bolt>0.001?B.n:0);gl.uniform1f(sp.u.u_boltA,bolt);gl.uniform1f(sp.u.u_spark,Q.spark);
-      gl.uniform2f(sp.u.u_par,tbMouse.x,tbMouse.y);gl.uniform2f(sp.u.u_px,1/fw,1/fh);
-      gl.uniform4f(sp.u.u_flash,B.cx,B.cy,flash,B.rad);
-      gl.uniform4f(sp.u.u_boltBox,B.box[0],B.box[1],B.box[2],B.box[3]);
-      gl.uniform2fv(sp.u.u_bolt,B.pts);
+      if(clip){R.sb=gl.getParameter(gl.SCISSOR_BOX);gl.enable(gl.SCISSOR_TEST);gl.scissor(clip[0],clip[1],clip[2],clip[3]);}
+      var co=R.copy;gl.useProgram(co.p);
+      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,R.ts.tex);
+      gl.uniform1f(co.u.u_dim,dim);
       gl.drawArrays(gl.TRIANGLES,0,3);
+      if(clip){gl.disable(gl.SCISSOR_TEST);gl.scissor(R.sb[0],R.sb[1],R.sb[2],R.sb[3]);}
       shRestore(gl,tbSt);
       tbDrawn=true;
       return true;
@@ -319,7 +353,7 @@
     if(!$rt_resuming()){
       tbFrames++;
       if(S.titleLogo&&a)a.cEl=1.0;                    // no "Minceraft" roll: it cuts up the logo texture
-      if(S.titleBg&&tbDraw(a))return;
+      if(S.titleBg&&tbStorm(a.j,1.0,null))return;
       tbDrawn=false;
     }
     return origDit(a,b,c,d);
@@ -446,5 +480,6 @@
   // for testing: strike on the next title frame, optionally holding the bolt for holdMs
   TC.title={strike:function(holdMs){tbBolt.next=-1;tbHold=holdMs>0?now()+holdMs:0;},
     state:function(){return {drawn:tbDrawn,failed:tbFail?String(tbFail.message||tbFail):null,logo:tlState,
-    quality:TB?tbQuality(TB):0,auto:TB?TB.auto:0,frameMs:TB?Math.round(TB.dtAvg*10)/10:0,cloudRes:TB?TB.w+'x'+TB.h:'-',
+    quality:TB?tbQuality(TB):0,auto:TB?TB.auto:0,frameMs:TB?Math.round(TB.dtAvg*10)/10:0,
+    cloudRes:TB&&TB.tc?TB.tc.w+'x'+TB.tc.h:'-',stormRes:TB&&TB.ts?TB.ts.w+'x'+TB.ts.h:'-',
     frames:tbFrames,parallax:[Math.round(tbMouse.x*100)/100,Math.round(tbMouse.y*100)/100],bolt:tbBolt.sheet?'sheet':tbBolt.n};}};

@@ -48771,7 +48771,7 @@ c.PK;})();
    @use CC net.minecraft.client.gui.FontRenderer.getStringWidth
    @use AIz net.minecraft.client.gui.ScaledResolution.getScaledWidth
    @use ASe net.minecraft.client.gui.ScaledResolution.getScaledHeight
-   @use D49 net.minecraft.client.gui.Gui.drawRect
+   (Gui.drawRect D49 and TextureManager.bindTexture D17 are hooked by thunder-theme.js)
    @use CFi net.lax1dude.eaglercraft.opengl.GlStateManager.color
    @use Eu0 net.lax1dude.eaglercraft.opengl.GlStateManager.pushMatrix
    @use ECi net.lax1dude.eaglercraft.opengl.GlStateManager.popMatrix
@@ -48784,7 +48784,6 @@ c.PK;})();
    @use CyN net.lax1dude.eaglercraft.opengl.GlStateManager.enableBlend
    @use CTO net.lax1dude.eaglercraft.opengl.GlStateManager.disableBlend
    @use B$o net.lax1dude.eaglercraft.opengl.GlStateManager.tryBlendFuncSeparate
-   @use D17 net.minecraft.client.renderer.texture.TextureManager.bindTexture
    @use FYs net.minecraft.client.gui.Gui.drawTexturedModalRect
    @use DlC net.minecraft.entity.player.EntityPlayer.getPrimaryHand
    @use CiU net.minecraft.util.EnumHandSide.opposite
@@ -48950,7 +48949,8 @@ c.PK;})();
     shBloom:true,shBloomStr:60,shGrade:true,shGradeStr:75,shContrast:true,shContrastStr:35,
     shVignette:true,shVignetteStr:40,shAmbient:true,shAmbientStr:50,shMotion:false,shMotionStr:35,
     shRays:true,shRaysStr:65,shAtmos:true,shAtmosStr:60,
-    titleBg:true,titleLogo:true,titleLightning:true,titleParallax:60,titleQuality:0
+    titleBg:true,titleLogo:true,titleLightning:true,titleParallax:60,titleQuality:0,
+    menuTheme:true,menuStorm:true,menuButtons:true
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -49662,8 +49662,9 @@ c.PK;})();
   // are the vanilla hunger icon's silhouette and shading recoloured to a gold palette.
   // ------------------------------------------------------------------
   var SPR_W=32,SPR_H=16;
-  var SPR_PAL=[0x00000000,0xFF3A2805,0xFFFFD23F,0xFFE0A114,0xFFFFF1A8,0xFFF4BB2A,0xFFD99A16,0xFF8F5A07,
-    0xFFB8780C,0xFFFFF4CC,0xFFFFFFFF,0xFF6B4708,0xFFF7C43A,0x99000000,0x55000000];
+  // bright gold with a near-black outline, so the icons stay readable over bright sky and sun rays
+  var SPR_PAL=[0x00000000,0xFF140C00,0xFFFFE04A,0xFFF5B51E,0xFFFFF8C4,0xFFFFCB38,0xFFE8A417,0xFFA56508,
+    0xFFCC860E,0xFFFFFAE0,0xFFFFFFFF,0xFF7A5209,0xFFFFD447,0xB0000000,0x66000000];
   var SPR_DATA=[
     '0011000000123100001242510001325651000178661000017881000001119110000001a1000000110',
     '00110000001b3100001b42310001bbc2510001b336100001b781000001119110000001a1000000110',
@@ -49692,8 +49693,8 @@ c.PK;})();
   // ------------------------------------------------------------------
   // Saturation, style "Gold icons": ten small gold drumsticks in a row just above the hunger
   // icons, one centred over each hunger icon (vanilla draws food right-to-left from cx+91 at
-  // h-39, 8px apart), filled from the right like the hunger bar (full / half / empty), at 8/11
-  // size so the row stays compact. Style "Slim bar": a slim gold bar split into 10 segments.
+  // h-39, 8px apart), filled from the right like the hunger bar (full / half / empty), at 0.8
+  // size so the row stays compact, each filled one over a soft 1px shadow. Style "Slim bar": a slim gold bar split into 10 segments.
   // (vanilla draws food icons right-to-left from cx+91 at h-39, 8px apart). Each segment is two
   // saturation points and fills from the right like the hunger bar. Underwater it moves above
   // the air bubbles (h-49). Shown only where vanilla shows the hunger bar.
@@ -49708,12 +49709,17 @@ c.PK;})();
     var wet=DBe(p,HGM);                                // air bubbles occupy h-49..h-41
     var right=ctx.cx+91,k;
     if((S.satStyle|0)===0&&spritesReady(ctx)){
-      var sc=8/11,yb=wet?ctx.h-50:ctx.h-40;           // row bottom 1px above the icons below it
-      op(D17,ctx.tm,sprLoc);op(CFi,1.0,1.0,1.0,1.0);op(CyN);op(B$o,770,771,1,0);
+      var sc=0.8,yb=wet?ctx.h-50:ctx.h-40;            // row bottom 1px above the icons below it
+      op(D17,ctx.tm,sprLoc);op(CyN);op(B$o,770,771,1,0);
       opPush();op(DPm,right,yb,0.0);op(FWK,sc,sc,1.0);
-      for(k=0;k<10;k++){                              // local pitch 11 = 8 screen px
+      op(CFi,0.0,0.0,0.0,0.5);                        // shadow, 1 screen px down-right
+      for(k=0;k<10;k++){                              // local pitch 10 = 8 screen px
+        if(clamp(sat/2-k,0,1)>=0.25)op(DzG,-10-10*k+1.25,-9+1.25,0,0,9,9,SPR_W,SPR_H);
+      }
+      op(CFi,1.0,1.0,1.0,1.0);
+      for(k=0;k<10;k++){
         var fk=clamp(sat/2-k,0,1);
-        op(DzG,-11-11*k,-9,(fk>=0.75?0:(fk>=0.25?1:2))*9,0,9,9,SPR_W,SPR_H);
+        op(DzG,-10-10*k,-9,(fk>=0.75?0:(fk>=0.25?1:2))*9,0,9,9,SPR_W,SPR_H);
       }
       opPop();op(CTO);
       return;
@@ -49721,12 +49727,13 @@ c.PK;})();
     var y=wet?ctx.h-53:ctx.h-43;
     for(k=0;k<10;k++){
       var x0=right-9-8*k+1,x1=x0+7;                   // 7px over hunger icon k (k=0 rightmost)
-      rect(x0,y,x1,y+3,0x90000000);
+      rect(x0-1,y-1,x1+1,y+4,0xB0000000);             // dark frame keeps it readable on bright sky
       var f=clamp(sat/2-k,0,1);
       if(f<=0)continue;
       var fx=x1-Math.max(1,Math.round(7*f));          // partial segments fill from the right
-      rect(fx,y,x1,y+1,0xFFFFE27A);
-      rect(fx,y+1,x1,y+2,0xFFF0AE1C);
+      rect(fx,y,x1,y+1,0xFFFFF3A0);
+      rect(fx,y+1,x1,y+2,0xFFFFD23A);
+      rect(fx,y+2,x1,y+3,0xFFE39A10);
     }
   }
 
@@ -50209,6 +50216,8 @@ c.PK;})();
      small synchronous methods:
      @use Q$ net.minecraft.world.World.getCelestialAngle
      @use R$ net.minecraft.world.World.getRainStrength
+     @use FLc net.minecraft.entity.Entity.getPosition
+     @use CZY net.minecraft.world.World.canSeeSky
      @virtual Tv net.minecraft.world.WorldProvider isSurfaceWorld
      @field bv net.minecraft.client.renderer.EntityRenderer.renderWorld EntityRenderer.mc
      @field hI net.minecraft.client.renderer.EntityRenderer.renderWorld Minecraft.renderViewEntity
@@ -50286,7 +50295,7 @@ c.PK;})();
         'c*=mix(vec3(1.0),u_tint,u_atm*(1.0-0.7*sk)*(1.0-lt));\n'+
         '#ifdef CHAIN\n'+
         'vec2 q=(v_uv-u_sun.xy)*vec2(u_aspect,1.0);float r2=dot(q,q);'+
-        'float sv=smoothstep(0.3,0.75,texture(u_wideTex,clamp(u_sun.xy,0.0,1.0)).a);'+
+        'float sv=max(smoothstep(0.3,0.75,texture(u_wideTex,clamp(u_sun.xy,0.0,1.0)).a),u_sunOff*0.6);'+
         'vec3 a=clamp(u_sunCol*((exp(-r2*3.0)*0.35+exp(-r2*25.0)*0.5)*u_sun.z*sv*u_atm*0.8),0.0,1.0);'+
         'c+=a*(1.0-min(c,vec3(1.0)));'+
         'float dh=v_uv.y-u_hor.x,hb=exp(dh>0.0?-dh*30.0:dh*u_hor.y)*u_hor.z*smoothstep(0.12,0.45,texture(u_wideTex,v_uv).a);'+
@@ -50365,19 +50374,19 @@ c.PK;})();
   // Bright sky and light sources near the sun are the source; anything darker (terrain, leaves,
   // walls) blocks, which is what cuts the light into shafts. Samples off screen count as blocked.
   var SH_FS_RAYS=SH_HEAD+
-    'uniform sampler2D u_src;uniform vec3 u_sun;uniform float u_aspect;\n'+
+    'uniform sampler2D u_src;uniform vec3 u_sun;uniform float u_aspect,u_lo;\n'+
     'float hash(vec2 p){vec3 q=fract(vec3(p.xyx)*0.1031);q+=dot(q,q.yzx+33.33);return fract((q.x+q.y)*q.z);}\n'+
     'void main(){vec2 st=(u_sun.xy-v_uv)*(0.9/28.0),p=v_uv+st*hash(gl_FragCoord.xy);float w=1.0,sum=0.0,acc=0.0;'+
       'for(int i=0;i<28;i++){'+
         'vec2 q=(p-u_sun.xy)*vec2(u_aspect,1.0);'+
-        'float m=smoothstep(0.5,0.92,texture(u_src,p).a)*(0.1+0.9*exp(-dot(q,q)*6.0));'+
+        'float m=smoothstep(u_lo,0.92,texture(u_src,p).a)*(0.1+0.9*exp(-dot(q,q)*6.0));'+
         'm*=step(0.0,p.x)*step(p.x,1.0)*step(0.0,p.y)*step(p.y,1.0);'+
         'acc+=m*w;sum+=w;w*=0.95;p+=st;}'+
       'o_col=vec4(vec3(min(acc/sum*1.6,1.0)),1.0);}\n';
   // pass sources that can be swapped from the console while designing (ThunderClient.shaders.src,
   // then ThunderClient.shaders.release() to rebuild)
   var SH_SRC={rays:SH_FS_RAYS};
-  var SH_COMP_UNIFORMS=['u_scene','u_bloomTex','u_wideTex','u_histTex','u_rayTex','u_aspect','u_sun','u_sunCol','u_tint','u_hor','u_haze'];
+  var SH_COMP_UNIFORMS=['u_scene','u_bloomTex','u_wideTex','u_histTex','u_rayTex','u_aspect','u_sun','u_sunCol','u_tint','u_hor','u_haze','u_sunOff'];
   SH_EFFECTS.forEach(function(e){SH_COMP_UNIFORMS.push(e.u);});
   // debug views (console: ThunderClient.shaders.debug = n): 1 bloom, 2 wide glow level, 3 blurred
   // brightness. They replace the image and are never saved.
@@ -50389,12 +50398,15 @@ c.PK;})();
     return SH_HEAD.replace('\n','\n'+(chain?'#define CHAIN\n':''))+
       'uniform sampler2D u_scene;uniform sampler2D u_bloomTex;uniform sampler2D u_wideTex;uniform sampler2D u_histTex;uniform sampler2D u_rayTex;\n'+
       'uniform vec3 u_sun,u_sunCol,u_tint,u_hor,u_haze;\n'+
-      'uniform float u_aspect,'+SH_EFFECTS.map(function(e){return e.u;}).join(',')+';\n'+
+      'uniform float u_aspect,u_sunOff,'+SH_EFFECTS.map(function(e){return e.u;}).join(',')+';\n'+
       'float hash(vec2 p){vec3 q=fract(vec3(p.xyx)*0.1031);q+=dot(q,q.yzx+33.33);return fract((q.x+q.y)*q.z);}\n'+
       'void main(){vec4 src=texture(u_scene,v_uv);vec3 c=src.rgb;\n'+body+
       // over-bright colors are scaled down as a whole (hue kept) and only very bright ones turn
       // toward white, instead of clipping each channel (which turns orange light lemon-yellow)
       'float mx=max(c.r,max(c.g,c.b));if(mx>1.0)c=mix(c/mx,vec3(1.0),clamp((mx-1.0)*0.25,0.0,0.5));\n'+
+      // what was pure white stays pure white (the sun's disk): graded warm and compressed it came
+      // out darker than its own glow, so the middle of the sun looked dark
+      'c=mix(c,vec3(1.0),smoothstep(0.93,0.99,min(src.r,min(src.g,src.b))));\n'+
       'c+=(hash(gl_FragCoord.xy)-0.5)*(1.0/255.0);\n'+     // dither: no banding from the grading
       'o_col=vec4(clamp(c,0.0,1.0),src.a);}\n';
   }
@@ -50417,7 +50429,7 @@ c.PK;})();
     R.progs.adapt=shProgram(R,SH_FS_ADAPT,['u_src','u_expo','u_rate'],{u_src:0,u_expo:1});
     R.progs.down=shProgram(R,SH_FS_DOWN,['u_src','u_px'],{u_src:0});
     R.progs.up=shProgram(R,SH_FS_UP,['u_src','u_base','u_px','u_scatter'],{u_src:0,u_base:1});
-    R.progs.rays=shProgram(R,SH_SRC.rays,['u_src','u_sun','u_aspect'],{u_src:0});
+    R.progs.rays=shProgram(R,SH_SRC.rays,['u_src','u_sun','u_aspect','u_lo'],{u_src:0});
     return R;
   }
   function shProgram(R,fs,names,samplers){
@@ -50579,7 +50591,7 @@ c.PK;})();
   // (third-person front view looks the other way). x, y: screen position (0..1, may be off
   // screen); vis: how much sun/moon light the effects may add (0 = none: below the horizon,
   // behind the camera, raining, or no sky in this dimension).
-  var shSun={x:0.5,y:0.5,vis:0,col:[1,0.9,0.7],tint:[1,1,1],haze:[0.86,0.9,0.98],hor:[0.5,7,0],sky:false,height:0,rain:0,err:0};
+  var shSun={x:0.5,y:0.5,vis:0,off:0,col:[1,0.9,0.7],tint:[1,1,1],haze:[0.86,0.9,0.98],hor:[0.5,7,0],sky:false,height:0,rain:0,err:0};
   SHS.sun=shSun;SHS.src=SH_SRC;
   function shStep(a,b,x){var t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);}
   function shMix3(o,a,b,t){o[0]=a[0]+(b[0]-a[0])*t;o[1]=a[1]+(b[1]-a[1])*t;o[2]=a[2]+(b[2]-a[2])*t;}
@@ -50589,9 +50601,19 @@ c.PK;})();
     colDay:[1.0,0.86,0.62],colDusk:[1.0,0.62,0.32],colMoon:[0.5,0.62,0.9],
     hazeDay:[0.75,0.84,0.97],hazeDusk:[1.0,0.64,0.38],hazeNight:[0.1,0.12,0.2],hazeRain:[0.68,0.7,0.74]};
   SHS.palette=SH_PAL;
+  // eased 0..1: whether the camera stands under open sky (the sun light kept while the sun is out
+  // of view needs it: no sunlight from the screen edge inside caves, houses or under trees)
+  var shOpen={k:1,t:0};
+  function shSkyOpen(w,e){
+    var target=1,tn=now(),dt=shOpen.t?clamp((tn-shOpen.t)/1000,0,0.25):0.25;
+    shOpen.t=tn;
+    try{target=CZY(w,FLc(e))?1:0;}catch(_){}
+    shOpen.k+=(target-shOpen.k)*Math.min(1,dt*2.5);
+    return shOpen.k;
+  }
   function shSunUpdate(er,pt,aspect){
     var O=shSun;
-    O.vis=0;O.sky=false;O.tint[0]=O.tint[1]=O.tint[2]=1;O.hor[2]=0;
+    O.vis=0;O.off=0;O.sky=false;O.tint[0]=O.tint[1]=O.tint[2]=1;O.hor[2]=0;
     try{
       var mc=er&&er.bv,w=mc&&mc.X,e=mc&&mc.hI,prov=w&&w.b4;
       if(!w||!e||!prov||!prov.Tv())return;          // no world yet, or the Nether / the End
@@ -50626,12 +50648,25 @@ c.PK;})();
       if(Math.abs(hp)<1.4){O.hor[0]=0.5+0.5*Math.tan(hp)/t;O.hor[1]=7;O.hor[2]=1;}
       if(strength<=0.001)return;
       var ux=-rz*fy,uy=rz*fx-rx*fz;                                   // up = right x forward (z unused: sun z = 0)
-      var z=dx*fx+dy*fy;
-      if(z<0.05)return;                                               // behind the camera
-      shMix3(O.haze,O.haze,O.col,clamp(z,0,1)*dusk*0.5);                // facing a low sun: haze takes its color
-      var X=(dx*rx)/(z*t*aspect),Y=(dx*ux+dy*uy)/(z*t);
+      var z=dx*fx+dy*fy,ex=dx*rx/aspect,ey=dx*ux+dy*uy,X=0,Y=1.15,direct=0;
+      if(z>=0.05){
+        shMix3(O.haze,O.haze,O.col,clamp(z,0,1)*dusk*0.5);              // facing a low sun: haze takes its color
+        X=ex/(z*t);Y=ey/(z*t);
+        direct=shStep(0.05,0.3,z)*(1-shStep(1.2,2.2,Math.max(Math.abs(X),Math.abs(Y))));
+      }
+      // Out of view (behind, above or beside the screen), half of the sun's light stays: rays and
+      // haze then come in from just past the screen edge on the sun's side (from the top when the
+      // sun is straight behind). Inside the view the sun's own position and visibility are used.
+      var keep=up?0.5*shSkyOpen(w,e):0;
+      if(direct<keep){
+        if(z<0.05){X=ex;Y=ey+0.25;}                                   // behind: its side, biased up
+        var m=Math.max(Math.abs(X),Math.abs(Y));
+        if(m>1.15){X*=1.15/m;Y*=1.15/m;}else if(m<1e-6){X=0;Y=1.15;}
+        else if(z<0.05){X*=1.15/m;Y*=1.15/m;}
+        O.off=(keep-direct)/0.5;
+      }
       O.x=X*0.5+0.5;O.y=Y*0.5+0.5;
-      O.vis=strength*shStep(0.05,0.3,z)*(1-shStep(1.2,2.2,Math.max(Math.abs(X),Math.abs(Y))));
+      O.vis=strength*Math.max(direct,keep);
     }catch(err){
       O.vis=0;O.sky=false;O.tint[0]=O.tint[1]=O.tint[2]=1;O.hor[2]=0;
       if(!O.err++){if(W.console&&W.console.warn)W.console.warn('[Thunder] shaders: sun position unavailable',err);}
@@ -50688,7 +50723,7 @@ c.PK;})();
       var rp=R.progs.rays;
       shDraw(gl,rp,R.rays,R.down[0].t);
       gl.uniform3f(rp.u.u_sun,sun.x,sun.y,sunVis);
-      gl.uniform1f(rp.u.u_aspect,fw/fh);
+      gl.uniform1f(rp.u.u_aspect,fw/fh);gl.uniform1f(rp.u.u_lo,0.5-0.22*sun.off);
       gl.drawArrays(gl.TRIANGLES,0,3);n++;px+=R.rays.w*R.rays.h;
     }
     // 3. composite every enabled effect in one full-screen pass
@@ -50706,6 +50741,7 @@ c.PK;})();
     gl.uniform3f(comp.u.u_tint,sun.tint[0],sun.tint[1],sun.tint[2]);
     gl.uniform3f(comp.u.u_hor,sun.hor[0],sun.hor[1],sun.hor[2]);
     gl.uniform3f(comp.u.u_haze,sun.haze[0],sun.haze[1],sun.haze[2]);
+    gl.uniform1f(comp.u.u_sunOff,sun.off);
     for(i=0;i<SH_EFFECTS.length;i++){
       var a=cfg.amount[i];
       if(SH_EFFECTS[i].id==='motion')a=R.histOk?Math.pow(a,dt>0?dt/16.667:1):0;   // same trail at any FPS
@@ -52070,7 +52106,7 @@ c.PK;})();
   var TB_BOLT_N=30;
   var TB_FS_SCENE=
     'precision highp float;\nin vec2 v_uv;\nout vec4 o_col;\n'+
-    'uniform sampler2D u_clouds;uniform float u_aspect,u_time,u_boltN,u_boltA,u_spark;uniform vec2 u_par,u_px;\n'+
+    'uniform sampler2D u_clouds;uniform float u_aspect,u_time,u_boltN,u_boltA,u_spark,u_dim;uniform vec2 u_par,u_px;\n'+
     'uniform vec4 u_flash,u_boltBox;uniform vec2 u_bolt['+TB_BOLT_N+'];\n'+TB_COMMON+
     'float n1(float x){float i=floor(x),f=fract(x);return mix(hash1(i),hash1(i+1.0),f*f*(3.0-2.0*f));}\n'+
     'float fbm1(float x){float s=0.0,a=0.5;for(int i=0;i<4;i++){s+=a*n1(x);x*=2.03;a*=0.5;}return s;}\n'+
@@ -52118,12 +52154,16 @@ c.PK;})();
     '  col+=vec3(0.12,0.50,0.66)*step(sky2-2.0*px,yy)*step(yy,sky2)*solid*(0.30+0.9*u_flash.z)*0.55;\n'+
     '  float v=smoothstep(1.25,0.35,length(p*vec2(0.85,1.25)));col*=mix(0.55,1.0,v);\n'+
     '  col+=vec3(0.30,0.45,0.60)*u_flash.z*0.06;\n'+
-    '  o_col=vec4(col,1.0);\n'+
+    '  o_col=vec4(col*u_dim,1.0);\n'+
     '}\n';
   var TB_VS='#version 300 es\nout vec2 v_uv;\n'+
     'void main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));v_uv=p;gl_Position=vec4(p*2.0-1.0,0.0,1.0);}\n';
-  // quality: 1 low, 2 medium, 3 high -> cloud resolution divisor and fbm octaves
-  var TB_Q={1:{div:4,oct:3,spark:1},2:{div:3,oct:4,spark:1},3:{div:2,oct:5,spark:1}};
+  // copies the finished storm (drawn once per frame into its own texture) to the screen
+  var TB_FS_COPY='precision highp float;\nin vec2 v_uv;\nout vec4 o_col;\nuniform sampler2D u_src;uniform float u_dim;\n'+
+    'void main(){o_col=vec4(texture(u_src,v_uv).rgb*u_dim,1.0);}\n';
+  // quality: 1 low, 2 medium, 3 high -> cloud resolution divisor, fbm octaves and the storm's own
+  // resolution divisor (Low draws it at half size: a quarter of the pixels)
+  var TB_Q={1:{div:4,oct:3,spark:1,sdiv:2},2:{div:3,oct:4,spark:1,sdiv:1},3:{div:2,oct:5,spark:1,sdiv:1}};
 
   // ---- GL resources ---------------------------------------------------------------------------
   var TB=null,tbFail=null,tbDrawn=false,tbFrames=0,tbHold=0,tbSt={tex:[],smp:[],caps:[],vp:[0,0,0,0],done:false};
@@ -52137,9 +52177,10 @@ c.PK;})();
     var vs=gl.createShader(gl.VERTEX_SHADER);
     gl.shaderSource(vs,TB_VS);gl.compileShader(vs);
     var R={gl:gl,vs:vs,vao:gl.createVertexArray(),par:gl.getExtension('KHR_parallel_shader_compile'),clouds:{},
-      scene:null,fbo:null,tex:null,w:0,h:0,t0:now(),last:0,dtAvg:16,slow:0,auto:2};
-    R.scene=tbProgram(gl,vs,TB_FS_SCENE,['u_clouds','u_aspect','u_time','u_boltN','u_boltA','u_spark','u_par','u_px',
+      scene:null,copy:null,tc:null,ts:null,t0:now(),last:0,dtAvg:16,slow:0,auto:2,fid:-1,fw:0,fh:0,q:0,lv:[0,0],sb:null,skipN:0};
+    R.scene=tbProgram(gl,vs,TB_FS_SCENE,['u_clouds','u_aspect','u_time','u_boltN','u_boltA','u_spark','u_dim','u_par','u_px',
       'u_flash','u_boltBox','u_bolt'],{u_clouds:0});
+    R.copy=tbProgram(gl,vs,TB_FS_COPY,['u_src','u_dim'],{u_src:0});
     return R;
   }
   function tbCloudProg(R,q){
@@ -52163,21 +52204,22 @@ c.PK;})();
     pr.u=u;
     return true;
   }
-  function tbTarget(R,w,h){
-    if(R.tex&&R.w===w&&R.h===h)return;
-    var gl=R.gl;
-    if(R.fbo){gl.deleteFramebuffer(R.fbo);gl.deleteTexture(R.tex);}
-    R.tex=gl.createTexture();R.fbo=gl.createFramebuffer();R.w=w;R.h=h;
+  // an RGBA8 render target (t: previous one, reused while the size is the same)
+  function tbTarget(gl,t,w,h,filter){
+    if(t&&t.w===w&&t.h===h)return t;
+    if(t){gl.deleteFramebuffer(t.fbo);gl.deleteTexture(t.tex);}
+    t={tex:gl.createTexture(),fbo:gl.createFramebuffer(),w:w,h:h};
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D,R.tex);
+    gl.bindTexture(gl.TEXTURE_2D,t.tex);
     gl.texStorage2D(gl.TEXTURE_2D,1,gl.RGBA8,w,h);
-    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,filter);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,filter);
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
-    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER,R.fbo);
-    gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,R.tex,0);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER,t.fbo);
+    gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t.tex,0);
     if(gl.checkFramebufferStatus(gl.DRAW_FRAMEBUFFER)!==gl.FRAMEBUFFER_COMPLETE)throw new Error('title background framebuffer is incomplete');
+    return t;
   }
 
   // ---- mouse parallax -------------------------------------------------------------------------
@@ -52251,49 +52293,77 @@ c.PK;})();
     if(R.dtAvg>34)R.slow+=dtMs;else R.slow=Math.max(0,R.slow-dtMs);
     if(R.slow>4000){R.auto--;R.slow=0;R.dtAvg=16;}
   }
-  function tbDraw(a){
+  // Draws the storm into the game's framebuffer. dim: 1 on the title screen, lower behind other
+  // menus so their text stays easy to read. clip: null, or [x,y,w,h] in framebuffer pixels
+  // (origin bottom left) to paint only that region (list headers and footers repaint the storm
+  // over rows scrolled under them). The storm itself (timing, auto quality, parallax, lightning,
+  // the low-resolution cloud pass and the scene pass into its own texture) is made once per
+  // frame; every call then only copies that texture, so a menu that shows it several times
+  // (background, list area, list header and footer) pays for it once.
+  var tbFrameId=0;
+  frameTasks.push(function(){tbFrameId++;});
+  function tbStorm(mc,dim,clip){
     tbDrawn=false;
     if(tbFail)return false;
     var gl=HEl;
-    if(!gl||HEv<300||typeof gl.createVertexArray!=='function'||!a||!a.j)return false;
-    var mc=a.j,fw=mc.gj|0,fh=mc.fU|0;
+    if(!gl||HEv<300||typeof gl.createVertexArray!=='function'||!mc)return false;
+    var fw=mc.gj|0,fh=mc.fU|0;
     if(fw<2||fh<2)return false;
     try{
       if(!TB||TB.gl!==gl)TB=tbInit(gl);
       var R=TB,q=tbQuality(R),Q=TB_Q[q],cp=tbCloudProg(R,q);
       shSave(gl,tbSt);                                            // tbReady may switch programs
-      if(!tbReady(R,R.scene)||!tbReady(R,cp)){shRestore(gl,tbSt);return false;}   // still compiling: vanilla this frame
-      var tn=now(),t=(tn-R.t0)/1000,dtMs=R.last?tn-R.last:16;R.last=tn;
-      if(dtMs>1000)dtMs=16;          // back on the title screen after a while: not a slow frame
-      tbAutoTune(R,dtMs);
-      var k=1-Math.exp(-Math.min(dtMs,100)/1000*3.2),ps=clamp(Number(S.titleParallax)||0,0,100)/100;
-      tbMouse.x+=(tbMouse.tx*ps-tbMouse.x)*k;tbMouse.y+=(tbMouse.ty*ps-tbMouse.y)*k;
-      var aspect=fw/fh,B=tbBolt;
-      if(S.titleLightning){if(!B.next)B.next=t+1.5;if(t>=B.next)tbStrike(t,aspect);}
-      else B.start=-1;
-      var lv=tbStrikeLevel(B.start<0?-1:(tbHold>tn?0.03:t-B.start)),flash=lv[0],bolt=B.n?lv[1]:0;
-      var cw=Math.max(8,Math.ceil(fw/Q.div)),ch=Math.max(8,Math.ceil(fh/Q.div));
-
+      if(!tbReady(R,R.scene)||!tbReady(R,cp)||!tbReady(R,R.copy)){shRestore(gl,tbSt);return false;}   // still compiling: vanilla this frame
+      var tn=now(),t=(tn-R.t0)/1000,aspect=fw/fh,B=tbBolt;
       shNeutral(gl,tbSt);
-      tbTarget(R,cw,ch);
       gl.bindVertexArray(R.vao);
-      // pass 1: clouds at low resolution
-      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER,R.fbo);gl.viewport(0,0,cw,ch);
-      gl.useProgram(cp.p);
-      gl.uniform1f(cp.u.u_aspect,aspect);gl.uniform1f(cp.u.u_time,t);
-      gl.uniform2f(cp.u.u_par,tbMouse.x,tbMouse.y);gl.uniform4f(cp.u.u_flash,B.cx,B.cy,flash,B.rad);
-      gl.drawArrays(gl.TRIANGLES,0,3);
-      // pass 2: full resolution into the game's framebuffer
+      var fresh=R.fid!==tbFrameId;
+      if(fresh){                        // once per frame: timing, auto quality, parallax, lightning
+        R.fid=tbFrameId;R.skipN++;
+        var dtMs=R.last?tn-R.last:16;R.last=tn;
+        if(dtMs>1000)dtMs=16;          // back on a storm screen after a while: not a slow frame
+        tbAutoTune(R,dtMs);
+        var k=1-Math.exp(-Math.min(dtMs,100)/1000*3.2),ps=clamp(Number(S.titleParallax)||0,0,100)/100;
+        tbMouse.x+=(tbMouse.tx*ps-tbMouse.x)*k;tbMouse.y+=(tbMouse.ty*ps-tbMouse.y)*k;
+        if(S.titleLightning){if(!B.next)B.next=t+1.5;if(t>=B.next)tbStrike(t,aspect);}
+        else B.start=-1;
+        R.lv=tbStrikeLevel(B.start<0?-1:(tbHold>tn?0.03:t-B.start));
+      }
+      // redrawn every frame, or every other frame on Low while frames are still slow (the copy
+      // below still runs every frame); at once after a size or quality change
+      if(!R.ts||R.fw!==fw||R.fh!==fh||R.q!==q||(fresh&&R.skipN>=(q===1&&R.dtAvg>30?2:1))){
+        R.fw=fw;R.fh=fh;R.q=q;R.skipN=0;
+        var cw=Math.max(8,Math.ceil(fw/Q.div)),ch=Math.max(8,Math.ceil(fh/Q.div));
+        var sw=Math.max(8,Math.ceil(fw/Q.sdiv)),sh=Math.max(8,Math.ceil(fh/Q.sdiv));
+        R.tc=tbTarget(gl,R.tc,cw,ch,gl.LINEAR);
+        R.ts=tbTarget(gl,R.ts,sw,sh,gl.NEAREST);
+        // pass 1: clouds at low resolution
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER,R.tc.fbo);gl.viewport(0,0,cw,ch);
+        gl.useProgram(cp.p);
+        gl.uniform1f(cp.u.u_aspect,aspect);gl.uniform1f(cp.u.u_time,t);
+        gl.uniform2f(cp.u.u_par,tbMouse.x,tbMouse.y);gl.uniform4f(cp.u.u_flash,B.cx,B.cy,R.lv[0],B.rad);
+        gl.drawArrays(gl.TRIANGLES,0,3);
+        // pass 2: the storm (stars, lightning, sparks, hills, skyline) into its own texture
+        var flash=R.lv[0],bolt=B.n?R.lv[1]:0;
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER,R.ts.fbo);gl.viewport(0,0,sw,sh);
+        var sp=R.scene;gl.useProgram(sp.p);
+        gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,R.tc.tex);
+        gl.uniform1f(sp.u.u_aspect,aspect);gl.uniform1f(sp.u.u_time,t);gl.uniform1f(sp.u.u_dim,1.0);
+        gl.uniform1f(sp.u.u_boltN,bolt>0.001?B.n:0);gl.uniform1f(sp.u.u_boltA,bolt);gl.uniform1f(sp.u.u_spark,Q.spark);
+        gl.uniform2f(sp.u.u_par,tbMouse.x,tbMouse.y);gl.uniform2f(sp.u.u_px,1/sw,1/sh);
+        gl.uniform4f(sp.u.u_flash,B.cx,B.cy,flash,B.rad);
+        gl.uniform4f(sp.u.u_boltBox,B.box[0],B.box[1],B.box[2],B.box[3]);
+        gl.uniform2fv(sp.u.u_bolt,B.pts);
+        gl.drawArrays(gl.TRIANGLES,0,3);
+      }
+      // copy to the game's framebuffer
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER,tbSt.draw);gl.viewport(0,0,fw,fh);
-      var sp=R.scene;gl.useProgram(sp.p);
-      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,R.tex);
-      gl.uniform1f(sp.u.u_aspect,aspect);gl.uniform1f(sp.u.u_time,t);
-      gl.uniform1f(sp.u.u_boltN,bolt>0.001?B.n:0);gl.uniform1f(sp.u.u_boltA,bolt);gl.uniform1f(sp.u.u_spark,Q.spark);
-      gl.uniform2f(sp.u.u_par,tbMouse.x,tbMouse.y);gl.uniform2f(sp.u.u_px,1/fw,1/fh);
-      gl.uniform4f(sp.u.u_flash,B.cx,B.cy,flash,B.rad);
-      gl.uniform4f(sp.u.u_boltBox,B.box[0],B.box[1],B.box[2],B.box[3]);
-      gl.uniform2fv(sp.u.u_bolt,B.pts);
+      if(clip){R.sb=gl.getParameter(gl.SCISSOR_BOX);gl.enable(gl.SCISSOR_TEST);gl.scissor(clip[0],clip[1],clip[2],clip[3]);}
+      var co=R.copy;gl.useProgram(co.p);
+      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,R.ts.tex);
+      gl.uniform1f(co.u.u_dim,dim);
       gl.drawArrays(gl.TRIANGLES,0,3);
+      if(clip){gl.disable(gl.SCISSOR_TEST);gl.scissor(R.sb[0],R.sb[1],R.sb[2],R.sb[3]);}
       shRestore(gl,tbSt);
       tbDrawn=true;
       return true;
@@ -52310,7 +52380,7 @@ c.PK;})();
     if(!$rt_resuming()){
       tbFrames++;
       if(S.titleLogo&&a)a.cEl=1.0;                    // no "Minceraft" roll: it cuts up the logo texture
-      if(S.titleBg&&tbDraw(a))return;
+      if(S.titleBg&&tbStorm(a.j,1.0,null))return;
       tbDrawn=false;
     }
     return origDit(a,b,c,d);
@@ -52437,8 +52507,327 @@ c.PK;})();
   // for testing: strike on the next title frame, optionally holding the bolt for holdMs
   TC.title={strike:function(holdMs){tbBolt.next=-1;tbHold=holdMs>0?now()+holdMs:0;},
     state:function(){return {drawn:tbDrawn,failed:tbFail?String(tbFail.message||tbFail):null,logo:tlState,
-    quality:TB?tbQuality(TB):0,auto:TB?TB.auto:0,frameMs:TB?Math.round(TB.dtAvg*10)/10:0,cloudRes:TB?TB.w+'x'+TB.h:'-',
+    quality:TB?tbQuality(TB):0,auto:TB?TB.auto:0,frameMs:TB?Math.round(TB.dtAvg*10)/10:0,
+    cloudRes:TB&&TB.tc?TB.tc.w+'x'+TB.tc.h:'-',stormRes:TB&&TB.ts?TB.ts.w+'x'+TB.ts.h:'-',
     frames:tbFrames,parallax:[Math.round(tbMouse.x*100)/100,Math.round(tbMouse.y*100)/100],bolt:tbBolt.sheet?'sheet':tbBolt.n};}};
+
+  // Menus: storm backgrounds, glass lists, Thunder buttons, sliders and text boxes everywhere
+  /* -------------------------------------------------------------------------------------------
+     Thunder menus: every menu in the Thunder style instead of dirt and grey buttons.
+     Included into the client scope of thunder-client.js by build.js, after thunder-title.js,
+     whose storm (tbStorm) it draws.
+
+     Backgrounds. GuiScreen.drawBackground, the dirt behind menus outside a world, draws the
+     storm instead, a little darker than on the title screen.
+
+     Lists (worlds, servers, video settings, resource packs, languages, ...). GuiSlot.drawScreen
+     paints the whole screen itself: the list area in dark dirt, then a dirt band above and one
+     below that hide rows scrolled under them. When a list binds the dirt texture for its area,
+     the storm is drawn under that area (outside a world) and a see-through dark glass texture is
+     bound in place of the dirt. The bands (overlayBackground) repaint the storm in their own
+     area with a dark tint and a thin cyan edge, so scrolled rows stay hidden. In a world the
+     glass and the bands lie over the world instead of the storm.
+
+     Buttons and sliders. While GuiButton.drawButton runs, binding widgets.png binds a Thunder
+     copy of its button rows instead: dark glass with a cyan edge, brighter on hover, dim when
+     disabled. A second bind inside the same button is a slider drawing its knob, which gets a
+     cyan knob. Labels turn white on hover instead of yellow. The language button (a globe)
+     gets a Thunder globe button the same way. Buttons that draw other art of their own (lock,
+     recipe book, book pages, beacon, trades) keep it, and the hotbar and everything else that
+     uses widgets.png are not touched.
+
+     Text boxes: a cyan border (brighter while typing in it) on dark glass instead of grey on
+     black; only the two rectangles GuiTextField.drawTextBox draws are recoloured. Edit Profile
+     draws its skin preview and skin list with the same grey-on-black rectangles, which get the
+     same colours while that screen draws. Credits: its paper panel becomes dark glass, its dark
+     grey text light, its scrollbar cyan.
+
+     Right Shift > Visual > Thunder Menus switches the whole thing, the storm and the buttons.
+
+     Game functions this module replaces (each wrapper falls through to the original):
+     @hook D17 net.minecraft.client.renderer.texture.TextureManager.bindTexture
+     @hook D49 net.minecraft.client.gui.Gui.drawRect
+     @hook Ck1 net.minecraft.client.gui.Gui.drawCenteredString
+     @hook DPp net.minecraft.client.gui.GuiScreen.drawBackground
+     @hook Eco net.minecraft.client.gui.GuiSlot.overlayBackground
+     @hook GkZ net.minecraft.client.gui.GuiSlot.bindAmountScrolled
+     @hook Dpy net.minecraft.client.gui.GuiTextField.drawTextBox
+     @hook EEc net.minecraft.client.gui.GuiButton.func_191745_a (drawButton)
+     @class B3 net.minecraft.client.gui.GuiButton
+     @class BF$ net.minecraft.client.gui.GuiButtonLanguage
+     @hook Efa net.minecraft.client.gui.FontRenderer.drawString
+     @class Zj net.lax1dude.eaglercraft.profile.GuiScreenEditProfile
+     @class UF net.peyton.eagler.gui.GuiCredits
+     @virtual dK net.lax1dude.eaglercraft.profile.GuiScreenEditProfile drawScreen
+     @virtual dK net.peyton.eagler.gui.GuiCredits drawScreen
+     @virtual VV net.minecraft.client.gui.GuiButton func_191745_a
+
+     Textures it redirects:
+     @static H3m net.minecraft.client.gui.Gui OPTIONS_BACKGROUND (textures/gui/options_background.png)
+     @static Ly$ net.minecraft.client.gui.GuiButton BUTTON_TEXTURES (textures/gui/widgets.png)
+     @static LGh net.peyton.eagler.gui.GuiCredits (textures/gui/demo_background.png, the credits panel)
+
+     Instance fields:
+     @field j net.minecraft.client.gui.GuiScreen.drawBackground GuiScreen.mc
+     @field q net.minecraft.client.gui.GuiScreen.drawBackground GuiScreen.width
+     @field L net.minecraft.client.gui.GuiScreen.drawBackground GuiScreen.height
+     @field JJ net.minecraft.client.gui.GuiTextField.drawTextBox GuiTextField.isFocused
+     @field lk net.minecraft.client.gui.GuiSlot.overlayBackground GuiSlot.mc
+     @field rr net.minecraft.client.gui.GuiSlot.overlayBackground GuiSlot.left
+     @field k8 net.minecraft.client.gui.GuiSlot.overlayBackground GuiSlot.width
+     @field LK net.minecraft.client.gui.GuiSlot.drawScreen GuiSlot.right
+     @field iS net.minecraft.client.gui.GuiSlot.drawScreen GuiSlot.top
+     @field ml net.minecraft.client.gui.GuiSlot.drawScreen GuiSlot.bottom
+     @field c0y net.minecraft.client.gui.GuiSlot.drawScreen GuiSlot.height
+  ------------------------------------------------------------------------------------------- */
+
+  // ---- textures --------------------------------------------------------------------------------
+  // Colours are ARGB. A button is 200x20 texels (one texel = one GUI pixel); the game draws its
+  // left half and its right half, so the art must also work cut in the middle.
+  var TH_BTN={
+    disabled:{border:0x66606C78,top:0x990D131B,bot:0x99090E14,hi:0x14FFFFFF,glow:0},
+    normal:{border:0xCC3AA0D8,top:0xB81A2C42,bot:0xB80E1826,hi:0x4DFFFFFF,glow:0},
+    hover:{border:0xFF72E0FF,top:0xD0214466,bot:0xD0142C48,hi:0x66FFFFFF,glow:0x9954CCF5}};
+  function thMix(a,b,t){
+    var r=0,sh;
+    for(sh=0;sh<32;sh+=8){
+      var x=(a>>>sh)&255,y=(b>>>sh)&255;
+      r+=Math.round(x+(y-x)*t)*Math.pow(2,sh);
+    }
+    return r;
+  }
+  // one rounded panel of w x h texels at (x0,y0) in a W-wide texture: 1px border (corners left
+  // clear), an optional inner glow line, a highlight line under the top edge and a vertical
+  // gradient fill
+  function thPanel(d,W,x0,y0,w,h,st){
+    for(var y=0;y<h;y++)for(var x=0;x<w;x++){
+      var ex=x===0||x===w-1,ey=y===0||y===h-1,c;
+      if(ex&&ey)continue;
+      if(ex||ey)c=st.border;
+      else if(st.glow&&(x===1||x===w-2||y===1||y===h-2))c=st.glow;
+      else if(y===(st.glow?2:1))c=st.hi;
+      else c=thMix(st.top,st.bot,(y-1)/Math.max(1,h-3));
+      d[(y0+y)*W+x0+x]=tlABGR(c);
+    }
+  }
+  function thPaintButtons(d){
+    for(var i=0;i<d.length;i++)d[i]=0;
+    thPanel(d,256,0,46,200,20,TH_BTN.disabled);
+    thPanel(d,256,0,66,200,20,TH_BTN.normal);
+    thPanel(d,256,0,86,200,20,TH_BTN.hover);
+    thGlobe(d,106,TH_BTN.normal,0xFFA8E6FF);           // the language button: 20x20 at (0,106),
+    thGlobe(d,126,TH_BTN.hover,0xFFFFFFFF);            // (0,126) while hovered
+  }
+  // a 20x20 button with a globe: outline, equator, two parallels and a meridian ellipse
+  function thGlobe(d,y0,st,ink){
+    thPanel(d,256,0,y0,20,20,st);
+    for(var y=0;y<20;y++)for(var x=0;x<20;x++){
+      var dx=x-9.5,dy=y-9.5,r=Math.sqrt(dx*dx+dy*dy);
+      if(r>6.3)continue;
+      var e=dx/2.7,f=dy/5.9,m=e*e+f*f;
+      if(Math.abs(r-5.8)<0.55||(Math.abs(dy)<0.5)||(Math.abs(Math.abs(dy)-3.0)<0.5&&r<5.4)||
+        Math.abs(m-1)<0.22||Math.abs(dx)<0.5)d[(y0+y)*256+x]=tlABGR(ink);
+    }
+  }
+  // slider knob, 8x20: sliders draw its left 4 columns from (0,66) and its right 4 from (196,66)
+  function thPaintKnob(d){
+    for(var i=0;i<d.length;i++)d[i]=0;
+    var k=new Array(8*20),x,y;
+    thPanel(k,8,0,0,8,20,{border:0xFF06121C,top:0xFF8FE9FF,bot:0xFF2A9FD8,hi:0xFFE6FBFF,glow:0});
+    for(y=0;y<20;y++)for(x=0;x<4;x++){
+      if(k[y*8+x])d[(66+y)*256+x]=k[y*8+x];
+      if(k[y*8+4+x])d[(66+y)*256+196+x]=k[y*8+4+x];
+    }
+  }
+  // list glass: lists tint this texture with vertex colour 32/255 (the bands use 64), so its
+  // colour is kept light and blue for a dark navy result; alpha 0.55 lets the storm through
+  function thPaintGlass(d){
+    for(var i=0;i<d.length;i++){
+      var n=((i*7919)%13)-6;
+      d[i]=tlABGR(0x8C000000+(120+n)*65536+(190+n)*256+255);
+    }
+  }
+  // credits panel: the 248x166 part of demo_background.png the credits screen draws
+  function thPaintCredits(d){
+    for(var i=0;i<d.length;i++)d[i]=0;
+    thPanel(d,256,0,0,248,166,{border:0xFF3AA0D8,top:0xE8101C2C,bot:0xE80A121C,hi:0x40FFFFFF,glow:0x5054CCF5});
+  }
+  var thTex=[{name:'thunder_buttons',w:256,h:256,fill:thPaintButtons,loc:null},
+    {name:'thunder_knob',w:256,h:256,fill:thPaintKnob,loc:null},
+    {name:'thunder_glass',w:16,h:16,fill:thPaintGlass,loc:null},
+    {name:'thunder_credits',w:256,h:256,fill:thPaintCredits,loc:null}];
+  var thBtnTex=thTex[0],thKnobTex=thTex[1],thGlassTex=thTex[2],thCreditsTex=thTex[3];
+  var thState=0;          // 0 not made, 1 being made, 2 ready
+  function thMake(){
+    var tm=HEN.bH,steps=[];
+    thState=1;
+    thTex.forEach(function(T){
+      var tex=new YW();
+      steps.push(function(){Fl7(tex,T.w,T.h);},function(){T.fill(tex.a45.data);},function(){Egf(tex);},
+        function(){var r=EpG(tm,$rt_str(T.name),tex);if(!$rt_suspending())T.loc=r;});
+    });
+    steps.push(function(){thState=2;});
+    runOnGame(steps);
+  }
+
+  // ---- state -------------------------------------------------------------------------------------
+  var thBtnDepth=0,thBtnBinds=0,thLangDepth=0,thTf=0,thTfFocus=false,thProfile=0,thCredits=0,thSlot=null;
+  frameTasks.push(function(){
+    thBtnDepth=0;thLangDepth=0;thTf=0;thProfile=0;thCredits=0;   // nothing is being drawn between frames
+    if(thState===0&&S.menuTheme&&HEN&&HEN.bH)thMake();
+  });
+  function thButtonsOn(){return !!(S.menuTheme&&S.menuButtons&&thState===2);}
+  // Thunder backgrounds: the storm when it is on and can run here, otherwise a plain dark blue
+  function thBgOn(){return !!(S.menuTheme&&thState===2);}
+  function thStormOn(){return !!(thBgOn()&&S.menuStorm&&!tbFail&&HEl&&HEv>=300);}
+  // the storm over [x0,y0]-[x1,y1] in GUI coordinates of a list whose screen is `hgt` GUI pixels tall
+  function thStormRect(mc,hgt,x0,y0,x1,y1){
+    if(!thStormOn()){D49(x0,y0,x1,y1,0xFF0A111B|0);return;}
+    var fw=mc.gj|0,fh=mc.fU|0,sc=hgt>0?fh/hgt:1;
+    var px=Math.max(0,Math.floor(x0*sc)),py=Math.max(0,Math.floor(fh-y1*sc));
+    var pw=Math.min(fw,Math.ceil(x1*sc))-px,ph=Math.min(fh,Math.ceil(fh-y0*sc))-py;
+    if(pw>0&&ph>0&&!tbStorm(mc,0.8,[px,py,pw,ph]))D49(x0,y0,x1,y1,0xFF0A111B|0);
+  }
+
+  // ---- hooks -------------------------------------------------------------------------------------
+  // menus outside a world: the storm instead of dirt
+  var origDPp=DPp;
+  DPp=function(a,b){
+    if(!$rt_resuming()&&thBgOn()&&a&&a.j){
+      if(!thStormOn()||!tbStorm(a.j,0.8,null))DNB(a,0,0,a.q,a.L,0xFF0C1624|0,0xFF05080E|0);   // plain dark blue
+      return;
+    }
+    return origDPp(a,b);
+  };
+  // the list about to be drawn (bindAmountScrolled runs right before a list paints its area)
+  var origGkZ=GkZ;
+  GkZ=function(a){
+    if(!$rt_resuming())thSlot=a;
+    return origGkZ(a);
+  };
+  var origD17=D17;
+  D17=function(a,b){
+    if(!$rt_resuming()&&b!==null){
+      if(b===LGh&&thCredits>0){
+        if(thButtonsOn())b=thCreditsTex.loc;
+      }else if(b===Ly$&&(thBtnDepth>0||thLangDepth>0)){
+        if(thButtonsOn())b=thLangDepth>0||++thBtnBinds<2?thBtnTex.loc:thKnobTex.loc;
+      }else if(b===H3m&&thBgOn()){
+        // a list area (or another screen's own dirt, like the credits): storm under it, glass on it
+        var mc=HEN,s=thSlot;thSlot=null;
+        if(mc&&!mc.X){
+          if(s&&s.lk)thStormRect(mc,s.c0y,s.rr,s.iS,s.LK,s.ml);
+          else if(!thStormOn()||!tbStorm(mc,0.8,null))D49(0,0,4096,4096,0xFF0A111B|0);
+        }
+        CyN();B$o(770,771,1,0);
+        b=thGlassTex.loc;
+      }
+    }
+    return origD17(a,b);
+  };
+  // list header and footer bands: the storm again, darker, with a cyan edge toward the list
+  var origEco=Eco;
+  Eco=function(a,b,c,d,e){
+    if(!$rt_resuming()&&thBgOn()&&a&&a.lk){
+      var mc=a.lk,x0=a.rr,x1=a.rr+a.k8;
+      if(!mc.X)thStormRect(mc,a.c0y,x0,b,x1,c);    // the same storm as the rest of the screen
+      else D49(x0,b,x1,c,0xF2080C12|0);
+      if(b===0)D49(x0,c-1,x1,c,0x6040B8F0);else D49(x0,b,x1,b+1,0x6040B8F0);
+      return;
+    }
+    return origEco(a,b,c,d,e);
+  };
+  // buttons: the Thunder button art while one draws (see D17). drawButton is reached both as a
+  // virtual call (GuiScreen.drawScreen) and as a direct call where the compiler knew the button
+  // type (option list rows), so the function itself is wrapped and GuiButton's virtual slot,
+  // which kept the original function, now calls the wrapper.
+  var origEEc=EEc;
+  EEc=function(a,b,c,d,e){
+    if(!$rt_resuming()){thBtnDepth++;thBtnBinds=0;}
+    var ok=false,r;
+    try{r=origEEc(a,b,c,d,e);ok=true;}
+    finally{if(!ok||!$rt_suspending())thBtnDepth=Math.max(0,thBtnDepth-1);}
+    return r;
+  };
+  B3.prototype.VV=function(b,c,d,e){return EEc(this,b,c,d,e);};
+  var thLangProto=BF$.prototype,thOrigLangVV=thLangProto.VV;
+  thLangProto.VV=function(b,c,d,e){
+    if(!$rt_resuming())thLangDepth++;
+    var ok=false,r;
+    try{r=thOrigLangVV.call(this,b,c,d,e);ok=true;}
+    finally{if(!ok||!$rt_suspending())thLangDepth=Math.max(0,thLangDepth-1);}
+    return r;
+  };
+  // button labels: light blue-white, white on hover (vanilla yellow), dim grey when disabled
+  var origCk1=Ck1;
+  Ck1=function(a,b,c,d,e,f){
+    if(thBtnDepth>0&&!$rt_resuming()&&thButtonsOn()){
+      if(f===14737632)f=0xE8F2FF;else if(f===16777120)f=0xFFFFFF;else if(f===10526880)f=0x6E7C8A;
+    }
+    return origCk1(a,b,c,d,e,f);
+  };
+  // text boxes: remember which one is drawing and whether it is focused (see D49)
+  var origDpy=Dpy;
+  Dpy=function(a){
+    if(!$rt_resuming()){thTf++;thTfFocus=!!a.JJ;}
+    var ok=false,r;
+    try{r=origDpy(a);ok=true;}
+    finally{if(!ok||!$rt_suspending())thTf=Math.max(0,thTf-1);}
+    return r;
+  };
+  // Edit Profile: its own grey-on-black boxes (skin preview, skin list) get the same colours
+  var thProfileProto=Zj.prototype,thOrigProfileDraw=thProfileProto.dK;
+  thProfileProto.dK=function(b,c,d){
+    if(!$rt_resuming())thProfile++;
+    var ok=false,r;
+    try{r=thOrigProfileDraw.call(this,b,c,d);ok=true;}
+    finally{if(!ok||!$rt_suspending())thProfile=Math.max(0,thProfile-1);}
+    return r;
+  };
+  // Credits: dark glass panel (see D17), light text and a cyan scrollbar while it draws
+  var thCreditsProto=UF.prototype,thOrigCreditsDraw=thCreditsProto.dK;
+  thCreditsProto.dK=function(b,c,d){
+    if(!$rt_resuming())thCredits++;
+    var ok=false,r;
+    try{r=thOrigCreditsDraw.call(this,b,c,d);ok=true;}
+    finally{if(!ok||!$rt_suspending())thCredits=Math.max(0,thCredits-1);}
+    return r;
+  };
+  // dark formatting colours (dark blue, red, green, ...) read badly on the dark panel: their
+  // bright versions instead
+  var TH_BRIGHT={'0':'f','1':'9','2':'a','3':'b','4':'c','5':'d','8':'7'};
+  var origEfa=Efa;
+  Efa=function(a,b,c,d,e){
+    if(thCredits>0&&!$rt_resuming()&&thButtonsOn()){
+      if(e===4210784)e=0xDCE6F0;
+      if(b!==null){
+        var t=$rt_ustr(b),u=t.replace(/\u00a7([0-5]|8)/g,function(m,k){return '\u00a7'+TH_BRIGHT[k];});
+        if(u!==t)b=$rt_str(u);
+      }
+    }
+    return origEfa(a,b,c,d,e);
+  };
+  var origD49=D49;
+  D49=function(a,b,c,d,e){
+    if(thCredits>0&&!$rt_resuming()&&thButtonsOn()){
+      if(e===855638048)e=0x33FFFFFF;else if(e===1711276032)e=0xCC40B8F0|0;   // scrollbar track, thumb
+    }
+    if((thTf>0||thProfile>0)&&!$rt_resuming()&&thButtonsOn()){
+      if(e===-6250336)e=thTf>0&&thTfFocus?(0xFF5FD1FF|0):(0xFF2F6384|0);   // grey border
+      else if(e===-16777216)e=0xF0070C14|0;                                 // black inside
+      else if(e===-16777195)e=0xE0070C14|0;                                 // skin preview
+      else if(e===-7829368&&thProfile>0)e=0xFF1E5C80|0;                     // selected skin
+    }
+    return origD49(a,b,c,d,e);
+  };
+
+  // ---- menu ----------------------------------------------------------------------------------------
+  MODULES.push({cat:'visual',id:'menuTheme',name:'Thunder Menus',
+    desc:'Thunder look for every menu: storm backgrounds, glass lists, Thunder buttons, sliders and text boxes.',opts:[
+      {id:'menuStorm',name:'Storm backgrounds (off: plain dark, fastest)'},
+      {id:'menuButtons',name:'Thunder buttons'}]});
+  TC.theme={state:function(){return {made:thState,buttons:thButtonsOn(),bg:thBgOn(),storm:thStormOn(),frame:tbFrameId,
+    locs:thTex.map(function(T){return !!T.loc;})};}};
 })();
 }));
 

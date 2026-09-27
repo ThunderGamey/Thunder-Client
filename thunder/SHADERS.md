@@ -86,8 +86,8 @@ WebGL 2 only (GLSL ES 3.00). Every pass is one attribute-less full-screen triang
      glowstone glow. In bright scenes it is high (0.9), so a clear daytime sky does not wash out.
    - **Dual-filter blur.** The image is downsampled `levels` times (5 taps each), then upsampled
      back (8-tap tent), mixing each level in.
-3. **Sun rays** (only when on, and only while the sun or moon is in or near the view): one pass
-   at bloom resolution. It walks 28 steps from each pixel toward the sun's screen position over
+3. **Sun rays** (only when on, and only while the sun or moon is in or near the view, or by day
+   under open sky: see *Where the sun is*): one pass at bloom resolution. It walks 28 steps from each pixel toward the sun's screen position over
    the bright-pass level: bright sky and light near the sun count as the source, anything darker
    (leaves, trunks, hills, walls) blocks. That is what cuts the light into shafts.
 4. **Composite.** One full-screen pass applies every enabled effect. Colors brighter than white
@@ -118,7 +118,7 @@ rays and golden sunsets. Effects run in this order inside the composite:
 |---|---|---|
 | Bloom | on, 60 % | Soft, slightly warm glow around bright light (torches, lava, glowstone, the sun, which becomes a glowing disc). Adaptive threshold, see above. |
 | Ambient Glow | on, 50 % | Wide, soft spill of bright light into the surroundings, plus a small lift in very dark scenes. |
-| Sun Rays | on, 65 % | Light shafts from the sun (or, fainter and bluish, the moon) through gaps in leaves, trunks, hills and clouds. Added with a screen blend in the sun's color: golden at sunrise/sunset, warm white by day. Off below the horizon, behind the camera, in rain, and in the Nether/End. |
+| Sun Rays | on, 65 % | Light shafts from the sun (or, fainter and bluish, the moon) through gaps in leaves, trunks, hills and clouds. Added with a screen blend in the sun's color: golden at sunrise/sunset, warm white by day. By day under open sky half of it stays when the sun is out of view (looking down or away), coming in from the screen edge on the sun's side; off below the horizon, in caves and under roofs, in rain, and in the Nether/End. |
 | Atmosphere | on, 60 % | Time-of-day light: golden sunrise and sunset, warm day, cool blue night, grey rain. Plus a soft haze of sunlight around the sun and an aerial haze along the horizon (placed from the camera pitch, tinted by the low sun when facing it). The tint spares blue sky and, at night, bright light sources; haze and glow only appear where the blurred scene is bright, so caves and walls stay clear. |
 | Color Grading | on, 75 % | The Mellow grade: shadows and mid-tones opened up a little, vibrance (dull colors gain the most), warm light and cool shadows, deeper blue sky and water, slightly lifted blacks, and a soft highlight shoulder that keeps hue. Warmth is weighted by (1 − chroma), so saturated colors keep their hue. |
 | Contrast | on, 35 % | S-curve on luminance, applied by scaling the color, so hue and saturation are preserved and nothing clips. |
@@ -137,6 +137,17 @@ the other way). The horizon's screen height comes from the pitch the same way. V
 the hurt-camera tilt are not included, so the sun position can be off by a few pixels while
 walking; the effects are soft enough that this does not show. Any error in this step turns the
 sun effects off for that frame and never stops the pipeline.
+
+When the sun is out of view by day (behind the camera, above or beside the screen), half of its
+light stays: the rays and the sun haze then come from a point just past the screen edge on the
+sun's side (the top edge when it is straight behind), and the rays pass also takes somewhat
+dimmer sunlit ground as a source, so light still streams across the image when looking down.
+This kept half needs open sky above the camera (`World.canSeeSky` at the player, eased over about
+half a second), so caves, houses and tree cover get none. The moon keeps nothing when out of view.
+
+The sun's disk stays white: wherever the original image is pure white (the sun), the composite
+writes white after all effects. Graded warm and compressed, the disk otherwise came out darker
+than its own glow, which looked like a dark spot in the middle of the sun.
 
 ## Quality presets
 

@@ -44,7 +44,7 @@
    @use CC net.minecraft.client.gui.FontRenderer.getStringWidth
    @use AIz net.minecraft.client.gui.ScaledResolution.getScaledWidth
    @use ASe net.minecraft.client.gui.ScaledResolution.getScaledHeight
-   @use D49 net.minecraft.client.gui.Gui.drawRect
+   (Gui.drawRect D49 and TextureManager.bindTexture D17 are hooked by thunder-theme.js)
    @use CFi net.lax1dude.eaglercraft.opengl.GlStateManager.color
    @use Eu0 net.lax1dude.eaglercraft.opengl.GlStateManager.pushMatrix
    @use ECi net.lax1dude.eaglercraft.opengl.GlStateManager.popMatrix
@@ -57,7 +57,6 @@
    @use CyN net.lax1dude.eaglercraft.opengl.GlStateManager.enableBlend
    @use CTO net.lax1dude.eaglercraft.opengl.GlStateManager.disableBlend
    @use B$o net.lax1dude.eaglercraft.opengl.GlStateManager.tryBlendFuncSeparate
-   @use D17 net.minecraft.client.renderer.texture.TextureManager.bindTexture
    @use FYs net.minecraft.client.gui.Gui.drawTexturedModalRect
    @use DlC net.minecraft.entity.player.EntityPlayer.getPrimaryHand
    @use CiU net.minecraft.util.EnumHandSide.opposite
@@ -223,7 +222,8 @@
     shBloom:true,shBloomStr:60,shGrade:true,shGradeStr:75,shContrast:true,shContrastStr:35,
     shVignette:true,shVignetteStr:40,shAmbient:true,shAmbientStr:50,shMotion:false,shMotionStr:35,
     shRays:true,shRaysStr:65,shAtmos:true,shAtmosStr:60,
-    titleBg:true,titleLogo:true,titleLightning:true,titleParallax:60,titleQuality:0
+    titleBg:true,titleLogo:true,titleLightning:true,titleParallax:60,titleQuality:0,
+    menuTheme:true,menuStorm:true,menuButtons:true
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -935,8 +935,9 @@
   // are the vanilla hunger icon's silhouette and shading recoloured to a gold palette.
   // ------------------------------------------------------------------
   var SPR_W=32,SPR_H=16;
-  var SPR_PAL=[0x00000000,0xFF3A2805,0xFFFFD23F,0xFFE0A114,0xFFFFF1A8,0xFFF4BB2A,0xFFD99A16,0xFF8F5A07,
-    0xFFB8780C,0xFFFFF4CC,0xFFFFFFFF,0xFF6B4708,0xFFF7C43A,0x99000000,0x55000000];
+  // bright gold with a near-black outline, so the icons stay readable over bright sky and sun rays
+  var SPR_PAL=[0x00000000,0xFF140C00,0xFFFFE04A,0xFFF5B51E,0xFFFFF8C4,0xFFFFCB38,0xFFE8A417,0xFFA56508,
+    0xFFCC860E,0xFFFFFAE0,0xFFFFFFFF,0xFF7A5209,0xFFFFD447,0xB0000000,0x66000000];
   var SPR_DATA=[
     '0011000000123100001242510001325651000178661000017881000001119110000001a1000000110',
     '00110000001b3100001b42310001bbc2510001b336100001b781000001119110000001a1000000110',
@@ -965,8 +966,8 @@
   // ------------------------------------------------------------------
   // Saturation, style "Gold icons": ten small gold drumsticks in a row just above the hunger
   // icons, one centred over each hunger icon (vanilla draws food right-to-left from cx+91 at
-  // h-39, 8px apart), filled from the right like the hunger bar (full / half / empty), at 8/11
-  // size so the row stays compact. Style "Slim bar": a slim gold bar split into 10 segments.
+  // h-39, 8px apart), filled from the right like the hunger bar (full / half / empty), at 0.8
+  // size so the row stays compact, each filled one over a soft 1px shadow. Style "Slim bar": a slim gold bar split into 10 segments.
   // (vanilla draws food icons right-to-left from cx+91 at h-39, 8px apart). Each segment is two
   // saturation points and fills from the right like the hunger bar. Underwater it moves above
   // the air bubbles (h-49). Shown only where vanilla shows the hunger bar.
@@ -981,12 +982,17 @@
     var wet=DBe(p,HGM);                                // air bubbles occupy h-49..h-41
     var right=ctx.cx+91,k;
     if((S.satStyle|0)===0&&spritesReady(ctx)){
-      var sc=8/11,yb=wet?ctx.h-50:ctx.h-40;           // row bottom 1px above the icons below it
-      op(D17,ctx.tm,sprLoc);op(CFi,1.0,1.0,1.0,1.0);op(CyN);op(B$o,770,771,1,0);
+      var sc=0.8,yb=wet?ctx.h-50:ctx.h-40;            // row bottom 1px above the icons below it
+      op(D17,ctx.tm,sprLoc);op(CyN);op(B$o,770,771,1,0);
       opPush();op(DPm,right,yb,0.0);op(FWK,sc,sc,1.0);
-      for(k=0;k<10;k++){                              // local pitch 11 = 8 screen px
+      op(CFi,0.0,0.0,0.0,0.5);                        // shadow, 1 screen px down-right
+      for(k=0;k<10;k++){                              // local pitch 10 = 8 screen px
+        if(clamp(sat/2-k,0,1)>=0.25)op(DzG,-10-10*k+1.25,-9+1.25,0,0,9,9,SPR_W,SPR_H);
+      }
+      op(CFi,1.0,1.0,1.0,1.0);
+      for(k=0;k<10;k++){
         var fk=clamp(sat/2-k,0,1);
-        op(DzG,-11-11*k,-9,(fk>=0.75?0:(fk>=0.25?1:2))*9,0,9,9,SPR_W,SPR_H);
+        op(DzG,-10-10*k,-9,(fk>=0.75?0:(fk>=0.25?1:2))*9,0,9,9,SPR_W,SPR_H);
       }
       opPop();op(CTO);
       return;
@@ -994,12 +1000,13 @@
     var y=wet?ctx.h-53:ctx.h-43;
     for(k=0;k<10;k++){
       var x0=right-9-8*k+1,x1=x0+7;                   // 7px over hunger icon k (k=0 rightmost)
-      rect(x0,y,x1,y+3,0x90000000);
+      rect(x0-1,y-1,x1+1,y+4,0xB0000000);             // dark frame keeps it readable on bright sky
       var f=clamp(sat/2-k,0,1);
       if(f<=0)continue;
       var fx=x1-Math.max(1,Math.round(7*f));          // partial segments fill from the right
-      rect(fx,y,x1,y+1,0xFFFFE27A);
-      rect(fx,y+1,x1,y+2,0xFFF0AE1C);
+      rect(fx,y,x1,y+1,0xFFFFF3A0);
+      rect(fx,y+1,x1,y+2,0xFFFFD23A);
+      rect(fx,y+2,x1,y+3,0xFFE39A10);
     }
   }
 
@@ -1468,4 +1475,7 @@
 
   // Title screen: animated Thunder storm background with mouse parallax, and the Thunder logo
   // @include thunder-title.js
+
+  // Menus: storm backgrounds, glass lists, Thunder buttons, sliders and text boxes everywhere
+  // @include thunder-theme.js
 })();

@@ -1,8 +1,8 @@
 # Thunder Client build
 
 `classes.js` is generated. Edit `thunder/thunder-client.js` (and `thunder/thunder-shaders.js`,
-`thunder/thunder-lan.js` and `thunder/thunder-title.js`, which it pulls in with `// @include`),
-then run:
+`thunder/thunder-lan.js`, `thunder/thunder-title.js` and `thunder/thunder-theme.js`, which it
+pulls in with `// @include`), then run:
 
 ```
 node thunder/build.js
@@ -57,7 +57,16 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   machines; any error falls back to the vanilla panorama. The logo textures
   (`minecraft.png`/`edition.png`) are swapped for THUNDER / CLIENT pixel art; turning the logo
   off restores the game's own. Right Shift > Visual > Thunder Title Screen: on/off, logo,
-  lightning, parallax strength, quality.
+  lightning, parallax strength, quality. The storm is made once per frame into its own texture
+  (at half size on Low, and only every other frame while Low is still slow) and copied wherever
+  it is shown.
+- `thunder-theme.js` - Thunder Menus: every menu in the Thunder style. The dirt behind menus
+  (`GuiScreen.drawBackground`) becomes the storm; lists (worlds, servers, options, packs, ...)
+  get the storm under a see-through glass area and repaint it in their header and footer
+  (`GuiSlot.overlayBackground`); buttons and sliders draw from a Thunder copy of the button rows
+  of `widgets.png` while `GuiButton.drawButton` runs (the hotbar keeps the real one), with white
+  labels; text boxes, the Edit Profile boxes and the Credits panel are recoloured. Right Shift >
+  Visual > Thunder Menus: on/off, storm or plain dark backgrounds (fastest), Thunder buttons.
 - `thunder-shaders.js` - optional shader/post-processing system (Right Shift > Shaders). How it
   hooks the renderer, the pipeline, presets, FPS safety and limits: [SHADERS.md](SHADERS.md).
 - `thunder-lan.js` - Friends: open a singleplayer world to friends with a join code and join a
