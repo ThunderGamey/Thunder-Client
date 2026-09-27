@@ -57,9 +57,10 @@ Game functions it wraps (each wrapper falls through to the original; all names a
 `build.js` against the base's own deobfuscation table): `ClientPlatformSingleplayer.sendPacket`
 (friend's outgoing packets), `SingleplayerServerController.setPaused` and
 `GuiScreen.doesGuiPauseGame` (no pause while hosting), `SingleplayerServerController.killWorker`
-(the connecting screen's Cancel ends a join instead of killing the local world Worker),
-`GuiIngameMenu.initGui`/`actionPerformed` (the pause menu button) and `RateLimitTracker.tick`
-(runs queued game-thread steps, such as opening the connecting screen, once per frame).
+(the connecting screen's Cancel ends a join instead of killing the local world Worker) and
+`GuiIngameMenu.initGui`/`actionPerformed` (the pause menu button). Steps that must run on the
+game thread (such as opening the connecting screen) go through the shared runner in
+`thunder-client.js`, which runs them from `RateLimitTracker.tick` once per frame.
 
 ## What was tested
 

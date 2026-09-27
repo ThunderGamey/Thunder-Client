@@ -217,7 +217,7 @@
 		<meta property="og:image" content="favicon.png" />
 		<link type="image/png" rel="shortcut icon" href="favicon.png" />
 		<script type="text/javascript">window.__thunderIntroLoaded = true;</script>
-		<script type="text/javascript" src="classes.js?v=t6-fe0ee040e7"></script>
+		<script type="text/javascript" src="classes.js?v=t6-38b5224b77"></script>
 		<script type="text/javascript">
 			"use strict";
 			window.addEventListener("load", function() {
@@ -781,167 +781,13 @@
 				}
 				requestAnimationFrame(animate);
 
-				// ---------------------------------------------------------------
-				// Persistent Thunder menu ambience:
-				// a subtle animated storm/parallax layer that stays visible on menus
-				// and fades away automatically when Minecraft captures the mouse.
-				// ---------------------------------------------------------------
-				var thunderAmbientStarted = false;
-				function startThunderAmbient() {
-					if (thunderAmbientStarted) return;
-					thunderAmbientStarted = true;
-
-					var ac = document.createElement('canvas');
-					ac.id = 'thunderAmbientCanvas';
-					ac.style.position = 'fixed';
-					ac.style.left = '0';
-					ac.style.top = '0';
-					ac.style.width = '100%';
-					ac.style.height = '100%';
-					ac.style.pointerEvents = 'none';
-					ac.style.zIndex = '1900';
-					ac.style.opacity = '0';
-					ac.style.transition = 'opacity 700ms ease';
-					ac.style.mixBlendMode = 'screen';
-					document.body.appendChild(ac);
-
-					var ax = ac.getContext('2d');
-					var apx = 0, apy = 0, tx = 0, ty = 0;
-					var ambientFlash = 0, nextAmbientFlash = performance.now() + 900 + Math.random() * 1700;
-					var stars = [];
-					var clouds2 = [];
-					var drops = [];
-					var aw = 0, ah = 0, adpr = 1;
-
-					function resizeAmbient() {
-						adpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
-						aw = window.innerWidth;
-						ah = window.innerHeight;
-						ac.width = Math.round(aw * adpr);
-						ac.height = Math.round(ah * adpr);
-						ax.setTransform(adpr, 0, 0, adpr, 0, 0);
-					}
-					window.addEventListener('resize', resizeAmbient);
-					resizeAmbient();
-
-					for (var si = 0; si < 55; si++) {
-						stars.push({x:Math.random(), y:Math.random()*0.7, r:0.5+Math.random()*1.5, a:0.08+Math.random()*0.16});
-					}
-					for (var ci = 0; ci < 11; ci++) {
-						clouds2.push({x:Math.random(), y:0.12+Math.random()*0.42, s:0.7+Math.random()*1.4, v:0.00003+Math.random()*0.00007});
-					}
-					for (var ri = 0; ri < 95; ri++) {
-						drops.push({x:Math.random(), y:Math.random(), l:10+Math.random()*18, v:2+Math.random()*3});
-					}
-
-					window.addEventListener('pointermove', function(e) {
-						var nx = (e.clientX / Math.max(1, window.innerWidth)) - 0.5;
-						var ny = (e.clientY / Math.max(1, window.innerHeight)) - 0.5;
-						tx = nx * 18;
-						ty = ny * 12;
-					}, {passive:true});
-
-					function updateAmbientVisibility() {
-						var locked = !!document.pointerLockElement;
-						ac.style.opacity = locked ? '0' : '0.78';
-					}
-					document.addEventListener('pointerlockchange', updateAmbientVisibility);
-					setTimeout(updateAmbientVisibility, 150);
-
-					function ambientLightning(now) {
-						if (now >= nextAmbientFlash) {
-							ambientFlash = 0.9;
-							nextAmbientFlash = now + 1500 + Math.random() * 2800;
-						}
-						ambientFlash *= 0.86;
-					}
-
-					function drawAmbient(now) {
-						apx += (tx - apx) * 0.035;
-						apy += (ty - apy) * 0.035;
-						ambientLightning(now);
-
-						ax.clearRect(0, 0, aw, ah);
-
-						var bg = ax.createLinearGradient(0, 0, aw, ah);
-						bg.addColorStop(0, 'rgba(5,10,22,0.38)');
-						bg.addColorStop(0.5, 'rgba(18,32,55,0.16)');
-						bg.addColorStop(1, 'rgba(3,7,17,0.38)');
-						ax.fillStyle = bg;
-						ax.fillRect(0, 0, aw, ah);
-
-						// Large parallax "wallpaper" clouds.
-						for (var i = 0; i < clouds2.length; i++) {
-							var cc = clouds2[i];
-							cc.x += cc.v;
-							if (cc.x > 1.15) cc.x = -0.15;
-							var cx = cc.x * aw + apx * (0.7 + i * 0.03);
-							var cy = cc.y * ah + apy * (0.45 + i * 0.02);
-							var rr = (70 + (i % 4) * 28) * cc.s;
-							var grad = ax.createRadialGradient(cx, cy, 0, cx, cy, rr);
-							grad.addColorStop(0, 'rgba(85,110,155,0.17)');
-							grad.addColorStop(1, 'rgba(40,55,85,0)');
-							ax.fillStyle = grad;
-							ax.beginPath();
-							ax.arc(cx, cy, rr, 0, Math.PI * 2);
-							ax.fill();
-						}
-
-						// Tiny distant glow particles.
-						for (var s = 0; s < stars.length; s++) {
-							var st = stars[s];
-							ax.fillStyle = 'rgba(150,210,255,' + st.a + ')';
-							ax.beginPath();
-							ax.arc(st.x * aw + apx * 0.25, st.y * ah + apy * 0.2, st.r, 0, Math.PI * 2);
-							ax.fill();
-						}
-
-						// Soft diagonal rain.
-						ax.strokeStyle = 'rgba(145,190,230,0.08)';
-						ax.lineWidth = 1;
-						for (var d = 0; d < drops.length; d++) {
-							var dr = drops[d];
-							dr.y += dr.v / Math.max(1, ah);
-							dr.x -= 0.00045;
-							if (dr.y > 1.05 || dr.x < -0.05) {
-								dr.y = -0.05;
-								dr.x = 0.1 + Math.random() * 0.95;
-							}
-							var dx = dr.x * aw + apx * 0.15;
-							var dy = dr.y * ah + apy * 0.15;
-							ax.beginPath();
-							ax.moveTo(dx, dy);
-							ax.lineTo(dx - 6, dy + dr.l);
-							ax.stroke();
-						}
-
-						if (ambientFlash > 0.01) {
-							ax.fillStyle = 'rgba(210,235,255,' + (ambientFlash * 0.14) + ')';
-							ax.fillRect(0, 0, aw, ah);
-							ax.strokeStyle = 'rgba(215,240,255,' + (ambientFlash * 0.65) + ')';
-							ax.lineWidth = 2;
-							ax.beginPath();
-							var lx = aw * 0.25 + apx * 1.5;
-							ax.moveTo(lx, 0);
-							for (var li = 0; li < 7; li++) {
-								lx += (Math.random() - 0.5) * 95;
-								ax.lineTo(lx, ah * ((li + 1) / 7));
-							}
-							ax.stroke();
-						}
-
-						requestAnimationFrame(drawAmbient);
-					}
-					requestAnimationFrame(drawAmbient);
-				}
-
 				// stops the storm visuals + rain/thunder audio once the intro finishes —
 				// this is the fix that keeps the storm from following you into worlds/servers
 				function stopStorm() {
 					stormActive = false;
 					canvas.style.transition = 'opacity 0.6s ease-out';
 					canvas.style.opacity = '0';
-					setTimeout(function() { canvas.remove(); startThunderAmbient(); }, 650);
+					setTimeout(function() { canvas.remove(); }, 650);
 					hud.style.display = 'none';
 
 					if (rainGainRef && actx) {
@@ -1093,95 +939,6 @@ let progress = 0;
 		</script>
 		<script type="text/javascript" src="thunder_ambient.js"></script>
 	
-<style id="thunder-v5-visual-style">
-  #thunderParallaxFx {
-    position: fixed; inset: 0; pointer-events: none; z-index: 2100;
-    opacity: 0; transition: opacity .25s ease;
-    background:
-      radial-gradient(circle at 50% 42%, rgba(79,209,255,.07), transparent 48%),
-      radial-gradient(circle at 50% 100%, rgba(0,0,0,.22), transparent 58%);
-    mix-blend-mode: screen;
-  }
-  #thunderParallaxFx.on { opacity: 1; }
-</style>
-<script type="text/javascript">
-(function(){
-  "use strict";
-  var KEY="thunderClientSettings_v5";
-  var reduced=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  var fx=document.createElement("div");
-  fx.id="thunderParallaxFx";
-  (document.body||document.documentElement).appendChild(fx);
-  var targetX=0,targetY=0,currentX=0,currentY=0;
-  var lastW=0,lastH=0;
-  function settings(){
-    var d={parallax:true,parallaxIntensity:.55,screenFx:false,screenFxIntensity:.35};
-    try{
-      var raw=localStorage.getItem(KEY)||localStorage.getItem("thunderClientSettings_v3");
-      if(raw){
-        var o=JSON.parse(raw);
-        for(var k in o) if(Object.prototype.hasOwnProperty.call(d,k)) d[k]=o[k];
-      }
-    }catch(e){}
-    return d;
-  }
-  function gameCanvas(){return document.querySelector("#game_frame canvas");}
-  function pointerLocked(){return !!document.pointerLockElement;}
-  function menuOpen(){return !!(window.ThunderClient&&window.ThunderClient.isMenuOpen&&window.ThunderClient.isMenuOpen());}
-  function introBusy(){
-    return !!document.getElementById("thunderLoadScreen") ||
-      !!document.getElementById("splashTitle") ||
-      !!document.getElementById("stormCanvas");
-  }
-  function deviceFactor(){
-    var hc=navigator.hardwareConcurrency||4;
-    var dm=navigator.deviceMemory||4;
-    var f=1;
-    if(hc<=2||dm<=2) f=.55;
-    else if(hc<=4||dm<=4) f=.78;
-    return f;
-  }
-  function updateFx(){
-    var s=settings();
-    var canvas=gameCanvas();
-    var canParallax=!!canvas && !pointerLocked() && !menuOpen() && !introBusy() && !reduced && !!s.parallax;
-    var intensity=Math.max(0,Math.min(1,Number(s.parallaxIntensity)||0))*deviceFactor();
-    if(canParallax){
-      var w=innerWidth||1,h=innerHeight||1;
-      if(w!==lastW||h!==lastH){lastW=w;lastH=h;}
-      currentX += (targetX*intensity-currentX)*.08;
-      currentY += (targetY*intensity-currentY)*.08;
-      var maxX=7*intensity,maxY=5*intensity;
-      canvas.style.transform="translate3d("+((currentX/Math.max(1,lastW))*maxX)+"px,"+((currentY/Math.max(1,lastH))*maxY)+"px,0) scale("+(1.012+0.006*intensity)+")";
-      canvas.style.transformOrigin="center center";
-      canvas.style.willChange="transform";
-    }else if(canvas){
-      currentX*=.82; currentY*=.82;
-      canvas.style.transform="translate3d(0,0,0) scale(1)";
-      canvas.style.willChange="auto";
-    }
-    var fxOn=!!s.screenFx && !introBusy();
-    var fxI=Math.max(0,Math.min(1,Number(s.screenFxIntensity)||0))*deviceFactor();
-    fx.style.setProperty("opacity",fxOn?String(.18+.22*fxI):"0");
-    fx.className=fxOn?"on":"";
-    fx.style.backdropFilter=fxOn
-      ?"saturate("+(1+.35*fxI)+") contrast("+(1+.12*fxI)+") brightness("+(1+.035*fxI)+")"
-      :"none";
-    fx.style.webkitBackdropFilter=fx.style.backdropFilter;
-    requestAnimationFrame(updateFx);
-  }
-  window.addEventListener("mousemove",function(e){
-    if(pointerLocked()) return;
-    targetX=(e.clientX-(innerWidth/2))*2;
-    targetY=(e.clientY-(innerHeight/2))*2;
-  },{passive:true});
-  window.addEventListener("mouseleave",function(){targetX=0;targetY=0;},{passive:true});
-  window.addEventListener("blur",function(){targetX=0;targetY=0;},{passive:true});
-  requestAnimationFrame(updateFx);
-})();
-</script>
-
-
 <script type="text/javascript">
 /* Thunder input bridge: keep keyboard/wheel focus on the Eagler canvas without
    stealing focus from real HTML controls such as the Thunder search box. */
@@ -1206,71 +963,6 @@ let progress = 0;
   window.addEventListener("pointerdown",function(){setTimeout(focusGame,0);},{passive:true});
   window.addEventListener("wheel",function(){setTimeout(focusGame,0);},{passive:true});
   window.addEventListener("keydown",function(){setTimeout(focusGame,0);},{passive:true});
-})();
-</script>
-
-
-/* ===== THUNDER PARALLAX MENU FX ===== */
-#thunderParallaxFx{position:fixed;inset:-6%;z-index:2147483000;pointer-events:none;opacity:0;mix-blend-mode:screen;transition:opacity .35s ease;overflow:hidden}
-#thunderParallaxFx.active{opacity:.34}
-#thunderParallaxFx .tp-cloud,#thunderParallaxFx .tp-glow,#thunderParallaxFx .tp-stars{position:absolute;inset:0}
-#thunderParallaxFx .tp-cloud{filter:blur(28px);background:radial-gradient(ellipse at 18% 32%,rgba(78,177,255,.22),transparent 27%),radial-gradient(ellipse at 76% 24%,rgba(135,77,255,.18),transparent 25%),radial-gradient(ellipse at 82% 76%,rgba(38,113,159,.16),transparent 23%);animation:thunderMenuCloud 15s ease-in-out infinite alternate}
-#thunderParallaxFx .tp-glow{background:radial-gradient(circle at 50% 50%,rgba(105,210,255,.06),transparent 38%),linear-gradient(135deg,rgba(4,12,24,.05),rgba(79,36,130,.08));animation:thunderMenuPulse 6s ease-in-out infinite}
-#thunderParallaxFx .tp-stars{opacity:.16;background-image:radial-gradient(circle,rgba(220,242,255,.72) 0 1px,transparent 1.5px);background-size:54px 54px;animation:thunderMenuStars 18s linear infinite}
-#thunderParallaxFx .tp-bolt{position:absolute;left:72%;top:-4%;width:2px;height:63%;opacity:0;transform:rotate(7deg);background:linear-gradient(180deg,transparent,rgba(239,251,255,.96) 22%,rgba(107,220,255,.72) 62%,transparent);box-shadow:0 0 18px rgba(89,215,255,.9),0 0 52px rgba(83,109,255,.35);animation:thunderMenuBolt 8s infinite}
-#thunderParallaxFx .tp-bolt.two{left:28%;top:18%;width:1px;height:50%;transform:rotate(-9deg);animation:thunderMenuBolt2 11s 2.2s infinite}
-@keyframes thunderMenuCloud{from{transform:translate3d(-1.5%,-.5%,0) scale(1.03)}to{transform:translate3d(2%,1.2%,0) scale(1.07)}}
-@keyframes thunderMenuPulse{0%,100%{opacity:.68}50%{opacity:1}}
-@keyframes thunderMenuStars{from{background-position:0 0}to{background-position:54px 42px}}
-@keyframes thunderMenuBolt{0%,84%,100%{opacity:0}85%{opacity:.92}86%{opacity:.08}87%{opacity:.74}88%{opacity:0}}
-@keyframes thunderMenuBolt2{0%,88%,100%{opacity:0}89%{opacity:.62}90%{opacity:.06}91%{opacity:0}}
-
-<script id="thunder-parallax-script">
-/* ===== THUNDER PARALLAX MENU FX ===== */
-(function(){
-  "use strict";
-  var canvas=null,fx=null,last={x:0,y:0},active=false;
-  function ensureFx(){
-    if(fx)return;
-    fx=document.createElement("div");
-    fx.id="thunderParallaxFx";
-    fx.innerHTML='<div class="tp-cloud"></div><div class="tp-glow"></div><div class="tp-stars"></div><div class="tp-bolt"></div><div class="tp-bolt two"></div>';
-    document.body.appendChild(fx);
-  }
-  function findCanvas(){
-    if(canvas&&canvas.isConnected)return canvas;
-    canvas=document.querySelector("#game_frame canvas, canvas");
-    return canvas;
-  }
-  function setMode(){
-    var c=findCanvas();
-    if(!c)return;
-    var menuLike=!document.pointerLockElement;
-    active=menuLike;
-    if(fx)fx.classList.toggle("active",active);
-    if(active){
-      c.style.transformOrigin="50% 50%";
-      c.style.transform="translate3d("+(last.x*8).toFixed(2)+"px,"+(last.y*6).toFixed(2)+"px,0) scale(1.012)";
-      c.style.transition="transform 180ms ease-out";
-    }else{
-      c.style.transform="";
-      c.style.transition="";
-    }
-  }
-  function onMove(e){
-    last.x=e.clientX/Math.max(1,window.innerWidth)-.5;
-    last.y=e.clientY/Math.max(1,window.innerHeight)-.5;
-    setMode();
-  }
-  function boot(){
-    ensureFx();
-    window.addEventListener("mousemove",onMove,{passive:true});
-    document.addEventListener("pointerlockchange",setMode);
-    window.addEventListener("resize",setMode);
-    setInterval(setMode,700);
-    setMode();
-  }
-  window.addEventListener("load",boot,{once:true});
 })();
 </script>
 </head>

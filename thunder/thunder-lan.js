@@ -18,7 +18,6 @@
      Game functions this module replaces (each wrapper falls through to the original):
      @hook EBA net.lax1dude.eaglercraft.sp.internal.ClientPlatformSingleplayer.sendPacket
      @hook E9$ net.lax1dude.eaglercraft.sp.SingleplayerServerController.setPaused
-     @hook CME net.lax1dude.eaglercraft.socket.RateLimitTracker.tick
      @hook CnZ net.lax1dude.eaglercraft.sp.SingleplayerServerController.killWorker
 
      Game functions and classes it uses:
@@ -594,7 +593,7 @@
   function lanJoinStart(){
     LJ.active=true;LJ.opened=false;LJ.frags=[];LJ.chain=Promise.resolve();LJ.play=false;LJ.lost='';LJ.reason='';
     lanStatus(LJ,'joining','logging in');
-    lanRunOnGame([
+    runOnGame([
       function(){if(!LJ.scr)LJ.scr=new BoL();BGl(LJ.scr);},
       function(){var s=LJ.scr;s.blC=null;s.cxf=0;s.cGJ=0;s.b$T=HEN.cm;s.cTm=$rt_str('Joining '+LJ.code+'...');},
       function(){GGs(HEN,LJ.scr);},
@@ -729,32 +728,9 @@
     return origEBA(b);
   };
 
-  // ---- running game code from outside the game loop --------------------------------------
-  // Opening a screen must happen on the game thread: queued steps run at the start of
-  // RateLimitTracker.tick (called once per frame by runGameLoop, menus included). Each step
-  // calls at most one game function; if that suspends the TeaVM thread, the same step is called
-  // again on resume and the game function continues where it stopped.
-  var lanTasks=[],lanTask=null,lanStep=0;
-  function lanRunOnGame(steps){lanTasks.push(steps);}
-  var origCME=CME;
-  CME=function(){
-    var ph=1;
-    if($rt_resuming())ph=$rt_nativeThread().pop();
-    if(ph===1){
-      while(lanTask||lanTasks.length){
-        if(!lanTask){lanTask=lanTasks.shift();lanStep=0;}
-        if(lanStep>=lanTask.length){lanTask=null;continue;}
-        try{lanTask[lanStep]();}
-        catch(e){report(e);lanTask=null;if(!$rt_suspending())continue;}
-        if($rt_suspending()){$rt_nativeThread().push(1);return;}
-        lanStep++;
-      }
-      // a screen that pauses on its own (statistics, end credits) must not stop the host's client
-      if(HEN&&HEN.cp&&lanHosting())HEN.cp=0;
-    }
-    origCME();
-    if($rt_suspending())$rt_nativeThread().push(2);
-  };
+  // a screen that pauses on its own (statistics, end credits) must not stop the host's client;
+  // runs once per frame on the game thread, right after runGameLoop decided the pause flag
+  frameTasks.push(function(){if(HEN&&HEN.cp&&lanHosting())HEN.cp=0;});
 
   // =====================================================================================
   // Menu: Right Shift > Friends

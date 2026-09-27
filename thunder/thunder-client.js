@@ -13,9 +13,11 @@
    @hook EjD net.minecraft.entity.EntityLivingBase.getHeldItemOffhand
    @hook DR$ net.minecraft.client.renderer.texture.TextureAtlasSprite.loadSprite
    @hook Dc_ net.minecraft.client.resources.ResourcePackListEntry.proceedWithBs
+   @hook CME net.lax1dude.eaglercraft.socket.RateLimitTracker.tick
    @hook DkZ net.minecraft.client.renderer.ItemRenderer.renderItemInFirstPerson
    @hook Ch0 net.minecraft.client.renderer.ItemRenderer.renderItemSide
    @hook Gxt net.minecraft.client.renderer.entity.RenderManager.doRenderEntity
+   @hook DQn net.lax1dude.eaglercraft.Filesystem$FilesystemHandleWrapper.eaglerIterate
    (thunder-shaders.js adds its own hook and names in its header; build.js reads both.)
 
    Game functions it calls:
@@ -164,6 +166,26 @@
 })();
 
 /* ---------------------------------------------------------------------------------------------
+   Folder delete fix (page and worker). Eaglercraft lists a folder's files by bare path prefix, so
+   the listing for "worlds/New World" also returned every file of "worlds/New World-" and
+   "worlds/New World 2", and deleting a world deleted those worlds too. Deleting a resource pack
+   did the same to any pack whose folder starts with the same name (importing a pack whose name
+   is already taken gives it the old folder name plus "-"). Every caller of this listing asks for
+   the files inside a folder (world delete, pack delete, the one-time world list rebuild), so the
+   prefix now ends with "/". An empty prefix (the whole filesystem) is left as it is.
+--------------------------------------------------------------------------------------------- */
+(function(){
+  var origIterate=DQn;
+  DQn=function(a,b,c,d){
+    if(!$rt_resuming()&&b!==null){
+      var p=$rt_ustr(b);
+      if(p.length>0&&p.charAt(p.length-1)!=='/')b=$rt_str(p+'/');
+    }
+    return origIterate(a,b,c,d);
+  };
+})();
+
+/* ---------------------------------------------------------------------------------------------
    Client
 --------------------------------------------------------------------------------------------- */
 (function(){
@@ -200,7 +222,8 @@
     shBloomRes:2,shBloomLevels:4,
     shBloom:true,shBloomStr:60,shGrade:true,shGradeStr:75,shContrast:true,shContrastStr:35,
     shVignette:true,shVignetteStr:40,shAmbient:true,shAmbientStr:50,shMotion:false,shMotionStr:35,
-    shRays:true,shRaysStr:65,shAtmos:true,shAtmosStr:60
+    shRays:true,shRaysStr:65,shAtmos:true,shAtmosStr:60,
+    titleBg:true,titleLogo:true,titleLightning:true,titleParallax:60,titleQuality:0
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -512,7 +535,8 @@
     render();
     backdrop.style.display='flex';
     if(!liveTimer)liveTimer=W.setInterval(runLive,400);
-    W.requestAnimationFrame(function(){if(menuOpen)backdrop.classList.add('tcm-open');});
+    void backdrop.offsetWidth;        // apply display:flex first so the fade-in transition runs
+    backdrop.classList.add('tcm-open');
     try{if(D.exitPointerLock&&D.pointerLockElement)D.exitPointerLock();}catch(_){}
   }
   function el(tag,cls,text){
@@ -563,6 +587,8 @@
     var search=iconEl('label','tcm-search','search',14);
     searchInput=el('input');searchInput.type='text';searchInput.placeholder='Search modules';searchInput.spellcheck=false;
     searchInput.addEventListener('input',function(){searchQuery=String(searchInput.value||'').trim().toLowerCase();render();});
+    // the game cancels every key it sees further up the page, which would stop typing here
+    ['keydown','keypress','keyup'].forEach(function(t){searchInput.addEventListener(t,function(e){e.stopPropagation();});});
     search.appendChild(searchInput);
     head.appendChild(search);
     main.appendChild(head);
@@ -1405,9 +1431,41 @@
     return r;
   };
 
+  // ------------------------------------------------------------------
+  // Running game code from outside the game loop (opening a screen, making textures). Queued
+  // steps run at the start of RateLimitTracker.tick, which runGameLoop calls once per frame on
+  // the game thread (menus included), right after it has decided the pause flag. Each step calls
+  // at most one game function; if that suspends the TeaVM thread, the same step is called again
+  // on resume and the game function continues where it stopped. frameTasks are plain JS
+  // callbacks that run at the same point every frame and must not call into the game.
+  // ------------------------------------------------------------------
+  var gameTasks=[],gameTask=null,gameStep=0,frameTasks=[];
+  function runOnGame(steps){gameTasks.push(steps);}
+  var origCME=CME;
+  CME=function(){
+    var ph=1,i;
+    if($rt_resuming())ph=$rt_nativeThread().pop();
+    if(ph===1){
+      while(gameTask||gameTasks.length){
+        if(!gameTask){gameTask=gameTasks.shift();gameStep=0;}
+        if(gameStep>=gameTask.length){gameTask=null;continue;}
+        try{gameTask[gameStep]();}
+        catch(e){report(e);gameTask=null;if(!$rt_suspending())continue;}
+        if($rt_suspending()){$rt_nativeThread().push(1);return;}
+        gameStep++;
+      }
+      for(i=0;i<frameTasks.length;i++){try{frameTasks[i]();}catch(e){report(e);}}
+    }
+    origCME();
+    if($rt_suspending())$rt_nativeThread().push(2);
+  };
+
   // Shaders: optional post-processing of the world image (off by default)
   // @include thunder-shaders.js
 
   // Friends: open this singleplayer world to friends with a join code, or join a friend's world
   // @include thunder-lan.js
+
+  // Title screen: animated Thunder storm background with mouse parallax, and the Thunder logo
+  // @include thunder-title.js
 })();

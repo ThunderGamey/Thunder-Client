@@ -1,7 +1,8 @@
 # Thunder Client build
 
-`classes.js` is generated. Edit `thunder/thunder-client.js` (and `thunder/thunder-shaders.js` and
-`thunder/thunder-lan.js`, which it pulls in with `// @include`), then run:
+`classes.js` is generated. Edit `thunder/thunder-client.js` (and `thunder/thunder-shaders.js`,
+`thunder/thunder-lan.js` and `thunder/thunder-title.js`, which it pulls in with `// @include`),
+then run:
 
 ```
 node thunder/build.js
@@ -42,8 +43,21 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
 
 - `thunder-client.js` - HUD, Right Shift menu, settings, the hooks listed in its header. Among
   them: Hand Item Size (scales the real first-person sword/shield through
-  `ItemRenderer.renderItemInFirstPerson` + `renderItemSide`, first-person transforms only) and
-  Hitboxes (`RenderManager.debugBoundingBox`, kept in sync with F3+B).
+  `ItemRenderer.renderItemInFirstPerson` + `renderItemSide`, first-person transforms only),
+  Hitboxes (`RenderManager.debugBoundingBox`, kept in sync with F3+B), and a fix for a data-loss
+  bug in the base runtime: deleting a world or resource pack also deleted every other world or
+  pack whose folder name starts the same way (deleting "New World" wiped "New World-" and
+  "New World 2"). Folder listings now end at the folder's "/"
+  (`Filesystem$FilesystemHandleWrapper.eaglerIterate`, in the page and in the world Worker).
+- `thunder-title.js` - the title screen: an animated storm drawn where the game draws its
+  panorama (`GuiMainMenu.renderSkybox`): sky glow, two layers of clouds, lightning with branches,
+  sparks, far hills and a blocky Minecraft skyline with trees, each layer moving by its own amount
+  with the mouse. Two WebGL 2 passes (clouds at reduced resolution, then one full-resolution
+  pass) with the same GL state save/restore as the shaders; Auto quality steps down on slow
+  machines; any error falls back to the vanilla panorama. The logo textures
+  (`minecraft.png`/`edition.png`) are swapped for THUNDER / CLIENT pixel art; turning the logo
+  off restores the game's own. Right Shift > Visual > Thunder Title Screen: on/off, logo,
+  lightning, parallax strength, quality.
 - `thunder-shaders.js` - optional shader/post-processing system (Right Shift > Shaders). How it
   hooks the renderer, the pipeline, presets, FPS safety and limits: [SHADERS.md](SHADERS.md).
 - `thunder-lan.js` - Friends: open a singleplayer world to friends with a join code and join a
