@@ -119,8 +119,8 @@ rays and golden sunsets. Effects run in this order inside the composite:
 | Bloom | on, 60 % | Soft, slightly warm glow around bright light (torches, lava, glowstone, the sun, which becomes a glowing disc). Adaptive threshold, see above. **Lights glow extra** (70 %) also feeds warm, saturated, bright texels (lava, fire, torch flames, glowstone, lit redstone lamps) into the bloom whatever the threshold, so they glow on their own: a little on LOW, a lot on HIGH, and a little under half as much in bright daylight. Sunlit sand, wood and stone are too pale to count. |
 | Ambient Glow | on, 50 % | Wide, soft spill of bright light into the surroundings, plus a small lift in very dark scenes. In a bright scene (the measured average brightness) the spill is cut to about a third, so daylight does not turn into haze. |
 | Sun Rays | on, 65 % | Light shafts from the sun (or, fainter and bluish, the moon) through gaps in leaves, trunks, hills and clouds. Added with a screen blend in the sun's color: golden at sunrise/sunset, warm white by day. By day under open sky half of it stays when the sun is out of view (looking down or away), coming in from the screen edge on the sun's side; off below the horizon, in caves and under roofs, in rain, and in the Nether/End. |
-| Underwater Rays | on, 70 % | While the camera is in water: moving light shafts fanning down from the surface above the screen, a soft caustic shimmer and a deeper blue-green. It eases in and out as the camera dips (about 0.3 s) and follows daylight (faint at night). |
-| Atmosphere | on, 60 % | Time-of-day light: golden sunrise and sunset, warm day, cool blue night, grey rain. Plus a soft haze of sunlight around the sun and an aerial haze along the horizon (placed from the camera pitch, tinted by the low sun when facing it). The tint spares blue sky and, at night, bright light sources; haze and glow only appear where the blurred scene is bright, so caves and walls stay clear. |
+| Underwater Rays | on, 70 % | While the camera is in water: soft light shafts coming down from the surface, a faint caustic shimmer and a deeper blue-green. The shafts are fixed in the world: each pixel's view direction picks its shaft by compass direction, so they stay put when you turn, meet overhead when you look up and fade when you look down. It eases in and out as the camera dips (about 0.3 s) and follows daylight (faint at night). |
+| Atmosphere | on, 60 % | Time-of-day light: golden sunrise and sunset, warm day, cool blue night, grey rain. Plus a soft haze of sunlight around the sun and an aerial haze along the horizon (placed from the camera pitch, tinted by the low sun when facing it). The tint spares blue sky and, at night, bright light sources; haze and glow only appear where the blurred scene is bright, so caves, walls and anything standing in front of the sun keep their own light instead of turning pale. |
 | Color Grading | on, 75 % | The Mellow grade: shadows and mid-tones opened up a little, vibrance (dull colors gain the most), warm light and cool shadows, deeper blue sky and water, slightly lifted blacks, and a soft highlight shoulder that keeps hue. Warmth is weighted by (1 − chroma), so saturated colors keep their hue. |
 | Contrast | on, 35 % | S-curve on luminance, applied by scaling the color, so hue and saturation are preserved and nothing clips. |
 | Vignette | on, 40 % | Slightly darker screen edges. |
@@ -158,19 +158,22 @@ LOW, MEDIUM and HIGH look clearly different, not only sharper or softer.
 
 | Effect | LOW | MEDIUM | HIGH |
 |---|---|---|---|
-| Bloom | 0.6 | 1 | 1.6 |
+| Bloom | 0.6 | 1 | 1.3 |
 | Lights glow extra | 1.0 | 1.6 | 3.0 |
-| Ambient Glow | 0.4 | 1 | 1.9 |
-| Sun Rays | 0.55 | 1 | 1.45 |
-| Atmosphere | 0.6 | 1 | 1.35 |
-| Underwater Rays | 0.6 | 1 | 1.4 |
+| Ambient Glow | 0.4 | 1 | 1.4 |
+| Sun Rays | 0.55 | 1 | 1.1 |
+| Atmosphere | 0.6 | 1 | 1 |
+| Underwater Rays | 0.6 | 1 | 1 |
 | Color Grading | 0.6 | 1 | 1.15 |
 | Contrast | 0.4 | 1 | 3.4 |
 | Vignette | 0.4 | 1 | 2.2 |
 | Motion Blur | 1 | 1 | 1 |
 
 LOW is light and clean, MEDIUM is the Mellow look, HIGH is deep and cinematic: more contrast, a
-strong vignette, warmer light, longer rays and lights that glow a lot. CUSTOM uses the MEDIUM look
+strong vignette, warmer light and lights that glow a lot. Sun rays, sun haze and underwater light
+are only a little stronger than on MEDIUM (stacked at full HIGH strength they washed a sunrise out
+into a pale peach haze), and bloom is 40 % weaker in bright scenes on every preset (full at night,
+where torches and lava need it). CUSTOM uses the MEDIUM look
 with your own bloom settings. Blends that would overshoot are capped (Color Grading and Contrast
 at 1, Motion Blur at 0.9). Measured at noon on the test scene (1280×720, wall area): the screen
 corners are 182 / 165 / 141 bright on LOW / MEDIUM / HIGH, and color saturation 54 / 63 / 73.

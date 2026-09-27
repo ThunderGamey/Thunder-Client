@@ -56,13 +56,14 @@
   // Quality presets: bloom workload (bloom at 1/2^res of the frame, then `levels` halvings) and a
   // look. The look multiplies each effect's own strength slider, so LOW, MEDIUM and HIGH look
   // clearly different: LOW light and clean, MEDIUM the Mellow look, HIGH deep and cinematic
-  // (more contrast, glow, vignette, longer rays, and lava / torches / fire glowing a lot). emis is
-  // the extra glow of warm light sources (see SH_FS_PRE); CUSTOM uses the MEDIUM look.
+  // (more contrast, glow and vignette, and lava / torches / fire glowing a lot; sun and underwater
+  // light only a little stronger, so a sunrise does not wash out). emis is the extra glow of warm
+  // light sources (see SH_FS_PRE); CUSTOM uses the MEDIUM look.
   var SH_LOOK_MEDIUM={bloom:1,ambient:1,rays:1,atmos:1,under:1,grade:1,contrast:1,vignette:1,motion:1,emis:1.6};
   var SH_PRESETS=[
     {name:'LOW',res:3,levels:3,look:{bloom:0.6,ambient:0.4,rays:0.55,atmos:0.6,under:0.6,grade:0.6,contrast:0.4,vignette:0.4,motion:1,emis:1.0}},
     {name:'MEDIUM',res:2,levels:4,look:SH_LOOK_MEDIUM},
-    {name:'HIGH',res:1,levels:6,look:{bloom:1.6,ambient:1.9,rays:1.45,atmos:1.35,under:1.4,grade:1.15,contrast:3.4,vignette:2.2,motion:1,emis:3.0}}
+    {name:'HIGH',res:1,levels:6,look:{bloom:1.3,ambient:1.4,rays:1.1,atmos:1.0,under:1.0,grade:1.15,contrast:3.4,vignette:2.2,motion:1,emis:3.0}}
   ];
   var SH_QUALITY=['LOW','MEDIUM','HIGH','CUSTOM'];
   var SH_CAPS=['PERFORMANCE','LOW','MEDIUM','FULL'];   // what auto quality currently allows
@@ -83,7 +84,7 @@
   // New effects are added here (see SHADERS.md).
   var SH_EFFECTS=[
     {id:'bloom',on:'shBloom',str:'shBloomStr',max:1.2,needs:'chain',u:'u_bloom',
-      glsl:'c+=texture(u_bloomTex,v_uv).rgb*vec3(1.06,0.98,0.9)*u_bloom;'},
+      glsl:'c+=texture(u_bloomTex,v_uv).rgb*vec3(1.06,0.98,0.9)*(u_bloom*(1.0-0.4*smoothstep(0.3,0.7,expo(u_expo))));'},
     // Ambient Glow: light spills from bright areas into dark ones, mostly at night (in a bright
     // scene the spill is cut to a third, so daylight does not turn into haze)
     {id:'ambient',on:'shAmbient',str:'shAmbientStr',max:0.6,needs:'chain',u:'u_amb',
@@ -97,7 +98,8 @@
     {id:'rays',on:'shRays',str:'shRaysStr',max:1.1,needs:'rays',u:'u_rays',
       glsl:'{vec3 a=clamp(u_sunCol*texture(u_rayTex,v_uv).r*u_rays*u_sun.z,0.0,1.0);c+=a*(1.0-min(c,vec3(1.0)));}'},
     // Atmosphere: time-of-day light (golden sunrise/sunset, warm day, cool blue night, grey rain),
-    // a soft haze of sunlight around the sun, and aerial haze along the horizon (placed from the
+    // a soft haze of sunlight around the sun (only on sky and far terrain: whatever stands in front
+    // of the sun keeps its own light), and aerial haze along the horizon (placed from the
     // camera pitch, tinted toward the sun when facing it). Haze and glow only show where the
     // blurred scene is bright enough (open sky and far terrain), so caves and walls stay clear.
     {id:'atmos',on:'shAtmos',str:'shAtmosStr',max:1.0,u:'u_atm',
@@ -107,26 +109,30 @@
         'float lt=clamp((u_tint.b-u_tint.r)*4.0,0.0,1.0)*smoothstep(0.3,0.75,luma(c));'+
         'c*=mix(vec3(1.0),u_tint,u_atm*(1.0-0.7*sk)*(1.0-lt));\n'+
         '#ifdef CHAIN\n'+
-        'vec2 q=(v_uv-u_sun.xy)*vec2(u_aspect,1.0);float r2=dot(q,q);'+
+        'vec2 q=(v_uv-u_sun.xy)*vec2(u_aspect,1.0);float r2=dot(q,q),wa=texture(u_wideTex,v_uv).a;'+
         'float sv=max(smoothstep(0.3,0.75,texture(u_wideTex,clamp(u_sun.xy,0.0,1.0)).a),u_sunOff*0.6);'+
-        'vec3 a=clamp(u_sunCol*((exp(-r2*3.0)*0.35+exp(-r2*25.0)*0.5)*u_sun.z*sv*u_atm*0.8),0.0,1.0);'+
+        'float op=mix(0.2,1.0,smoothstep(0.25,0.7,wa));'+   // walls, trees and hills in front of the sun stay dark
+        'vec3 a=clamp(u_sunCol*((exp(-r2*4.0)*0.2+exp(-r2*25.0)*0.45)*u_sun.z*sv*op*u_atm*0.8),0.0,1.0);'+
         'c+=a*(1.0-min(c,vec3(1.0)));'+
-        'float dh=v_uv.y-u_hor.x,hb=exp(dh>0.0?-dh*30.0:dh*u_hor.y)*u_hor.z*smoothstep(0.12,0.45,texture(u_wideTex,v_uv).a);'+
+        'float dh=v_uv.y-u_hor.x,hb=exp(dh>0.0?-dh*30.0:dh*u_hor.y)*u_hor.z*smoothstep(0.12,0.45,wa);'+
         'c=mix(c,u_haze,clamp(hb*u_atm*0.3,0.0,1.0));\n'+
         '#endif\n'+
         '}'},
-    // Underwater: while the camera is in water, animated light shafts fan down from the surface
-    // (above the top of the screen), with a soft caustic shimmer and a deeper blue-green. Its
-    // amount includes how much daylight there is and eases in and out as the camera dips.
+    // Underwater: while the camera is in water, soft light shafts come down from the surface, with
+    // a faint caustic shimmer and a deeper blue-green. The shafts are fixed in the world: each
+    // pixel's view direction (u_cf/u_cr/u_cu, the camera's forward, right and up) picks its shaft
+    // by compass direction, so they stay put when you turn, meet overhead when you look up and
+    // fade when you look down. Its amount includes how much daylight there is and eases in and
+    // out as the camera dips.
     {id:'under',on:'shUnder',str:'shUnderStr',max:1.0,u:'u_under',
-      glsl:'{vec2 p=(v_uv-vec2(0.5,1.3))*vec2(u_aspect,1.0);float an=atan(p.x,-p.y);'+
-        'float s=(0.5+0.5*sin(an*21.0+u_time*0.7))*(0.5+0.5*sin(an*33.0-u_time*0.5+1.3))+0.3*(0.5+0.5*sin(an*9.0+u_time*0.23+0.7));'+
-        's=pow(clamp(s*0.75,0.0,1.0),2.2);float fall=smoothstep(-0.15,1.0,v_uv.y);'+
-        'c+=vec3(0.45,0.8,0.92)*s*fall*u_under*0.55*(1.0-clamp(luma(c),0.0,1.0)*0.6);'+
+      glsl:'{vec3 d=normalize(u_cf+(v_uv.x*2.0-1.0)*u_cr+(v_uv.y*2.0-1.0)*u_cu);float an=atan(d.x,d.z);'+
+        'float s=(0.5+0.5*sin(an*13.0+u_time*0.2))*(0.5+0.5*sin(an*23.0-u_time*0.15+1.3))+0.25*(0.5+0.5*sin(an*7.0+u_time*0.09+0.7));'+
+        's=pow(clamp(s*0.8,0.0,1.0),2.6);float fall=smoothstep(-0.35,0.95,d.y);'+
+        'c+=vec3(0.5,0.78,0.88)*s*fall*u_under*0.3*(1.0-clamp(luma(c),0.0,1.0)*0.6);'+
         'vec2 q=v_uv*vec2(u_aspect,1.0)*9.0;'+
         'float k=sin(q.x+u_time*1.1+sin(q.y*1.3+u_time*0.7))*sin(q.y*1.1-u_time*0.9+sin(q.x*0.8));'+
-        'c+=vec3(0.3,0.55,0.6)*max(k,0.0)*0.1*u_under*fall;'+
-        'c=mix(c,c*vec3(0.78,0.96,1.06),0.35*min(u_under,1.0));}'},
+        'c+=vec3(0.3,0.55,0.6)*max(k,0.0)*0.06*u_under*fall;'+
+        'c=mix(c,c*vec3(0.8,0.96,1.05),0.3*min(u_under,1.0));}'},
     // Color Grading, "Mellow" look: shadows and mid-tones opened up a little, richer color
     // (vibrance: dull colors gain the most), warm light and cool shadows, slightly lifted blacks
     // and a soft highlight shoulder. Warmth is weighted by (1 - chroma), so the blue sky and other
@@ -214,14 +220,14 @@
     'void main(){vec2 st=(u_sun.xy-v_uv)*(0.9/28.0),p=v_uv+st*hash(gl_FragCoord.xy);float w=1.0,sum=0.0,acc=0.0;'+
       'for(int i=0;i<28;i++){'+
         'vec2 q=(p-u_sun.xy)*vec2(u_aspect,1.0);'+
-        'float m=smoothstep(u_lo,0.92,texture(u_src,p).a)*(0.1+0.9*exp(-dot(q,q)*6.0));'+
+        'float m=smoothstep(u_lo,0.92,texture(u_src,p).a)*(0.04+0.96*exp(-dot(q,q)*8.0));'+
         'm*=step(0.0,p.x)*step(p.x,1.0)*step(0.0,p.y)*step(p.y,1.0);'+
         'acc+=m*w;sum+=w;w*=0.95;p+=st;}'+
-      'o_col=vec4(vec3(min(acc/sum*1.6,1.0)),1.0);}\n';
+      'o_col=vec4(vec3(min(acc/sum*1.4,1.0)),1.0);}\n';
   // pass sources that can be swapped from the console while designing (ThunderClient.shaders.src,
   // then ThunderClient.shaders.release() to rebuild)
   var SH_SRC={rays:SH_FS_RAYS};
-  var SH_COMP_UNIFORMS=['u_scene','u_bloomTex','u_wideTex','u_histTex','u_rayTex','u_expo','u_aspect','u_sun','u_sunCol','u_tint','u_hor','u_haze','u_sunOff','u_time'];
+  var SH_COMP_UNIFORMS=['u_scene','u_bloomTex','u_wideTex','u_histTex','u_rayTex','u_expo','u_aspect','u_sun','u_sunCol','u_tint','u_hor','u_haze','u_sunOff','u_time','u_cf','u_cr','u_cu'];
   SH_EFFECTS.forEach(function(e){SH_COMP_UNIFORMS.push(e.u);});
   // debug views (console: ThunderClient.shaders.debug = n): 1 bloom, 2 wide glow level, 3 blurred
   // brightness. They replace the image and are never saved.
@@ -233,7 +239,7 @@
     return SH_HEAD.replace('\n','\n'+(chain?'#define CHAIN\n':''))+
       'uniform sampler2D u_scene;uniform sampler2D u_bloomTex;uniform sampler2D u_wideTex;uniform sampler2D u_histTex;uniform sampler2D u_rayTex;uniform sampler2D u_expo;\n'+
       SH_EXPO+
-      'uniform vec3 u_sun,u_sunCol,u_tint,u_hor,u_haze;\n'+
+      'uniform vec3 u_sun,u_sunCol,u_tint,u_hor,u_haze,u_cf,u_cr,u_cu;\n'+
       'uniform float u_aspect,u_sunOff,u_time,'+SH_EFFECTS.map(function(e){return e.u;}).join(',')+';\n'+
       'float hash(vec2 p){vec3 q=fract(vec3(p.xyx)*0.1031);q+=dot(q,q.yzx+33.33);return fract((q.x+q.y)*q.z);}\n'+
       'void main(){vec4 src=texture(u_scene,v_uv);vec3 c=src.rgb;\n'+body+
@@ -525,6 +531,28 @@
     }
   }
 
+  // camera basis in world space for effects that are fixed in the world (the underwater shafts):
+  // forward, then right and up scaled so that forward + (2x-1)*right + (2y-1)*up is the view
+  // direction through screen point (x, y)
+  var shCam=[0,0,1,1,0,0,0,1,0];
+  function shCamUpdate(er,pt,aspect){
+    try{
+      var mc=er&&er.bv,e=mc&&mc.hI;
+      if(!e)return;
+      if(!(pt>=0&&pt<=1))pt=1;
+      var d2r=0.017453292519943295;
+      var yaw=(e.cy+(e.C-e.cy)*pt)*d2r,pitch=(e.c1+(e.bc-e.c1)*pt)*d2r;
+      if(!isFinite(yaw)||!isFinite(pitch))return;
+      var cyw=Math.cos(yaw),syw=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch);
+      var fx=-syw*cp,fy=-sp,fz=cyw*cp,rx=-cyw,rz=-syw;
+      if(mc.G&&mc.G.lu===2){fx=-fx;fy=-fy;fz=-fz;rx=-rx;rz=-rz;}   // third-person front view
+      var t=Math.tan(clamp(worldFov,10,170)*0.008726646259971648),ta=t*aspect;
+      shCam[0]=fx;shCam[1]=fy;shCam[2]=fz;
+      shCam[3]=rx*ta;shCam[4]=0;shCam[5]=rz*ta;
+      shCam[6]=-rz*fy*t;shCam[7]=(rz*fx-rx*fz)*t;shCam[8]=rx*fy*t;
+    }catch(_){}
+  }
+
   // ---- the pass ----------------------------------------------------------------------------
   function shDraw(gl,prog,target,t0,t1){
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER,target.f);
@@ -597,6 +625,9 @@
     gl.uniform3f(comp.u.u_haze,sun.haze[0],sun.haze[1],sun.haze[2]);
     gl.uniform1f(comp.u.u_sunOff,sun.off);
     gl.uniform1f(comp.u.u_time,(now()/1000)%3600);
+    gl.uniform3f(comp.u.u_cf,shCam[0],shCam[1],shCam[2]);
+    gl.uniform3f(comp.u.u_cr,shCam[3],shCam[4],shCam[5]);
+    gl.uniform3f(comp.u.u_cu,shCam[6],shCam[7],shCam[8]);
     for(i=0;i<SH_EFFECTS.length;i++){
       var a=cfg.amount[i];
       if(SH_EFFECTS[i].id==='motion')a=R.histOk?Math.pow(a,dt>0?dt/16.667:1):0;   // same trail at any FPS
@@ -754,6 +785,7 @@
       if(st.vp[0]!==0||st.vp[1]!==0||fw<16||fh<16){SHS.state='skipped';return;}
       if(fw*fh>3700000&&cfg.chain&&cfg.res<3)cfg.res++;    // 1440p and up: bloom one step smaller
       shSunUpdate(er,pt,fw/fh);
+      shCamUpdate(er,pt,fw/fh);
       shNeutral(gl,st);
       var comp=SHR.comp[cfg.mask]||(SHR.comp[cfg.mask]=shProgram(SHR,shCompositeSource(cfg.mask),SH_COMP_UNIFORMS,
         {u_scene:0,u_bloomTex:1,u_wideTex:2,u_histTex:3,u_rayTex:4,u_expo:5}));
@@ -886,7 +918,7 @@
     shStatusLine(box);
     box.appendChild(optRow({id:'shIntensity',name:'Intensity',min:0,max:100,step:1,fmt:shPct}));
     box.appendChild(optRow({id:'shPreset',name:'Quality',choices:SH_QUALITY,onChange:shPresetChanged,
-      hint:'LOW: light and clean. MEDIUM: the Mellow look. HIGH: deep and cinematic, with more contrast, glow, vignette and sun rays, and lava, fire and torches glowing a lot. CUSTOM: the MEDIUM look with your own bloom settings.'}));
+      hint:'LOW: light and clean. MEDIUM: the Mellow look. HIGH: deep and cinematic, with more contrast, glow and vignette, and lava, fire and torches glowing a lot. CUSTOM: the MEDIUM look with your own bloom settings.'}));
     var act=el('div','tcm-actions');
     act.appendChild(confirmButton('Reset Shader Settings','Click again to reset shaders',shResetSettings));
     box.appendChild(act);
