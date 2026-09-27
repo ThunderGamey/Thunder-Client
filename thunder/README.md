@@ -93,8 +93,8 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
     options.txt, resources reloaded), below any packs already on. Switched off later, it stays
     off (`localStorage["thunderPack121On"]`). Thunder PvP is never switched on for the player.
   - A pack the player deletes stays deleted.
-  - A pack whose zip changed (hash in `packs/packs.json`) is updated in place; when 1.21.11 was
-    on, the resources are reloaded once so the new version shows straight away.
+  - A pack whose zip changed (hash in `packs/packs.json`) is updated in place; when that pack is
+    switched on, the resources are reloaded once so the new version shows straight away.
   - Right Shift > Utility > Built-in Resource Packs shows the status and can add them again.
 
   The packs themselves are built by `thunder/packs/build_packs.py`; see

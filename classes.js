@@ -53857,8 +53857,8 @@ c.PK;})();
      Thunder 1.21.11 is switched on once per browser, the way Options > Resource Packs > Done does
      it: put into the selected list (below the packs already on, so Thunder PvP and others stay on
      top), saved to options.txt, resources reloaded. Switched off later, it stays off. Thunder PvP
-     is never switched on for the player. When 1.21.11 was updated in place while on, the
-     resources are reloaded once so the new version shows straight away.
+     is never switched on for the player. When a built-in pack that is switched on was updated in
+     place, the resources are reloaded once so the new version shows straight away.
      @use CAR net.minecraft.client.resources.ResourcePackRepository.updateRepositoryEntriesAll
      @use CqD net.minecraft.client.resources.ResourcePackRepository.setRepositories
      @use E1W net.minecraft.client.Minecraft.refreshResources
@@ -53988,7 +53988,7 @@ c.PK;})();
       var mark=readMark(),todo;
       return loadList().then(function(list){
         todo=list.filter(function(p){return force||mark[p.folder]!==p.version;});
-        if(!todo.length){state.status='done';autoEnable(false);return null;}
+        if(!todo.length){state.status='done';autoEnable([]);return null;}
         state.status='opening';
         return openExisting();
       }).then(function(db){
@@ -54017,7 +54017,7 @@ c.PK;})();
           },Promise.resolve());
         }).then(function(){
           db.close();state.status='done';
-          autoEnable(todo.some(function(p){return p.folder===MAIN&&state.installed.indexOf(p.name)>=0;}));
+          autoEnable(todo.filter(function(p){return state.installed.indexOf(p.name)>=0;}).map(function(p){return p.folder;}));
           return state;
         },function(e){
           try{db.close();}catch(_){}
@@ -54032,12 +54032,14 @@ c.PK;})();
 
     // Thunder 1.21.11 on (see the header). Steps run on the game thread between frames; a step that
     // makes a game call makes exactly one, and makes it again when the game resumes it.
+    // updated: folders of the built-in packs just written again (a pack that is switched on and was
+    // updated gets the resources reloaded once, so the new version shows straight away)
     function autoEnable(updated){
       var want=false;
       try{want=!W.localStorage.getItem(AUTO);}catch(_){}
-      if(!want&&!updated)return;
+      if(!want&&!updated.length)return;
       var repo=null,gs=null,list=null,apply=false,reload=false;
-      function named(x){return !!x&&!!x.Tj&&$rt_ustr(x.Tj.UL)===MAIN;}
+      function folder(x){return x&&x.Tj&&x.Tj.UL?$rt_ustr(x.Tj.UL):null;}
       runOnGame([
         function(){
           if(!$rt_resuming()){repo=HEN&&HEN.H$;gs=HEN&&HEN.G;}
@@ -54045,17 +54047,19 @@ c.PK;})();
         },
         function(){
           if(!repo||!gs)return;
-          var all=repo.B3,sel=repo.bGf,e=null,on=false,i;
-          for(i=0;i<EH(all);i++)if(named(Bm(all,i))){e=Bm(all,i);break;}
-          for(i=0;i<EH(sel);i++)if(named(Bm(sel,i)))on=true;
-          if(!e)return;                                       // not in the list (the player deleted it)
-          if(want&&!on){
+          var all=repo.B3,sel=repo.bGf,e=null,on=false,i,f;
+          for(i=0;i<EH(all);i++)if(folder(Bm(all,i))===MAIN){e=Bm(all,i);break;}
+          for(i=0;i<EH(sel);i++){
+            f=folder(Bm(sel,i));
+            if(f===MAIN)on=true;
+            if(f!==null&&updated.indexOf(f)>=0)reload=true;  // switched on and just updated
+          }
+          if(e&&want&&!on){                                   // (not in the list: the player deleted it)
             list=Bq();Y(list,e);
             for(i=0;i<EH(sel);i++)Y(list,Bm(sel,i));
-            apply=true;
+            apply=reload=true;
           }
-          reload=apply||(on&&updated);
-          try{W.localStorage.setItem(AUTO,'1');}catch(_){}
+          if(e)try{W.localStorage.setItem(AUTO,'1');}catch(_){}
         },
         function(){if($rt_resuming()||apply)CqD(repo,list);},
         function(){
