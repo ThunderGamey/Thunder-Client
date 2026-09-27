@@ -1,0 +1,2 @@
+# Cloudflare Pages: open Thunder Client at the site root (index.html stays the original launcher at /index.html)
+/  /index-js.html  200
