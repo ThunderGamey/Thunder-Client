@@ -1,4 +1,6 @@
 /* ========================= THUNDER CLIENT NATIVE v6 (HUD + Right Shift menu) =========================
+   Thunder Client is created and owned by Jayvardhan Ginni (ThunderGamey).
+
    Built into classes.js by thunder/build.js, which verifies every game name below against the
    base build's own deobfuscation table before writing anything. Do not edit classes.js by hand.
 
@@ -203,7 +205,8 @@
   var DEFAULTS={
     armor:true,heldItem:true,coords:true,direction:true,speed:false,hunger:true,saturation:true,satStyle:0,
     effects:true,sprintStatus:true,shield:true,clock:false,memory:false,
-    fps:false,cps:false,keystrokes:false,
+    fps:false,ping:false,cps:false,keystrokes:false,
+    hudTheme:true,           // Thunder boxes for HUD widgets (positions: thunder-hud.js, own storage key)
     noHurtCam:false,noFov:false,
     toggleSprint:false,noBob:false,
     blockF3:true,
@@ -222,8 +225,10 @@
     shBloomRes:2,shBloomLevels:4,
     shBloom:true,shBloomStr:60,shGrade:true,shGradeStr:75,shContrast:true,shContrastStr:35,
     shVignette:true,shVignetteStr:40,shAmbient:true,shAmbientStr:50,shMotion:false,shMotionStr:35,
-    shRays:true,shRaysStr:65,shAtmos:true,shAtmosStr:60,
-    titleBg:true,titleLogo:true,titleLightning:true,titleParallax:60,titleQuality:0,
+    shRays:true,shRaysStr:65,shAtmos:true,shAtmosStr:60,shGlowStr:70,shUnder:true,shUnderStr:70,
+    // World shader effects (thunder-world.js): waving plants, water; see-through leaves (Visual)
+    shWave:true,shWaveStr:60,shWater:true,shWaterStr:70,clearLeaves:true,
+    titleBg:true,titleLogo:true,titleSplash:true,titleLightning:true,titleParallax:60,titleQuality:0,
     menuTheme:true,menuStorm:true,menuButtons:true
   };
   var S={},k;
@@ -296,8 +301,9 @@
     {cat:'hud',id:'hunger',name:'Food Level',desc:'Food points as text.'},
     {cat:'hud',id:'sprintStatus',name:'Sprint Status',desc:'Shows whether you are sprinting.'},
     {cat:'hud',id:'fps',name:'FPS',desc:'Frames per second.'},
+    {cat:'hud',id:'ping',name:'Ping',desc:'Your latency to the server in milliseconds, as the tab list shows it.'},
     {cat:'hud',id:'cps',name:'CPS',desc:'Left clicks per second.'},
-    {cat:'hud',id:'keystrokes',name:'Keystrokes',desc:'WASD and mouse buttons.'},
+    {cat:'hud',id:'keystrokes',name:'Keystrokes',desc:'W, A, S, D, mouse buttons and the space bar; keys light up while held.'},
     {cat:'hud',id:'clock',name:'Clock',desc:'Real-world time.'},
     {cat:'hud',id:'memory',name:'Memory',desc:'JavaScript memory in use.'},
     {cat:'combat',id:'noHurtCam',name:'No Hurt Camera',desc:'Removes the camera shake when you take damage.'},
@@ -314,7 +320,9 @@
       {id:'fireOffset',name:'Offset',min:-0.55,max:0.45,step:0.05,fmt:fmtFire}]},
     {cat:'visual',id:'fullbright',name:'Fullbright',desc:'Maximum brightness everywhere.'},
     {cat:'utility',id:'blockF3',name:'Block F3 Screen',desc:'Stops the built-in F3 debug screen from opening.'},
-    {cat:'utility',id:null,special:'packs',name:'Resource Pack Check',desc:'Animated textures this session had to repair because a pack was missing or had broken .mcmeta files.'}
+    {cat:'utility',id:null,special:'packs',name:'Resource Pack Check',desc:'Animated textures this session had to repair because a pack was missing or had broken .mcmeta files.'},
+    {cat:'utility',id:null,special:'about',name:'About Thunder Client',wide:true,
+      desc:'Thunder Client is created and owned by Jayvardhan Ginni (ThunderGamey).'}
   ];
 
   // ------------------------------------------------------------------
@@ -325,9 +333,15 @@
   var clicks=[];
   var menuOpen=false;
   var seenLock=false;
-  var TC={settings:S,defaults:DEFAULTS,lastError:null,
+  // Thunder Client is created and owned by Jayvardhan Ginni (ThunderGamey). The name is shown on
+  // the title screen, in the Right Shift menu and in Utility > About Thunder Client.
+  var OWNER='Jayvardhan Ginni',OWNER_TAG='ThunderGamey';
+  var OWNER_LINE='Thunder Client by '+OWNER+' ('+OWNER_TAG+')';
+  var TC={settings:S,defaults:DEFAULTS,lastError:null,owner:OWNER+' ('+OWNER_TAG+')',
     isMenuOpen:function(){return menuOpen;}};
   W.ThunderClient=TC;
+  try{if(W.console&&W.console.log)W.console.log('%c THUNDER CLIENT %c by '+OWNER+' ('+OWNER_TAG+') ',
+    'background:#3fb6ff;color:#061019;font-weight:bold','color:#ffd84a;font-weight:bold');}catch(_){}
 
   function now(){return W.performance?W.performance.now():Date.now();}
   function locked(){return !seenLock||!!D.pointerLockElement;}
@@ -337,6 +351,7 @@
     try{
       var code=e&&e.code;
       if(code)keyState[code]=true;
+      if(hudEditKey(e,code))return;
       if(S.blockF3&&(code==='F3'||e.key==='F3')){kill(e);return;}
       if(code==='ShiftRight'||(e.key==='Shift'&&e.location===2)){
         kill(e);
@@ -425,6 +440,9 @@
     '.tcm-tab .tcm-count{margin-left:auto;font-size:10px;color:#5d7487;font-weight:600}',
     '.tcm-tab.tcm-on .tcm-count{color:#7fdcff}',
     '.tcm-side-foot{margin-top:auto;padding:10px 8px 0;font-size:10.5px;color:#5d7487;line-height:1.6}',
+    '.tcm-owner{margin-top:10px;padding-top:9px;border-top:1px solid rgba(79,209,255,.10);color:#7f9bb0}',
+    '.tcm-owner b{display:block;color:#ffd84a;font-size:11.5px;letter-spacing:.02em}',
+    '.tcm-owner span{display:block;color:#5fb9e6;font-size:10px;letter-spacing:.14em;text-transform:uppercase}',
     '.tcm-kbd{display:inline-block;padding:1px 6px;border-radius:5px;border:1px solid rgba(127,151,170,.35);color:#a9c2d4;font-size:10px;margin-right:4px}',
     '.tcm-main{flex:1;display:flex;flex-direction:column;min-width:0}',
     '.tcm-head{display:flex;align-items:center;gap:12px;padding:16px 18px 12px}',
@@ -570,6 +588,9 @@
     sf.appendChild(el('span','tcm-kbd','R-Shift'));sf.appendChild(D.createTextNode('open / close'));
     sf.appendChild(el('br'));
     sf.appendChild(el('span','tcm-kbd','Esc'));sf.appendChild(D.createTextNode('close'));
+    var own=el('div','tcm-owner');own.appendChild(D.createTextNode('Made by '));own.appendChild(el('b',null,OWNER));
+    own.appendChild(el('span',null,OWNER_TAG));
+    sf.appendChild(own);
     side.appendChild(sf);
     panel.appendChild(side);
 
@@ -697,6 +718,7 @@
     function paint(){var v=S[o.id]|0;for(var i=0;i<btns.length;i++)btns[i].className=i===v?'tcm-on':'';}
     paint();addPainter(o.id,paint);
     wrap.appendChild(seg);
+    if(o.hint)wrap.appendChild(el('div','tcm-card-desc',o.hint));
     return wrap;
   }
   // a button that asks for a second click before it acts (used for resets)
@@ -765,7 +787,14 @@
     }
     box.appendChild(n);
   }
-  var SPECIALS={packs:packsNote};   // m.special -> function(box,m) that fills a card body
+  var SPECIALS={packs:packsNote,about:aboutCard};   // m.special -> function(box,m) that fills a card body
+  function aboutCard(box){
+    var kv=el('div','tcm-kv');box.appendChild(kv);
+    function row(k,v){kv.appendChild(el('span',null,k));kv.appendChild(el('b',null,v));}
+    row('Owner',OWNER+' ('+OWNER_TAG+')');
+    row('Client','Thunder Client for Eaglercraft 1.12.2');
+    row('Built on','Eaglercraft 1.12.2 by lax1dude; Minecraft and its assets by Mojang');
+  }
   TC.openMenu=showMenu;TC.closeMenu=hideMenu;TC.toggleMenu=toggleMenu;
   TC.reset=function(){for(var id in DEFAULTS)S[id]=DEFAULTS[id];save();if(menuOpen)render();};
 
@@ -1145,74 +1174,19 @@
     if(!font)return;
     trimClicks();
 
-    var left=[],right=[];
-    var px=player.b,py=player.f,pz=player.c;
-    var havePos=typeof px==='number'&&typeof py==='number'&&typeof pz==='number';
-    if(havePos)updateSpeed(px,pz);
+    var px=player.b,pz=player.c;
+    if(typeof px==='number'&&typeof pz==='number')updateSpeed(px,pz);
 
     var ctx={gui:gui,mc:mc,player:player,font:font,ri:gui.b0l,tm:mc.bH,z0:gui.dz,
       w:width,h:height,cx:(width/2)|0,offLeft:true};
     try{ctx.offLeft=CiU(DlC(player))===HJu;}catch(_){}
     var itemHud=!YZ(mc.dw)&&!!ctx.ri&&!!ctx.tm;     // no hotbar (so no item HUD) in spectator
-    if(S.fps)left.push(['FPS '+gameFps(),0xFFFFFF]);
-    if(S.cps)left.push(['CPS '+clicks.length,0xFFFFFF]);
-    if(S.coords&&havePos)left.push(['XYZ '+fmt1(px)+' / '+fmt1(py)+' / '+fmt1(pz),0xFFFFFF]);
-    if(S.direction&&typeof player.C==='number'){
-      var f=Math.floor(player.C*4/360+0.5)&3;
-      var dirs=['South (+Z)','West (-X)','North (-Z)','East (+X)'];
-      left.push(['Facing '+dirs[f],0xFFFFFF]);
-    }
-    if(S.speed)left.push(['Speed '+fmt1(speed)+' b/s',0xFFFFFF]);
-    if(S.hunger){
-      try{left.push(['Food '+ZP(FAU(player)),0xFFAA00]);}catch(_){}
-    }
-    if(S.sprintStatus){
-      var sp=!!CBg(player);
-      left.push(['Sprint '+(sp?'ON':'OFF'),sp?0x55FF55:0xAAAAAA]);
-    }
-    if(S.clock){
-      var d=new Date();
-      right.push([pad2(d.getHours())+':'+pad2(d.getMinutes())+':'+pad2(d.getSeconds()),0xFFFFFF]);
-    }
-    if(S.memory){
-      try{
-        var pm=W.performance&&W.performance.memory;
-        if(pm&&pm.usedJSHeapSize)right.push(['Mem '+Math.round(pm.usedJSHeapSize/1048576)+' MB',0xFFFFFF]);
-      }catch(_){}
-    }
-    if(S.effects){
-      try{
-        var it=F9v(player).O(),n=0;
-        while(it.B()&&n<24){
-          right.push([effectLine(it.z()),0xFFFFFF]);
-          n++;
-        }
-      }catch(_){}
-    }
-
-    var x=5,y=5,dy=10,j;
-    for(j=0;j<left.length;j++){text(font,left[j][0],x,y,left[j][1]);y+=dy;}
-    y=5;
-    for(j=0;j<right.length;j++){
-      text(font,right[j][0],width-textWidth(font,right[j][0])-5,y,right[j][1]);
-      y+=dy;
-    }
+    // FPS, CPS, coordinates, ... keystrokes: movable widgets (thunder-hud.js)
+    hudWidgets(ctx);
     if(S.armor&&itemHud)armorHud(ctx);
     if(S.shield&&itemHud)shieldHud(ctx);
     if(S.heldItem&&itemHud)heldHud(ctx);
     if(S.saturation&&itemHud)saturationHud(ctx);
-    if(S.keystrokes){
-      var ky=height-46,kx=width-51;
-      var keys=[
-        ['W',keyState.KeyW||keyState.ArrowUp,kx+16,ky],
-        ['A',keyState.KeyA||keyState.ArrowLeft,kx,ky+12],
-        ['S',keyState.KeyS||keyState.ArrowDown,kx+16,ky+12],
-        ['D',keyState.KeyD||keyState.ArrowRight,kx+32,ky+12],
-        ['LMB',mouseState[0],kx-2,ky+24],
-        ['RMB',mouseState[2],kx+26,ky+24]
-      ];
-      for(var q=0;q<keys.length;q++)text(font,keys[q][0],keys[q][2],keys[q][3],keys[q][1]?0x55FF55:0xFFFFFF);
-    }
     // the font renderer leaves the GL color tinted; put it back so later GUI drawing is unaffected
     op(CFi,1.0,1.0,1.0,1.0);
   }
@@ -1460,8 +1434,14 @@
     if($rt_suspending())$rt_nativeThread().push(2);
   };
 
+  // HUD widgets (Thunder boxes) and the drag / scroll HUD editor
+  // @include thunder-hud.js
+
   // Shaders: optional post-processing of the world image (off by default)
   // @include thunder-shaders.js
+
+  // World shader effects: waving plants and leaves, water waves and reflections, see-through leaves
+  // @include thunder-world.js
 
   // Friends: open this singleplayer world to friends with a join code, or join a friend's world
   // @include thunder-lan.js

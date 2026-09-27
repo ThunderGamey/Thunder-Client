@@ -191,7 +191,7 @@ if (/[^\x00-\x7f]/.test(thunder)) fail('thunder-client.js must be ASCII only (us
 const manifest = new Map();   // name -> {kind, target, extra}
 const errors = [];
 for (const line of thunder.split('\n')) {
-  const m = /^\s*\*?\s*@(hook|use|static|staticset|clinit|class|new|field|virtual|runtime)\s+(\S+)\s+(\S+)(?:\s+(.*))?$/.exec(line);
+  const m = /^\s*\*?\s*@(hook|use|static|staticset|set|clinit|class|new|field|virtual|runtime)\s+(\S+)\s+(\S+)(?:\s+(.*))?$/.exec(line);
   if (!m) continue;
   const [, kind, name, target, extra] = m;
   if (kind === 'field' || kind === 'virtual') {
@@ -238,10 +238,11 @@ for (const [name, e] of manifest) {
       const want = jsOf(e.target);
       errors.push('@' + e.kind + ' ' + name + ' is ' + (java || 'unknown') + ' in this base, expected ' + e.target + (want.length ? ' (this base names it ' + want.join(' / ') + ')' : ''));
     }
-  } else if (e.kind === 'static') {
+  } else if (e.kind === 'static' || e.kind === 'set') {
+    // @set: a static field that Thunder may also write (checked the same way as @static)
     const clinit = jsOf(e.target + '.<clinit>');
     const ok = clinit.some((j) => { const b = topFunctionBody(base, j); return b && new RegExp('[^A-Za-z0-9_$.]' + name.replace(/\$/g, '\\$') + '=').test(b); });
-    if (!ok) errors.push('@static ' + name + ' is not assigned in ' + e.target + '.<clinit>');
+    if (!ok) errors.push('@' + e.kind + ' ' + name + ' is not assigned in ' + e.target + '.<clinit>');
   } else if (e.kind === 'staticset') {
     // a static field written by one specific (non-initializer) method, e.g. the WebGL context
     const js = jsOf(e.target);
@@ -346,6 +347,7 @@ for (const [name, lines] of used) {
 const hooks = [];
 for (const [name, lines] of assigned) {
   const e = manifest.get(name);
+  if (e && e.kind === 'set') continue;                      // a declared writable static field
   if (!e || e.kind !== 'hook') errors.push('"' + name + '" is reassigned at ' + where(lines) + ' but is not declared @hook');
   else if (lines.length !== 1) errors.push('@hook ' + name + ' is installed ' + lines.length + ' times (' + where(lines) + '); exactly one wrapper is allowed');
   else hooks.push(name);
@@ -371,7 +373,7 @@ try { new vm.Script(out, { filename: 'classes.js' }); } catch (e) { fail('output
 console.log('thunder ' + path.relative(ROOT, SRC) + (includes.length ? ' + ' + includes.join(' + ') : '') + '  ' + block.length + ' bytes, ' + block.split('\n').length + ' lines');
 console.log('hooks  ' + hooks.map((h) => h + '=' + (javaOf(h) || '?').replace(/^net\.minecraft\.|^net\.lax1dude\.eaglercraft\./, '')).join('  '));
 console.log('uses   ' + [...manifest.values()].filter((e) => e.kind === 'use').length + ' game functions, ' +
-  [...manifest.values()].filter((e) => e.kind === 'static' || e.kind === 'staticset').length + ' static fields, ' +
+  [...manifest.values()].filter((e) => e.kind === 'static' || e.kind === 'staticset' || e.kind === 'set').length + ' static fields, ' +
   [...manifest.values()].filter((e) => e.kind === 'class').length + ' classes, ' +
   [...manifest.values()].filter((e) => e.kind === 'new').length + ' constructors, ' +
   [...manifest.keys()].filter((k) => k[0] === '#').length + ' virtual methods, ' +

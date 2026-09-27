@@ -1,4 +1,5 @@
   /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
      Max FPS: one click sets the fastest settings for this browser, one click puts them back.
      Game settings go through the game's own setters (the same calls the Video Settings buttons
      make, so chunks are rebuilt where the game rebuilds them) and are saved to options.txt;
@@ -30,7 +31,7 @@
      ------------------------------------------------------------------------------------------- */
   var FPS_UNDO='thunderMaxFpsUndo';
   var FPS_RD=6;                                   // chunks; lower is kept
-  var FPS_THUNDER={shaders:false,menuStorm:false,titleQuality:1};   // title quality 1 = Low
+  var FPS_THUNDER={shaders:false,menuStorm:false,titleQuality:1,clearLeaves:false};   // title quality 1 = Low
   var fpsBusy=false,fpsNote='';
 
   function fpsSettings(gs){
@@ -118,7 +119,11 @@
       fpsBusy=false;fpsNote='Your previous settings are back.';
       try{W.localStorage.removeItem(FPS_UNDO);}catch(_){}
     }]));
-    fpsThunder(u.thunder||{});
+    // a snapshot from an older version may lack a setting Max FPS now changes: that one goes back
+    // to its default
+    var th=u.thunder||{},id;
+    for(id in FPS_THUNDER)if(!Object.prototype.hasOwnProperty.call(th,id))th[id]=DEFAULTS[id];
+    fpsThunder(th);
     return true;
   }
 
@@ -132,7 +137,7 @@
   };
 
   MODULES.push({cat:'utility',id:null,special:'maxfps',name:'Max FPS',wide:true,
-    desc:'One click for the fastest settings: render distance 6 or less, Fast graphics, smooth lighting, clouds and entity shadows off, minimal particles, unlimited framerate, shaders off and plain menu backgrounds. In a world it also tests VSync on and off and keeps whichever is faster on this device. Undo puts everything back.'});
+    desc:'One click for the fastest settings: render distance 6 or less, Fast graphics, smooth lighting, clouds and entity shadows off, minimal particles, unlimited framerate, shaders off, solid leaves and plain menu backgrounds. In a world it also tests VSync on and off and keeps whichever is faster on this device. Undo puts everything back.'});
   SPECIALS.maxfps=function(box){
     var kv=el('div','tcm-kv');box.appendChild(kv);
     function row(label){kv.appendChild(el('span',null,label));var b=el('b',null,'-');kv.appendChild(b);return b;}

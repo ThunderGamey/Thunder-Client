@@ -1,9 +1,11 @@
 # Thunder Client build
 
-`classes.js` is generated. Edit `thunder/thunder-client.js` (and `thunder/thunder-shaders.js`,
-`thunder/thunder-lan.js`, `thunder/thunder-title.js`, `thunder/thunder-theme.js`,
-`thunder/thunder-packs.js` and `thunder/thunder-perf.js`, which it pulls in with `// @include`),
-then run:
+Thunder Client is created and owned by Jayvardhan Ginni (ThunderGamey).
+
+`classes.js` is generated. Edit `thunder/thunder-client.js` (and `thunder/thunder-hud.js`,
+`thunder/thunder-shaders.js`, `thunder/thunder-world.js`, `thunder/thunder-lan.js`,
+`thunder/thunder-title.js`, `thunder/thunder-theme.js`, `thunder/thunder-packs.js` and
+`thunder/thunder-perf.js`, which it pulls in with `// @include`), then run:
 
 ```
 node thunder/build.js
@@ -17,13 +19,14 @@ Before writing anything the build refuses to continue unless:
 
 - the base is clean (no Thunder code in it);
 - every obfuscated game name used by the Thunder source is listed in its header
-  (`@hook`, `@use`, `@virtual`, `@static`, `@staticset`, `@clinit`, `@field`, `@runtime`) and
+  (`@hook`, `@use`, `@virtual`, `@static`, `@staticset`, `@set`, `@clinit`, `@field`, `@runtime`) and
   each one maps to the stated Java method/class in that base. The mapping comes from the base's
   own deobfuscation table (the data Eaglercraft uses to print readable stack traces), so no name
   is guessed. `@staticset` names a static field written by one specific method (for example the
   WebGL context, set by `PlatformOpenGL.setCurrentContext`);
 - every game function the Thunder source replaces is declared `@hook`, installed exactly once, and
-  defined exactly once in the base;
+  defined exactly once in the base; the only other game names it may assign are static fields
+  declared `@set` (checked like `@static`: the two cached world shader sources);
 - the output is the base plus exactly one inserted block (everything around it byte-identical),
   and it parses.
 
@@ -42,6 +45,14 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
 
 ## Subsystems
 
+- `thunder-hud.js` - the HUD widgets (FPS, CPS, coordinates, direction, speed, food, sprint,
+  clock, memory, potion effects, keystrokes). With HUD Style on each is a Thunder box (dark glass,
+  cyan edge; keys light up cyan while held), drawn by the game's own GUI code. Right Shift > HUD >
+  HUD Style & Layout > Edit HUD Layout opens the HUD editor over the game: drag a box to move it
+  (it snaps to the edges and the centre lines), scroll over it to resize it (50-300 %), right-click
+  it to put it back, Esc or Done to finish. Positions are stored as a fraction of the free space
+  on each axis (`localStorage["thunderHudLayout_v1"]`), so a box against an edge stays there in any
+  window size. The pause menu, which opens when the mouse is released, is not drawn while editing.
 - `thunder-client.js` - HUD, Right Shift menu, settings, the hooks listed in its header. Among
   them: Hand Item Size (scales the real first-person sword/shield through
   `ItemRenderer.renderItemInFirstPerson` + `renderItemSide`, first-person transforms only),
@@ -50,7 +61,9 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   pack whose folder name starts the same way (deleting "New World" wiped "New World-" and
   "New World 2"). Folder listings now end at the folder's "/"
   (`Filesystem$FilesystemHandleWrapper.eaglerIterate`, in the page and in the world Worker).
-- `thunder-title.js` - the title screen: an animated storm drawn where the game draws its
+- `thunder-title.js` - the title screen: the owner line "Thunder Client by Jayvardhan Ginni
+  (ThunderGamey)" above the version text, Thunder splash texts (most of the time; Visual >
+  Thunder Title Screen > Thunder splash texts), and an animated storm drawn where the game draws its
   panorama (`GuiMainMenu.renderSkybox`): sky glow, two layers of clouds, lightning with branches,
   sparks, far hills and a blocky Minecraft skyline with trees, each layer moving by its own amount
   with the mouse. Two WebGL 2 passes (clouds at reduced resolution, then one full-resolution
@@ -93,6 +106,9 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   browser's animation-frame rate.
 - `thunder-shaders.js` - optional shader/post-processing system (Right Shift > Shaders). How it
   hooks the renderer, the pipeline, presets, FPS safety and limits: [SHADERS.md](SHADERS.md).
+- `thunder-world.js` - world shader effects that follow the Shaders switch: Waving Plants (grass,
+  flowers, crops, leaves, vines) and Water (waves, sky reflections, sun glints), added to
+  Eaglercraft's own terrain shader; and See-through Leaves (Visual tab). How: [SHADERS.md](SHADERS.md).
 - `thunder-lan.js` - Friends: open a singleplayer world to friends with a join code and join a
   friend's world (EaglerSPRelay signalling + WebRTC, bridged to the integrated server's player
   channels). How to use it, how it works, what was tested and the limits:

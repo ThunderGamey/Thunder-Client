@@ -9,11 +9,17 @@ This project is a version of eaglercraftX based on Minecraft 1.12, specifically 
 
 ## Thunder Client
 
-- **`index-js.html`** - Thunder Client on the Eaglercraft 1.12 JavaScript runtime: custom HUD,
-  Right Shift menu (HUD, combat, movement, visual options including Hand Item Size and Hitboxes,
+Thunder Client is created and owned by **Jayvardhan Ginni (ThunderGamey)**. His name is shown on
+the title screen, in the Right Shift menu and in Utility > About Thunder Client.
+
+- **`index-js.html`** - Thunder Client on the Eaglercraft 1.12 JavaScript runtime: a Thunder-style
+  HUD you can rearrange (drag boxes to move them, scroll to resize them), Right Shift menu (HUD,
+  combat, movement, visual options including Hand Item Size, Hitboxes and See-through Leaves,
   and a one-click Max FPS that also tests whether VSync on or off is faster on your device),
-  optional Mellow-style shaders, an animated Thunder title screen (storm clouds, lightning, sparks
-  and a blocky skyline that shift with the mouse, and the THUNDER CLIENT logo), Thunder menus
+  optional shaders (LOW / MEDIUM / HIGH looks, glowing lava and torches, underwater rays, waving
+  plants and leaves, reflective waves on water), an animated Thunder title screen (storm clouds,
+  lightning, sparks and a blocky skyline that shift with the mouse, the THUNDER CLIENT logo and
+  ThunderGamey splash texts), Thunder menus
   everywhere (storm backgrounds, glass lists, Thunder buttons, sliders and text boxes), and **Friends**:
   open your singleplayer world to friends with a join code (Esc > Open to Friends) and join a
   friend's world from Right Shift > Friends.
@@ -23,8 +29,8 @@ This project is a version of eaglercraftX based on Minecraft 1.12, specifically 
 - **`packs/`** - Thunder's two built-in resource packs, which appear in Options > Resource Packs
   the first time the client is opened:
   - **Thunder 1.21.11**: Minecraft 1.21.11 textures converted for 1.12.
-  - **Thunder PvP**: small totem, low fire, wireframe crystals and a clean hotbar. Put it above
-    Thunder 1.21.11.
+  - **Thunder PvP**: plain armor, flat swords and tools, calmer blocks, clean crit particles,
+    small totem, low fire, wireframe crystals and a clean hotbar. Put it above Thunder 1.21.11.
 
   What is in them and how they are built: [`thunder/packs/README.md`](thunder/packs/README.md).
 - **`Thunder-Updated-Textures-FIXED.zip`** - the older Thunder resource pack (newer-style

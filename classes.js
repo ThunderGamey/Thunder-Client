@@ -48726,6 +48726,8 @@ c.epQ});Object.defineProperty(c,"tabIndex",{get:c.eqU,set:c.fn9});Object.defineP
 =c.emS;c.dispatchEvent=c.ecf;c.addEventListener=c.fqa;c=A2F.prototype;c[HC3]=true;c.handleEvent=c.i3;c=A0Y.prototype;c[HC3]=true;c.onMessage=c.egn;c=EPF.prototype;c[HC3]=true;c.handleEvent=c.i3;c=EPE.prototype;c[HC3]=true;c.handleEvent=c.i3;c=A0K.prototype;c[HC3]=true;c.handleEvent=c.i3;c=A0J.prototype;c[HC3]=true;c.handleEvent=c.i3;c=BO4.prototype;c[HC3]=true;c.handleEvent=c.i3;c=B01.prototype;c[HC3]=true;c.call=c.cvG;c=BCw.prototype;c[HC3]=true;c.handleEvent=c.PK;c=B7k.prototype;c[HC3]=true;c.handleEvent=
 c.PK;})();
 /* ========================= THUNDER CLIENT NATIVE v6 (HUD + Right Shift menu) =========================
+   Thunder Client is created and owned by Jayvardhan Ginni (ThunderGamey).
+
    Built into classes.js by thunder/build.js, which verifies every game name below against the
    base build's own deobfuscation table before writing anything. Do not edit classes.js by hand.
 
@@ -48930,7 +48932,8 @@ c.PK;})();
   var DEFAULTS={
     armor:true,heldItem:true,coords:true,direction:true,speed:false,hunger:true,saturation:true,satStyle:0,
     effects:true,sprintStatus:true,shield:true,clock:false,memory:false,
-    fps:false,cps:false,keystrokes:false,
+    fps:false,ping:false,cps:false,keystrokes:false,
+    hudTheme:true,           // Thunder boxes for HUD widgets (positions: thunder-hud.js, own storage key)
     noHurtCam:false,noFov:false,
     toggleSprint:false,noBob:false,
     blockF3:true,
@@ -48949,8 +48952,10 @@ c.PK;})();
     shBloomRes:2,shBloomLevels:4,
     shBloom:true,shBloomStr:60,shGrade:true,shGradeStr:75,shContrast:true,shContrastStr:35,
     shVignette:true,shVignetteStr:40,shAmbient:true,shAmbientStr:50,shMotion:false,shMotionStr:35,
-    shRays:true,shRaysStr:65,shAtmos:true,shAtmosStr:60,
-    titleBg:true,titleLogo:true,titleLightning:true,titleParallax:60,titleQuality:0,
+    shRays:true,shRaysStr:65,shAtmos:true,shAtmosStr:60,shGlowStr:70,shUnder:true,shUnderStr:70,
+    // World shader effects (thunder-world.js): waving plants, water; see-through leaves (Visual)
+    shWave:true,shWaveStr:60,shWater:true,shWaterStr:70,clearLeaves:true,
+    titleBg:true,titleLogo:true,titleSplash:true,titleLightning:true,titleParallax:60,titleQuality:0,
     menuTheme:true,menuStorm:true,menuButtons:true
   };
   var S={},k;
@@ -49023,8 +49028,9 @@ c.PK;})();
     {cat:'hud',id:'hunger',name:'Food Level',desc:'Food points as text.'},
     {cat:'hud',id:'sprintStatus',name:'Sprint Status',desc:'Shows whether you are sprinting.'},
     {cat:'hud',id:'fps',name:'FPS',desc:'Frames per second.'},
+    {cat:'hud',id:'ping',name:'Ping',desc:'Your latency to the server in milliseconds, as the tab list shows it.'},
     {cat:'hud',id:'cps',name:'CPS',desc:'Left clicks per second.'},
-    {cat:'hud',id:'keystrokes',name:'Keystrokes',desc:'WASD and mouse buttons.'},
+    {cat:'hud',id:'keystrokes',name:'Keystrokes',desc:'W, A, S, D, mouse buttons and the space bar; keys light up while held.'},
     {cat:'hud',id:'clock',name:'Clock',desc:'Real-world time.'},
     {cat:'hud',id:'memory',name:'Memory',desc:'JavaScript memory in use.'},
     {cat:'combat',id:'noHurtCam',name:'No Hurt Camera',desc:'Removes the camera shake when you take damage.'},
@@ -49041,7 +49047,9 @@ c.PK;})();
       {id:'fireOffset',name:'Offset',min:-0.55,max:0.45,step:0.05,fmt:fmtFire}]},
     {cat:'visual',id:'fullbright',name:'Fullbright',desc:'Maximum brightness everywhere.'},
     {cat:'utility',id:'blockF3',name:'Block F3 Screen',desc:'Stops the built-in F3 debug screen from opening.'},
-    {cat:'utility',id:null,special:'packs',name:'Resource Pack Check',desc:'Animated textures this session had to repair because a pack was missing or had broken .mcmeta files.'}
+    {cat:'utility',id:null,special:'packs',name:'Resource Pack Check',desc:'Animated textures this session had to repair because a pack was missing or had broken .mcmeta files.'},
+    {cat:'utility',id:null,special:'about',name:'About Thunder Client',wide:true,
+      desc:'Thunder Client is created and owned by Jayvardhan Ginni (ThunderGamey).'}
   ];
 
   // ------------------------------------------------------------------
@@ -49052,9 +49060,15 @@ c.PK;})();
   var clicks=[];
   var menuOpen=false;
   var seenLock=false;
-  var TC={settings:S,defaults:DEFAULTS,lastError:null,
+  // Thunder Client is created and owned by Jayvardhan Ginni (ThunderGamey). The name is shown on
+  // the title screen, in the Right Shift menu and in Utility > About Thunder Client.
+  var OWNER='Jayvardhan Ginni',OWNER_TAG='ThunderGamey';
+  var OWNER_LINE='Thunder Client by '+OWNER+' ('+OWNER_TAG+')';
+  var TC={settings:S,defaults:DEFAULTS,lastError:null,owner:OWNER+' ('+OWNER_TAG+')',
     isMenuOpen:function(){return menuOpen;}};
   W.ThunderClient=TC;
+  try{if(W.console&&W.console.log)W.console.log('%c THUNDER CLIENT %c by '+OWNER+' ('+OWNER_TAG+') ',
+    'background:#3fb6ff;color:#061019;font-weight:bold','color:#ffd84a;font-weight:bold');}catch(_){}
 
   function now(){return W.performance?W.performance.now():Date.now();}
   function locked(){return !seenLock||!!D.pointerLockElement;}
@@ -49064,6 +49078,7 @@ c.PK;})();
     try{
       var code=e&&e.code;
       if(code)keyState[code]=true;
+      if(hudEditKey(e,code))return;
       if(S.blockF3&&(code==='F3'||e.key==='F3')){kill(e);return;}
       if(code==='ShiftRight'||(e.key==='Shift'&&e.location===2)){
         kill(e);
@@ -49152,6 +49167,9 @@ c.PK;})();
     '.tcm-tab .tcm-count{margin-left:auto;font-size:10px;color:#5d7487;font-weight:600}',
     '.tcm-tab.tcm-on .tcm-count{color:#7fdcff}',
     '.tcm-side-foot{margin-top:auto;padding:10px 8px 0;font-size:10.5px;color:#5d7487;line-height:1.6}',
+    '.tcm-owner{margin-top:10px;padding-top:9px;border-top:1px solid rgba(79,209,255,.10);color:#7f9bb0}',
+    '.tcm-owner b{display:block;color:#ffd84a;font-size:11.5px;letter-spacing:.02em}',
+    '.tcm-owner span{display:block;color:#5fb9e6;font-size:10px;letter-spacing:.14em;text-transform:uppercase}',
     '.tcm-kbd{display:inline-block;padding:1px 6px;border-radius:5px;border:1px solid rgba(127,151,170,.35);color:#a9c2d4;font-size:10px;margin-right:4px}',
     '.tcm-main{flex:1;display:flex;flex-direction:column;min-width:0}',
     '.tcm-head{display:flex;align-items:center;gap:12px;padding:16px 18px 12px}',
@@ -49297,6 +49315,9 @@ c.PK;})();
     sf.appendChild(el('span','tcm-kbd','R-Shift'));sf.appendChild(D.createTextNode('open / close'));
     sf.appendChild(el('br'));
     sf.appendChild(el('span','tcm-kbd','Esc'));sf.appendChild(D.createTextNode('close'));
+    var own=el('div','tcm-owner');own.appendChild(D.createTextNode('Made by '));own.appendChild(el('b',null,OWNER));
+    own.appendChild(el('span',null,OWNER_TAG));
+    sf.appendChild(own);
     side.appendChild(sf);
     panel.appendChild(side);
 
@@ -49424,6 +49445,7 @@ c.PK;})();
     function paint(){var v=S[o.id]|0;for(var i=0;i<btns.length;i++)btns[i].className=i===v?'tcm-on':'';}
     paint();addPainter(o.id,paint);
     wrap.appendChild(seg);
+    if(o.hint)wrap.appendChild(el('div','tcm-card-desc',o.hint));
     return wrap;
   }
   // a button that asks for a second click before it acts (used for resets)
@@ -49492,7 +49514,14 @@ c.PK;})();
     }
     box.appendChild(n);
   }
-  var SPECIALS={packs:packsNote};   // m.special -> function(box,m) that fills a card body
+  var SPECIALS={packs:packsNote,about:aboutCard};   // m.special -> function(box,m) that fills a card body
+  function aboutCard(box){
+    var kv=el('div','tcm-kv');box.appendChild(kv);
+    function row(k,v){kv.appendChild(el('span',null,k));kv.appendChild(el('b',null,v));}
+    row('Owner',OWNER+' ('+OWNER_TAG+')');
+    row('Client','Thunder Client for Eaglercraft 1.12.2');
+    row('Built on','Eaglercraft 1.12.2 by lax1dude; Minecraft and its assets by Mojang');
+  }
   TC.openMenu=showMenu;TC.closeMenu=hideMenu;TC.toggleMenu=toggleMenu;
   TC.reset=function(){for(var id in DEFAULTS)S[id]=DEFAULTS[id];save();if(menuOpen)render();};
 
@@ -49872,74 +49901,19 @@ c.PK;})();
     if(!font)return;
     trimClicks();
 
-    var left=[],right=[];
-    var px=player.b,py=player.f,pz=player.c;
-    var havePos=typeof px==='number'&&typeof py==='number'&&typeof pz==='number';
-    if(havePos)updateSpeed(px,pz);
+    var px=player.b,pz=player.c;
+    if(typeof px==='number'&&typeof pz==='number')updateSpeed(px,pz);
 
     var ctx={gui:gui,mc:mc,player:player,font:font,ri:gui.b0l,tm:mc.bH,z0:gui.dz,
       w:width,h:height,cx:(width/2)|0,offLeft:true};
     try{ctx.offLeft=CiU(DlC(player))===HJu;}catch(_){}
     var itemHud=!YZ(mc.dw)&&!!ctx.ri&&!!ctx.tm;     // no hotbar (so no item HUD) in spectator
-    if(S.fps)left.push(['FPS '+gameFps(),0xFFFFFF]);
-    if(S.cps)left.push(['CPS '+clicks.length,0xFFFFFF]);
-    if(S.coords&&havePos)left.push(['XYZ '+fmt1(px)+' / '+fmt1(py)+' / '+fmt1(pz),0xFFFFFF]);
-    if(S.direction&&typeof player.C==='number'){
-      var f=Math.floor(player.C*4/360+0.5)&3;
-      var dirs=['South (+Z)','West (-X)','North (-Z)','East (+X)'];
-      left.push(['Facing '+dirs[f],0xFFFFFF]);
-    }
-    if(S.speed)left.push(['Speed '+fmt1(speed)+' b/s',0xFFFFFF]);
-    if(S.hunger){
-      try{left.push(['Food '+ZP(FAU(player)),0xFFAA00]);}catch(_){}
-    }
-    if(S.sprintStatus){
-      var sp=!!CBg(player);
-      left.push(['Sprint '+(sp?'ON':'OFF'),sp?0x55FF55:0xAAAAAA]);
-    }
-    if(S.clock){
-      var d=new Date();
-      right.push([pad2(d.getHours())+':'+pad2(d.getMinutes())+':'+pad2(d.getSeconds()),0xFFFFFF]);
-    }
-    if(S.memory){
-      try{
-        var pm=W.performance&&W.performance.memory;
-        if(pm&&pm.usedJSHeapSize)right.push(['Mem '+Math.round(pm.usedJSHeapSize/1048576)+' MB',0xFFFFFF]);
-      }catch(_){}
-    }
-    if(S.effects){
-      try{
-        var it=F9v(player).O(),n=0;
-        while(it.B()&&n<24){
-          right.push([effectLine(it.z()),0xFFFFFF]);
-          n++;
-        }
-      }catch(_){}
-    }
-
-    var x=5,y=5,dy=10,j;
-    for(j=0;j<left.length;j++){text(font,left[j][0],x,y,left[j][1]);y+=dy;}
-    y=5;
-    for(j=0;j<right.length;j++){
-      text(font,right[j][0],width-textWidth(font,right[j][0])-5,y,right[j][1]);
-      y+=dy;
-    }
+    // FPS, CPS, coordinates, ... keystrokes: movable widgets (thunder-hud.js)
+    hudWidgets(ctx);
     if(S.armor&&itemHud)armorHud(ctx);
     if(S.shield&&itemHud)shieldHud(ctx);
     if(S.heldItem&&itemHud)heldHud(ctx);
     if(S.saturation&&itemHud)saturationHud(ctx);
-    if(S.keystrokes){
-      var ky=height-46,kx=width-51;
-      var keys=[
-        ['W',keyState.KeyW||keyState.ArrowUp,kx+16,ky],
-        ['A',keyState.KeyA||keyState.ArrowLeft,kx,ky+12],
-        ['S',keyState.KeyS||keyState.ArrowDown,kx+16,ky+12],
-        ['D',keyState.KeyD||keyState.ArrowRight,kx+32,ky+12],
-        ['LMB',mouseState[0],kx-2,ky+24],
-        ['RMB',mouseState[2],kx+26,ky+24]
-      ];
-      for(var q=0;q<keys.length;q++)text(font,keys[q][0],keys[q][2],keys[q][3],keys[q][1]?0x55FF55:0xFFFFFF);
-    }
     // the font renderer leaves the GL color tinted; put it back so later GUI drawing is unaffected
     op(CFi,1.0,1.0,1.0,1.0);
   }
@@ -50187,8 +50161,303 @@ c.PK;})();
     if($rt_suspending())$rt_nativeThread().push(2);
   };
 
+  // HUD widgets (Thunder boxes) and the drag / scroll HUD editor
+  /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
+     HUD widgets and the HUD editor. Included into the client scope of thunder-client.js.
+
+     Every HUD module (FPS, CPS, coordinates, direction, speed, food, sprint, clock, memory,
+     potion effects, keystrokes) is a widget: with Thunder style on, a dark glass box with a thin
+     cyan edge (keys light up cyan while held), drawn by the game's own GUI code like the rest of
+     the HUD. Each widget can be moved and resized in the HUD editor (Right Shift > HUD >
+     HUD Style & Layout > Edit HUD Layout): drag a box to move it, scroll over it to resize it,
+     right-click it to put it back. A position is kept as a fraction of the free space on each
+     axis, so a box against an edge stays against that edge in any window size. Widgets that were
+     never moved stack in their default column (left, right, or keystrokes at the bottom right).
+
+     @virtual dK net.minecraft.client.gui.GuiIngameMenu drawScreen
+     (GuiIngameMenu Bxj is declared in thunder-lan.js.)
+     Ping (the latency the server reports for you in the tab list):
+     @use E3T net.minecraft.client.network.NetHandlerPlayClient.getPlayerInfo
+     @use DNH net.minecraft.entity.Entity.getUniqueID
+     @field d9 net.minecraft.client.Minecraft.getConnection EntityPlayerSP.connection
+     @field bzP net.minecraft.client.gui.GuiPlayerTabOverlay.drawPing NetworkPlayerInfo.responseTime
+     ------------------------------------------------------------------------------------------- */
+  var HUD_KEY='thunderHudLayout_v1';
+  var hudLayout={};
+  try{var hl0=JSON.parse(W.localStorage.getItem(HUD_KEY)||'{}');if(hl0&&typeof hl0==='object')hudLayout=hl0;}catch(_){}
+  function hudSave(){try{W.localStorage.setItem(HUD_KEY,JSON.stringify(hudLayout));}catch(_){}}
+  var hudRects={},hudScreen={w:0,h:0},hudEditing=false;
+  var HB_BG=0x6605070D|0,HB_EDGE=0x734FD1FF|0,HB_TEXT=0xCFEEFF,HB_LABEL=0x5FD7FF,
+    HB_KEY=0x990A0E18|0,HB_KEY_ON=0xC04FD1FF|0,HB_GLOW=0x404FD1FF|0,HB_KEY_TEXT_ON=0x061019;
+  // default column: 0 left stack, 1 right stack, 2 bottom right
+  var HUD_WIDGETS=[
+    {id:'fps',name:'FPS',col:0},{id:'ping',name:'Ping',col:0},{id:'cps',name:'CPS',col:0},{id:'coords',name:'Coordinates',col:0},
+    {id:'direction',name:'Direction',col:0},{id:'speed',name:'Speed',col:0},{id:'hunger',name:'Food',col:0},
+    {id:'sprintStatus',name:'Sprint',col:0},{id:'clock',name:'Clock',col:1},{id:'memory',name:'Memory',col:1},
+    {id:'effects',name:'Potion Effects',col:1},{id:'keystrokes',name:'Keystrokes',col:2}
+  ];
+
+  function hudEdge(x,y,w,h,c){rect(x,y,x+w,y+1,c);rect(x,y+h-1,x+w,y+h,c);rect(x,y+1,x+1,y+h-1,c);rect(x+w-1,y+1,x+w,y+h-1,c);}
+  function hudBox(x,y,w,h){rect(x,y,x+w,y+h,HB_BG);hudEdge(x,y,w,h,HB_EDGE);}
+
+  // what each enabled widget shows this frame: {lines:[[label,value,color]]} or {keys:true}
+  function hudContent(ctx){
+    var player=ctx.player,out={},px=player.b,py=player.f,pz=player.c;
+    var havePos=typeof px==='number'&&typeof py==='number'&&typeof pz==='number';
+    function one(id,label,value,color){out[id]={lines:[[label,value,color==null?0xFFFFFF:color]]};}
+    if(S.fps)one('fps','FPS',String(gameFps()));
+    if(S.ping){
+      try{
+        var conn=player.d9,info=conn?E3T(conn,DNH(player)):null,ms=info?info.bzP|0:-1;
+        one('ping','Ping',ms>=0?ms+' ms':'-',ms<0?0xAAAAAA:ms<100?0x55FF55:ms<250?0xFFE070:0xFF6060);
+      }catch(_){}
+    }
+    if(S.cps)one('cps','CPS',String(clicks.length));
+    if(S.coords&&havePos)one('coords','XYZ',fmt1(px)+' / '+fmt1(py)+' / '+fmt1(pz));
+    if(S.direction&&typeof player.C==='number'){
+      var f=Math.floor(player.C*4/360+0.5)&3;
+      one('direction','Facing',['South (+Z)','West (-X)','North (-Z)','East (+X)'][f]);
+    }
+    if(S.speed)one('speed','Speed',fmt1(speed)+' b/s');
+    if(S.hunger){try{one('hunger','Food',String(ZP(FAU(player))),0xFFAA00);}catch(_){}}
+    if(S.sprintStatus){var sp=!!CBg(player);one('sprintStatus','Sprint',sp?'ON':'OFF',sp?0x55FF55:0xAAAAAA);}
+    if(S.clock){var d=new Date();one('clock','',pad2(d.getHours())+':'+pad2(d.getMinutes())+':'+pad2(d.getSeconds()));}
+    if(S.memory){
+      try{var pm=W.performance&&W.performance.memory;if(pm&&pm.usedJSHeapSize)one('memory','Mem',Math.round(pm.usedJSHeapSize/1048576)+' MB');}catch(_){}
+    }
+    if(S.effects){
+      var lines=[];
+      try{var it=F9v(player).O(),n=0;while(it.B()&&n<24){lines.push(['',effectLine(it.z()),0xFFFFFF]);n++;}}catch(_){}
+      if(!lines.length&&hudEditing)lines.push(['','Speed II 1:30',0xFFFFFF]);   // something to place
+      if(lines.length)out.effects={lines:lines};
+    }
+    if(S.keystrokes)out.keystrokes={keys:true};
+    return out;
+  }
+  function hudLineText(l){return l[0]?l[0]+' '+l[1]:l[1];}
+  function hudSize(ctx,c,themed){
+    if(c.keys)return themed?{w:46,h:54}:{w:46,h:34};
+    var w=0;
+    for(var i=0;i<c.lines.length;i++)w=Math.max(w,textWidth(ctx.font,hudLineText(c.lines[i])));
+    return themed?{w:w+8,h:c.lines.length*10+3}:{w:w,h:c.lines.length*10-1};
+  }
+  function hudDrawLines(ctx,c,themed){
+    var x0=themed?4:0,y=themed?2:0,i,l;
+    for(i=0;i<c.lines.length;i++,y+=10){
+      l=c.lines[i];
+      if(l[0]){
+        text(ctx.font,l[0],x0,y,themed?HB_LABEL:0xFFFFFF);
+        text(ctx.font,l[1],x0+textWidth(ctx.font,l[0]+' '),y,l[2]);
+      }else text(ctx.font,l[1],x0,y,l[2]);
+    }
+  }
+  function hudKey(ctx,label,down,x,y,w,h,themed){
+    if(themed){
+      if(down)rect(x-1,y-1,x+w+1,y+h+1,HB_GLOW);
+      rect(x,y,x+w,y+h,down?HB_KEY_ON:HB_KEY);
+      hudEdge(x,y,w,h,HB_EDGE);
+    }
+    if(label)text(ctx.font,label,x+((w-textWidth(ctx.font,label))>>1),y+((h-8)>>1)+(themed?1:0),down?(themed?HB_KEY_TEXT_ON:0x55FF55):(themed?HB_TEXT:0xFFFFFF));
+  }
+  function hudDrawKeys(ctx,themed){
+    var up=keyState.KeyW||keyState.ArrowUp,lf=keyState.KeyA||keyState.ArrowLeft,
+      dn=keyState.KeyS||keyState.ArrowDown,rt=keyState.KeyD||keyState.ArrowRight;
+    if(themed){
+      hudKey(ctx,'W',up,16,0,14,14,1);
+      hudKey(ctx,'A',lf,0,16,14,14,1);hudKey(ctx,'S',dn,16,16,14,14,1);hudKey(ctx,'D',rt,32,16,14,14,1);
+      hudKey(ctx,'LMB',mouseState[0],0,32,22,12,1);hudKey(ctx,'RMB',mouseState[2],24,32,22,12,1);
+      hudKey(ctx,'',keyState.Space,0,46,46,8,1);
+    }else{
+      hudKey(ctx,'W',up,16,0,14,10,0);
+      hudKey(ctx,'A',lf,0,12,14,10,0);hudKey(ctx,'S',dn,16,12,14,10,0);hudKey(ctx,'D',rt,32,12,14,10,0);
+      hudKey(ctx,'LMB',mouseState[0],0,24,22,10,0);hudKey(ctx,'RMB',mouseState[2],24,24,22,10,0);
+    }
+  }
+  // lay out and draw every enabled widget
+  function hudWidgets(ctx){
+    var themed=!!S.hudTheme,content=hudContent(ctx),W0=ctx.w,H0=ctx.h,cur=[5,5],rects={};
+    hudScreen.w=W0;hudScreen.h=H0;
+    for(var i=0;i<HUD_WIDGETS.length;i++){
+      var wd=HUD_WIDGETS[i],c=content[wd.id];
+      if(!c)continue;
+      var sz=hudSize(ctx,c,themed),L=hudLayout[wd.id],s=L&&L.s>0?clamp(L.s,0.5,3):1;
+      var w=sz.w*s,h=sz.h*s,x,y;
+      if(L&&typeof L.ax==='number'){x=clamp(L.ax,0,1)*Math.max(0,W0-w);y=clamp(L.ay,0,1)*Math.max(0,H0-h);}
+      else if(wd.col===2){x=W0-w-5;y=H0-h-26;}                 // above the hotbar row
+      else{x=wd.col?W0-w-5:5;y=cur[wd.col];cur[wd.col]+=h+(themed?2:1);}
+      rects[wd.id]={x:x,y:y,w:w,h:h,s:s,name:wd.name};
+      opPush();op(DPm,x,y,0);if(s!==1)op(FWK,s,s,1);
+      if(c.keys)hudDrawKeys(ctx,themed);
+      else{if(themed)hudBox(0,0,sz.w,sz.h);hudDrawLines(ctx,c,themed);}
+      opPop();
+    }
+    hudRects=rects;
+  }
+
+  // ---- editor (DOM overlay over the game) --------------------------------------------------------
+  var HUD_CSS=[
+    '#thunder-hud-editor{position:fixed;inset:0;z-index:2147483600;cursor:default;font:12px/1.3 "Segoe UI",system-ui,sans-serif;',
+      'background:repeating-linear-gradient(0deg,rgba(79,209,255,.05) 0 1px,transparent 1px 16px),',
+      'repeating-linear-gradient(90deg,rgba(79,209,255,.05) 0 1px,transparent 1px 16px);user-select:none}',
+    '#thunder-hud-editor .the-bar{position:absolute;left:50%;top:14px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;',
+      'padding:9px 12px 9px 16px;border-radius:12px;background:rgba(7,12,19,.92);border:1px solid rgba(79,209,255,.35);',
+      'box-shadow:0 8px 30px rgba(0,0,0,.45),0 0 22px rgba(79,209,255,.18);color:#cfeeff;white-space:nowrap;',
+      'pointer-events:none;z-index:1;opacity:.93}',
+    '#thunder-hud-editor .the-bar button{pointer-events:auto}',
+    '#thunder-hud-editor .the-bar b{color:#f1faff;letter-spacing:.08em}',
+    '#thunder-hud-editor .the-bar span{color:#7f9bb0}',
+    '#thunder-hud-editor button{font:inherit;font-weight:700;border:1px solid rgba(79,209,255,.4);border-radius:8px;padding:6px 12px;',
+      'background:rgba(79,209,255,.12);color:#e6f8ff;cursor:pointer}',
+    '#thunder-hud-editor button:hover{background:rgba(79,209,255,.25)}',
+    '#thunder-hud-editor button.the-done{background:linear-gradient(135deg,#8cecff,#3fb6ff);color:#061019;border-color:transparent}',
+    '#thunder-hud-editor .the-box{position:absolute;box-sizing:border-box;border:1px dashed rgba(79,209,255,.85);border-radius:3px;',
+      'background:rgba(79,209,255,.08);cursor:move}',
+    '#thunder-hud-editor .the-box:hover,#thunder-hud-editor .the-box.the-drag{background:rgba(79,209,255,.2);border-style:solid;',
+      'box-shadow:0 0 14px rgba(79,209,255,.5)}',
+    '#thunder-hud-editor .the-tag{position:absolute;left:0;bottom:100%;margin-bottom:3px;padding:1px 6px;border-radius:5px;',
+      'background:rgba(7,12,19,.9);color:#8cecff;font-size:10.5px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .12s}',
+    '#thunder-hud-editor .the-box:hover .the-tag,#thunder-hud-editor .the-box.the-drag .the-tag{opacity:1}',
+    '#thunder-hud-editor .the-guide{position:absolute;background:rgba(255,216,74,.8);pointer-events:none;display:none}',
+    '#thunder-hud-editor .the-empty{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:14px 18px;border-radius:12px;',
+      'background:rgba(7,12,19,.9);border:1px solid rgba(79,209,255,.3);color:#cfeeff;display:none}'
+  ].join('');
+  var HE=null;
+  function hudCanvas(){
+    var cs=D.querySelectorAll('#game_frame canvas'),best=null,a=0;
+    for(var i=0;i<cs.length;i++){var r=cs[i].getBoundingClientRect(),s=r.width*r.height;if(s>a){a=s;best=r;}}
+    return best;
+  }
+  function hudEditOpen(){
+    if(HE)return;
+    if(menuOpen)hideMenu();
+    if(!D.getElementById('thunder-hud-editor-style')){
+      var st=D.createElement('style');st.id='thunder-hud-editor-style';st.textContent=HUD_CSS;(D.head||D.documentElement).appendChild(st);
+    }
+    var ov=el('div');ov.id='thunder-hud-editor';
+    var bar=el('div','the-bar');
+    bar.appendChild(el('b',null,'HUD EDITOR'));
+    bar.appendChild(el('span',null,'Drag to move \u2022 scroll to resize \u2022 right-click to reset'));
+    var rs=el('button',null,'Reset all');rs.type='button';
+    rs.addEventListener('click',function(e){e.stopPropagation();hudLayout={};hudSave();});
+    var dn=el('button','the-done','Done');dn.type='button';
+    dn.addEventListener('click',function(e){e.stopPropagation();hudEditClose();});
+    bar.appendChild(rs);bar.appendChild(dn);
+    ov.appendChild(bar);
+    var gx=el('div','the-guide'),gy=el('div','the-guide'),empty=el('div','the-empty','Join a world and turn on a HUD module to place it here.');
+    ov.appendChild(gx);ov.appendChild(gy);ov.appendChild(empty);
+    HE={ov:ov,boxes:{},drag:null,raf:0,gx:gx,gy:gy,empty:empty};
+    ['mousedown','mouseup','click','dblclick','contextmenu','wheel','mousemove'].forEach(function(t){
+      ov.addEventListener(t,function(e){e.stopPropagation();if(t!=='mousemove')e.preventDefault();},false);
+    });
+    ov.addEventListener('mousemove',hudEditMove);
+    ov.addEventListener('mouseup',function(){hudEditDrop();});
+    ov.addEventListener('mouseleave',function(){hudEditDrop();});
+    (D.body||D.documentElement).appendChild(ov);
+    hudEditing=true;
+    try{if(D.exitPointerLock&&D.pointerLockElement)D.exitPointerLock();}catch(_){}
+    hudEditTick();
+  }
+  function hudEditClose(){
+    if(!HE)return;
+    W.cancelAnimationFrame(HE.raf);
+    if(HE.ov.parentNode)HE.ov.parentNode.removeChild(HE.ov);
+    HE=null;hudEditing=false;hudSave();
+  }
+  function hudEditBox(id){
+    var b=el('div','the-box');b.appendChild(el('div','the-tag',''));
+    b.addEventListener('mousedown',function(e){
+      if(e.button!==0)return;
+      var r=b.getBoundingClientRect();
+      HE.drag={id:id,dx:e.clientX-r.left,dy:e.clientY-r.top};b.className='the-box the-drag';
+    });
+    b.addEventListener('contextmenu',function(){delete hudLayout[id];hudSave();});
+    b.addEventListener('wheel',function(e){
+      var R=hudRects[id];if(!R)return;
+      var L=hudLayout[id]||hudPlace(id,R.x,R.y,R.w,R.h,R.s);
+      var s=clamp(Math.round((L.s+(e.deltaY<0?0.1:-0.1))*10)/10,0.5,3),k=s/R.s;
+      var w=R.w*k,h=R.h*k;
+      hudLayout[id]=hudPlace(id,R.x+(R.w-w)/2,R.y+(R.h-h)/2,w,h,s);
+      hudSave();
+    });
+    HE.ov.appendChild(b);
+    return b;
+  }
+  // a layout entry for a box of size w x h (GUI units) with its top-left at x, y
+  function hudPlace(id,x,y,w,h,s){
+    var fw=Math.max(0,hudScreen.w-w),fh=Math.max(0,hudScreen.h-h);
+    return {ax:fw>0?clamp(x,0,fw)/fw:0,ay:fh>0?clamp(y,0,fh)/fh:0,s:s};
+  }
+  function hudEditMove(e){
+    var G=HE&&HE.drag,R=G&&hudRects[G.id],cr=hudCanvas();
+    if(!R||!cr||!hudScreen.w)return;
+    var fx=cr.width/hudScreen.w,fy=cr.height/hudScreen.h;
+    var x=(e.clientX-G.dx-cr.left)/fx,y=(e.clientY-G.dy-cr.top)/fy,snapX=-1,snapY=-1,m=4;
+    x=clamp(x,0,hudScreen.w-R.w);y=clamp(y,0,hudScreen.h-R.h);
+    if(x<m)x=0;else if(x>hudScreen.w-R.w-m)x=hudScreen.w-R.w;                          // edges
+    if(y<m)y=0;else if(y>hudScreen.h-R.h-m)y=hudScreen.h-R.h;
+    if(Math.abs(x+R.w/2-hudScreen.w/2)<m){x=hudScreen.w/2-R.w/2;snapX=hudScreen.w/2;}   // centre lines
+    if(Math.abs(y+R.h/2-hudScreen.h/2)<m){y=hudScreen.h/2-R.h/2;snapY=hudScreen.h/2;}
+    hudLayout[G.id]=hudPlace(G.id,x,y,R.w,R.h,R.s);
+    R.x=x;R.y=y;
+    HE.gx.style.display=snapX>=0?'block':'none';HE.gy.style.display=snapY>=0?'block':'none';
+    if(snapX>=0){HE.gx.style.left=(cr.left+snapX*fx)+'px';HE.gx.style.top=cr.top+'px';HE.gx.style.width='1px';HE.gx.style.height=cr.height+'px';}
+    if(snapY>=0){HE.gy.style.top=(cr.top+snapY*fy)+'px';HE.gy.style.left=cr.left+'px';HE.gy.style.height='1px';HE.gy.style.width=cr.width+'px';}
+  }
+  function hudEditDrop(){
+    if(!HE||!HE.drag)return;
+    var b=HE.boxes[HE.drag.id];if(b)b.className='the-box';
+    HE.drag=null;HE.gx.style.display=HE.gy.style.display='none';
+    hudSave();
+  }
+  // follow the boxes the HUD drew in its last frame
+  function hudEditTick(){
+    if(!HE)return;
+    var cr=hudCanvas(),seen={},id,any=false;
+    if(cr&&hudScreen.w){
+      var fx=cr.width/hudScreen.w,fy=cr.height/hudScreen.h;
+      for(id in hudRects){
+        var R=hudRects[id],b=HE.boxes[id]||(HE.boxes[id]=hudEditBox(id));
+        seen[id]=1;any=true;
+        b.style.left=(cr.left+R.x*fx)+'px';b.style.top=(cr.top+R.y*fy)+'px';
+        b.style.width=Math.max(6,R.w*fx)+'px';b.style.height=Math.max(6,R.h*fy)+'px';
+        b.firstChild.textContent=R.name+'  '+Math.round(R.s*100)+'%';
+      }
+    }
+    for(id in HE.boxes)if(!seen[id]){HE.ov.removeChild(HE.boxes[id]);delete HE.boxes[id];}
+    HE.empty.style.display=any?'none':'block';
+    HE.raf=W.requestAnimationFrame(hudEditTick);
+  }
+  // keys while editing: Esc or Right Shift finish, everything else stays away from the game
+  function hudEditKey(e,code){
+    if(!hudEditing)return false;
+    if(code==='Escape'||code==='ShiftRight'||code==='Enter'){if(!e.repeat)hudEditClose();}
+    kill(e);
+    return true;
+  }
+
+  // Releasing the mouse opens the pause menu; while editing it is not drawn, so the HUD shows the
+  // way it does in play (drawScreen is virtual, so the class's prototype slot is wrapped).
+  var hudPauseProto=Bxj.prototype,hudPauseDraw=hudPauseProto.dK;
+  hudPauseProto.dK=function(b,c,d){if(hudEditing&&!$rt_resuming())return;return hudPauseDraw.call(this,b,c,d);};
+
+  TC.hud={layout:function(){return JSON.parse(JSON.stringify(hudLayout));},rects:function(){return hudRects;},
+    edit:hudEditOpen,done:hudEditClose,reset:function(){hudLayout={};hudSave();}};
+
+  SPECIALS.hudedit=function(box){
+    var act=el('div','tcm-actions');
+    var ed=el('button','tcm-btn','Edit HUD Layout');ed.type='button';
+    ed.addEventListener('click',function(){hudEditOpen();});
+    act.appendChild(ed);
+    act.appendChild(confirmButton('Reset Layout','Click again to reset positions',function(){hudLayout={};hudSave();}));
+    box.appendChild(act);
+  };
+  MODULES.unshift({cat:'hud',id:'hudTheme',name:'HUD Style & Layout',special:'hudedit',wide:true,always:true,
+    desc:'On: every HUD module in a Thunder box (dark glass, cyan edge; keys light up while held). Off: plain text. Edit HUD Layout: drag boxes to move them, scroll over a box to resize it, right-click to reset it.'});
+
   // Shaders: optional post-processing of the world image (off by default)
   /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
      Thunder Shaders: optional screen-space post-processing of the world image.
      Included into the client scope of thunder-client.js by build.js. Design, presets, FPS
      safety and limits are described in thunder/SHADERS.md.
@@ -50242,10 +50511,16 @@ c.PK;})();
        - Any error disables the pipeline for the session, restores state and leaves the game
          rendering normally.
   ------------------------------------------------------------------------------------------- */
-  var SH_PRESETS=[                         // bloom at 1/2^res of the frame, then `levels` halvings
-    {name:'LOW',res:3,levels:3},
-    {name:'MEDIUM',res:2,levels:4},
-    {name:'HIGH',res:1,levels:6}
+  // Quality presets: bloom workload (bloom at 1/2^res of the frame, then `levels` halvings) and a
+  // look. The look multiplies each effect's own strength slider, so LOW, MEDIUM and HIGH look
+  // clearly different: LOW light and clean, MEDIUM the Mellow look, HIGH deep and cinematic
+  // (more contrast, glow, vignette, longer rays, and lava / torches / fire glowing a lot). emis is
+  // the extra glow of warm light sources (see SH_FS_PRE); CUSTOM uses the MEDIUM look.
+  var SH_LOOK_MEDIUM={bloom:1,ambient:1,rays:1,atmos:1,under:1,grade:1,contrast:1,vignette:1,motion:1,emis:1.6};
+  var SH_PRESETS=[
+    {name:'LOW',res:3,levels:3,look:{bloom:0.6,ambient:0.4,rays:0.55,atmos:0.6,under:0.6,grade:0.6,contrast:0.4,vignette:0.4,motion:1,emis:1.0}},
+    {name:'MEDIUM',res:2,levels:4,look:SH_LOOK_MEDIUM},
+    {name:'HIGH',res:1,levels:6,look:{bloom:1.6,ambient:1.9,rays:1.45,atmos:1.35,under:1.4,grade:1.15,contrast:3.4,vignette:2.2,motion:1,emis:3.0}}
   ];
   var SH_QUALITY=['LOW','MEDIUM','HIGH','CUSTOM'];
   var SH_CAPS=['PERFORMANCE','LOW','MEDIUM','FULL'];   // what auto quality currently allows
@@ -50257,18 +50532,21 @@ c.PK;})();
   // threshold (soft at night, a sharp cut by day). scatter weights the wider blur levels.
   // Live-tunable from the console (ThunderClient.shaders.tune) while designing new looks.
   var SH_TUNE={thrDark:0.45,thrBright:0.9,knee:0.5,scatter:0.72,adaptMs:600};
-  var SH_UNITS=5;
+  var SH_UNITS=6;
 
   // Effects, in the order they run inside the one full-screen composite pass. Each adds a GLSL
   // block that is compiled in only while the effect is on, reads its strength (percent) from
-  // settings and is scaled by `max` and the master intensity. needs: 'chain' = blurred bloom
-  // levels, 'history' = the previous frame. New effects are added here (see SHADERS.md).
+  // settings and is scaled by `max`, the master intensity and the preset's look (lim caps blends
+  // that would overshoot). needs: 'chain' = blurred bloom levels, 'history' = the previous frame.
+  // New effects are added here (see SHADERS.md).
   var SH_EFFECTS=[
     {id:'bloom',on:'shBloom',str:'shBloomStr',max:1.2,needs:'chain',u:'u_bloom',
       glsl:'c+=texture(u_bloomTex,v_uv).rgb*vec3(1.06,0.98,0.9)*u_bloom;'},
+    // Ambient Glow: light spills from bright areas into dark ones, mostly at night (in a bright
+    // scene the spill is cut to a third, so daylight does not turn into haze)
     {id:'ambient',on:'shAmbient',str:'shAmbientStr',max:0.6,needs:'chain',u:'u_amb',
       glsl:'{vec4 w=texture(u_wideTex,v_uv);'+
-        'c+=w.rgb*vec3(1.0,0.92,0.8)*(1.0-clamp(c,0.0,1.0))*(u_amb*1.5);'+
+        'c+=w.rgb*vec3(1.0,0.92,0.8)*(1.0-clamp(c,0.0,1.0))*(u_amb*1.5*(1.0-0.65*smoothstep(0.08,0.4,expo(u_expo))));'+
         'float l=luma(c),dark=1.0-smoothstep(0.03,0.35,w.a);'+
         'c+=vec3(0.86,0.93,1.0)*(u_amb*0.09*dark*smoothstep(0.0,0.2,l)*(1.0-l));}'},
     // Sun Rays: light shafts from the sun (or moon) through gaps in leaves, terrain and clouds.
@@ -50295,11 +50573,23 @@ c.PK;})();
         'c=mix(c,u_haze,clamp(hb*u_atm*0.3,0.0,1.0));\n'+
         '#endif\n'+
         '}'},
+    // Underwater: while the camera is in water, animated light shafts fan down from the surface
+    // (above the top of the screen), with a soft caustic shimmer and a deeper blue-green. Its
+    // amount includes how much daylight there is and eases in and out as the camera dips.
+    {id:'under',on:'shUnder',str:'shUnderStr',max:1.0,u:'u_under',
+      glsl:'{vec2 p=(v_uv-vec2(0.5,1.3))*vec2(u_aspect,1.0);float an=atan(p.x,-p.y);'+
+        'float s=(0.5+0.5*sin(an*21.0+u_time*0.7))*(0.5+0.5*sin(an*33.0-u_time*0.5+1.3))+0.3*(0.5+0.5*sin(an*9.0+u_time*0.23+0.7));'+
+        's=pow(clamp(s*0.75,0.0,1.0),2.2);float fall=smoothstep(-0.15,1.0,v_uv.y);'+
+        'c+=vec3(0.45,0.8,0.92)*s*fall*u_under*0.55*(1.0-clamp(luma(c),0.0,1.0)*0.6);'+
+        'vec2 q=v_uv*vec2(u_aspect,1.0)*9.0;'+
+        'float k=sin(q.x+u_time*1.1+sin(q.y*1.3+u_time*0.7))*sin(q.y*1.1-u_time*0.9+sin(q.x*0.8));'+
+        'c+=vec3(0.3,0.55,0.6)*max(k,0.0)*0.1*u_under*fall;'+
+        'c=mix(c,c*vec3(0.78,0.96,1.06),0.35*min(u_under,1.0));}'},
     // Color Grading, "Mellow" look: shadows and mid-tones opened up a little, richer color
     // (vibrance: dull colors gain the most), warm light and cool shadows, slightly lifted blacks
     // and a soft highlight shoulder. Warmth is weighted by (1 - chroma), so the blue sky and other
     // saturated colors keep their hue instead of turning grey or white.
-    {id:'grade',on:'shGrade',str:'shGradeStr',max:1.0,u:'u_grade',
+    {id:'grade',on:'shGrade',str:'shGradeStr',max:1.0,lim:1,u:'u_grade',
       glsl:'{vec3 g=max(c,0.0);float l=luma(g);'+
         'g*=1.0+0.18*(1.0-smoothstep(0.2,0.8,l));'+
         'float ch=max(g.r,max(g.g,g.b))-min(g.r,min(g.g,g.b));'+
@@ -50311,13 +50601,13 @@ c.PK;})();
         'c=mix(c,g,u_grade);}'},
     // contrast: S-curve on luminance only, applied by scaling the color (hue and saturation stay),
     // normalized so bright saturated colors cannot clip
-    {id:'contrast',on:'shContrast',str:'shContrastStr',max:0.6,u:'u_con',
+    {id:'contrast',on:'shContrast',str:'shContrastStr',max:0.6,lim:1,u:'u_con',
       glsl:'{vec3 x=clamp(c,0.0,1.0);float l=luma(x);vec3 y=x*(l*(3.0-2.0*l));'+
         'y/=max(1.0,max(y.r,max(y.g,y.b)));c=mix(c,y,u_con);}'},
     {id:'vignette',on:'shVignette',str:'shVignetteStr',max:0.55,u:'u_vig',
       glsl:'{vec2 d=(v_uv-0.5)*vec2(u_aspect,1.0);float r=length(d)/length(vec2(u_aspect,1.0)*0.5);'+
         'c*=1.0-u_vig*smoothstep(0.42,1.1,r);}'},
-    {id:'motion',on:'shMotion',str:'shMotionStr',max:0.8,needs:'history',u:'u_mot',
+    {id:'motion',on:'shMotion',str:'shMotionStr',max:0.8,lim:0.9,needs:'history',u:'u_mot',
       glsl:'c=mix(c,texture(u_histTex,v_uv).rgb,u_mot);'}
   ];
 
@@ -50332,16 +50622,26 @@ c.PK;})();
   // (Ambient Glow and the brightness measurement use it). Brightness is perceived luminance, or
   // the red/green peak for warm light (lava, fire, torches); blue alone does not count, so a clear
   // daytime sky does not bloom and wash out.
+  // Light Glow: warm, saturated, bright texels (lava, fire, torch flames, glowstone, redstone)
+  // also feed the bloom regardless of the threshold, weighted by u_emis; in bright scenes they
+  // count a little under half, as real glow shows less by day. Sunlit sand, wood and stone are
+  // too pale (low chroma) to count.
   var SH_FS_PRE=SH_HEAD+SH_EXPO+
-    'uniform sampler2D u_src;uniform sampler2D u_expo;uniform vec2 u_off;uniform vec3 u_thr;\n'+
+    'uniform sampler2D u_src;uniform sampler2D u_expo;uniform vec2 u_off;uniform vec3 u_thr;uniform float u_emis;\n'+
     'float t,kn;\n'+
     'vec3 knee(vec3 c){float br=max(luma(c),max(c.r,c.g)*0.9);float q=clamp(br-t+kn,0.0,2.0*kn);q=q*q/(4.0*kn);'+
       'return c*(max(q,br-t)/(max(br,1e-5)*max(1.0-t,0.05)));}\n'+   // excess over the threshold, rescaled to 0..1
+    'vec3 emis(vec3 c){float mx=max(c.r,max(c.g,c.b)),mn=min(c.r,min(c.g,c.b));'+
+      'float warm=smoothstep(0.2,0.4,c.r-c.b)*step(c.b,c.g+0.02);'+
+      'return c*smoothstep(0.28,0.5,mx-mn)*smoothstep(0.5,0.8,mx)*warm;}\n'+
     'void main(){'+
       'vec3 a=texture(u_src,v_uv-u_off).rgb,b=texture(u_src,v_uv+vec2(u_off.x,-u_off.y)).rgb,'+
       'c=texture(u_src,v_uv+vec2(-u_off.x,u_off.y)).rgb,d=texture(u_src,v_uv+u_off).rgb;'+
-      't=mix(u_thr.x,u_thr.y,smoothstep(0.06,0.4,expo(u_expo)));kn=max(0.02,(1.0-t)*u_thr.z);'+   // threshold per tap: textured lights keep their bright texels
-      'o_col=vec4((knee(a)+knee(b)+knee(c)+knee(d))*0.25,(luma(a)+luma(b)+luma(c)+luma(d))*0.25);}\n';
+      'float ex=expo(u_expo);'+
+      't=mix(u_thr.x,u_thr.y,smoothstep(0.06,0.4,ex));kn=max(0.02,(1.0-t)*u_thr.z);'+   // threshold per tap: textured lights keep their bright texels
+      'vec3 g=(knee(a)+knee(b)+knee(c)+knee(d))*0.25;'+
+      'if(u_emis>0.0)g+=(emis(a)+emis(b)+emis(c)+emis(d))*(0.25*u_emis*mix(1.0,0.45,smoothstep(0.1,0.45,ex)));'+
+      'o_col=vec4(g,(luma(a)+luma(b)+luma(c)+luma(d))*0.25);}\n';
   // brightness measurement: average of the smallest bloom level, eased toward the new value
   var SH_FS_ADAPT=SH_HEAD+SH_EXPO+
     'uniform sampler2D u_src;uniform sampler2D u_expo;uniform float u_rate;\n'+
@@ -50379,7 +50679,7 @@ c.PK;})();
   // pass sources that can be swapped from the console while designing (ThunderClient.shaders.src,
   // then ThunderClient.shaders.release() to rebuild)
   var SH_SRC={rays:SH_FS_RAYS};
-  var SH_COMP_UNIFORMS=['u_scene','u_bloomTex','u_wideTex','u_histTex','u_rayTex','u_aspect','u_sun','u_sunCol','u_tint','u_hor','u_haze','u_sunOff'];
+  var SH_COMP_UNIFORMS=['u_scene','u_bloomTex','u_wideTex','u_histTex','u_rayTex','u_expo','u_aspect','u_sun','u_sunCol','u_tint','u_hor','u_haze','u_sunOff','u_time'];
   SH_EFFECTS.forEach(function(e){SH_COMP_UNIFORMS.push(e.u);});
   // debug views (console: ThunderClient.shaders.debug = n): 1 bloom, 2 wide glow level, 3 blurred
   // brightness. They replace the image and are never saved.
@@ -50389,9 +50689,10 @@ c.PK;})();
     SH_EFFECTS.forEach(function(e,i){if(mask&(1<<i)){body+=e.glsl+'\n';if(e.needs)chain=true;}});
     if(dbg)body=SH_DEBUG[dbg]+'\n';
     return SH_HEAD.replace('\n','\n'+(chain?'#define CHAIN\n':''))+
-      'uniform sampler2D u_scene;uniform sampler2D u_bloomTex;uniform sampler2D u_wideTex;uniform sampler2D u_histTex;uniform sampler2D u_rayTex;\n'+
+      'uniform sampler2D u_scene;uniform sampler2D u_bloomTex;uniform sampler2D u_wideTex;uniform sampler2D u_histTex;uniform sampler2D u_rayTex;uniform sampler2D u_expo;\n'+
+      SH_EXPO+
       'uniform vec3 u_sun,u_sunCol,u_tint,u_hor,u_haze;\n'+
-      'uniform float u_aspect,u_sunOff,'+SH_EFFECTS.map(function(e){return e.u;}).join(',')+';\n'+
+      'uniform float u_aspect,u_sunOff,u_time,'+SH_EFFECTS.map(function(e){return e.u;}).join(',')+';\n'+
       'float hash(vec2 p){vec3 q=fract(vec3(p.xyx)*0.1031);q+=dot(q,q.yzx+33.33);return fract((q.x+q.y)*q.z);}\n'+
       'void main(){vec4 src=texture(u_scene,v_uv);vec3 c=src.rgb;\n'+body+
       // over-bright colors are scaled down as a whole (hue kept) and only very bright ones turn
@@ -50418,7 +50719,7 @@ c.PK;})();
       par:gl.getExtension('KHR_parallel_shader_compile'),key:'',scene:null,down:[],up:[],out:null,hist:null,rays:null,
       histOk:false,expo:[],expoOk:false};
     gl.shaderSource(R.vs,SH_VS);gl.compileShader(R.vs);
-    R.progs.pre=shProgram(R,SH_FS_PRE,['u_src','u_expo','u_off','u_thr'],{u_src:0,u_expo:1});
+    R.progs.pre=shProgram(R,SH_FS_PRE,['u_src','u_expo','u_off','u_thr','u_emis'],{u_src:0,u_expo:1});
     R.progs.adapt=shProgram(R,SH_FS_ADAPT,['u_src','u_expo','u_rate'],{u_src:0,u_expo:1});
     R.progs.down=shProgram(R,SH_FS_DOWN,['u_src','u_px'],{u_src:0});
     R.progs.up=shProgram(R,SH_FS_UP,['u_src','u_base','u_px','u_scatter'],{u_src:0,u_base:1});
@@ -50547,20 +50848,25 @@ c.PK;})();
   }
 
   // ---- what to draw this frame -------------------------------------------------------------
-  var shCfg={mask:0,amount:[],chain:false,history:false,rays:false,res:2,levels:4,cap:3,name:''};
+  var shCfg={mask:0,amount:[],chain:false,history:false,rays:false,res:2,levels:4,cap:3,name:'',emis:0};
+  // eased 0..1: camera in water (Underwater effect)
+  var shWet={k:0,t:0,day:1};
   function shConfig(){
     var inten=clamp(Number(S.shIntensity)||0,0,100)/100;
     if(!(inten>0))return null;
-    var p=S.shPreset|0,res,levels,i,e,a,mask=0;
-    if(p>=0&&p<=2){res=SH_PRESETS[p].res;levels=SH_PRESETS[p].levels;}
-    else{p=3;res=clamp(Math.round(S.shBloomRes),1,3);levels=clamp(Math.round(S.shBloomLevels),1,7);}
+    var p=S.shPreset|0,res,levels,i,e,a,mask=0,look;
+    if(p>=0&&p<=2){res=SH_PRESETS[p].res;levels=SH_PRESETS[p].levels;look=SH_PRESETS[p].look;}
+    else{p=3;res=clamp(Math.round(S.shBloomRes),1,3);levels=clamp(Math.round(S.shBloomLevels),1,7);look=SH_LOOK_MEDIUM;}
     var cap=S.shPerf?0:(S.shAuto?shAuto.cap:3),limited=false;
     if(cap===2&&(res<2||levels>4)){res=Math.max(res,2);levels=Math.min(levels,4);limited=true;}
     if(cap===1&&(res<3||levels>3)){res=3;levels=Math.min(levels,3);limited=true;}
     shCfg.chain=false;shCfg.history=false;shCfg.rays=false;
     for(i=0;i<SH_EFFECTS.length;i++){
       e=SH_EFFECTS[i];a=0;
-      if(S[e.on]&&!(cap===0&&e.needs))a=clamp(Number(S[e.str])||0,0,100)/100*e.max*inten;
+      if(S[e.on]&&!(cap===0&&e.needs))a=clamp(Number(S[e.str])||0,0,100)/100*e.max*inten*(look[e.id]||1);
+      if(e.id==='under')a*=shWet.k*(0.35+0.65*shWet.day);   // only in water, stronger by day
+      if(e.lim&&a>e.lim)a=e.lim;                          // blends that must not overshoot
+      if(a<0.002)a=0;
       shCfg.amount[i]=a;
       if(a>0){
         mask|=1<<i;
@@ -50570,6 +50876,7 @@ c.PK;})();
       }
     }
     if(!mask)return null;
+    shCfg.emis=S.shBloom&&cap>0?clamp(Number(S.shGlowStr)||0,0,100)/100*look.emis:0;
     var dbg=SHS.debug|0;
     if(dbg>0&&dbg<SH_DEBUG.length&&cap>0){mask|=dbg<<8;shCfg.chain=true;}
     shCfg.mask=mask;shCfg.res=res;shCfg.levels=levels;shCfg.cap=cap;
@@ -50603,6 +50910,16 @@ c.PK;})();
     try{target=CZY(w,FLc(e))?1:0;}catch(_){}
     shOpen.k+=(target-shOpen.k)*Math.min(1,dt*2.5);
     return shOpen.k;
+  }
+  // camera in water (Entity.isInsideOfMaterial at eye height), eased over ~0.3 s; day = how much
+  // daylight reaches the water (the shafts are faint at night)
+  function shWetUpdate(er){
+    var W2=shWet,tn=now(),dt=W2.t?clamp((tn-W2.t)/1000,0,0.25):0.25,target=0;
+    W2.t=tn;
+    try{var mc=er&&er.bv,e=mc&&mc.hI;if(e&&mc.X&&DBe(e,HGM))target=1;}catch(_){}
+    W2.k+=(target-W2.k)*Math.min(1,dt*4);
+    if(W2.k<0.01&&!target)W2.k=0;
+    W2.day=shSun.sky?shStep(-0.1,0.3,shSun.height):0;
   }
   function shSunUpdate(er,pt,aspect){
     var O=shSun;
@@ -50690,6 +51007,7 @@ c.PK;})();
       shDraw(gl,pre,s,R.scene.t,e0.t);
       gl.uniform2f(pre.u.u_off,off/fw,off/fh);
       gl.uniform3f(pre.u.u_thr,SH_TUNE.thrDark,SH_TUNE.thrBright,SH_TUNE.knee);
+      gl.uniform1f(pre.u.u_emis,cfg.emis);
       gl.drawArrays(gl.TRIANGLES,0,3);n++;px+=s.w*s.h;
       for(i=1;i<=L;i++){
         s=R.down[i];
@@ -50728,6 +51046,7 @@ c.PK;})();
     }
     if(cfg.history){gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,R.hist.t);}
     if(cfg.rays){gl.activeTexture(gl.TEXTURE4);gl.bindTexture(gl.TEXTURE_2D,R.rays.t);}
+    if(cfg.chain){gl.activeTexture(gl.TEXTURE5);gl.bindTexture(gl.TEXTURE_2D,R.expo[0].t);}   // scene brightness
     gl.uniform1f(comp.u.u_aspect,fw/fh);
     gl.uniform3f(comp.u.u_sun,sun.x,sun.y,sunVis||(cfg.rays?0:sun.vis));
     gl.uniform3f(comp.u.u_sunCol,sun.col[0],sun.col[1],sun.col[2]);
@@ -50735,6 +51054,7 @@ c.PK;})();
     gl.uniform3f(comp.u.u_hor,sun.hor[0],sun.hor[1],sun.hor[2]);
     gl.uniform3f(comp.u.u_haze,sun.haze[0],sun.haze[1],sun.haze[2]);
     gl.uniform1f(comp.u.u_sunOff,sun.off);
+    gl.uniform1f(comp.u.u_time,(now()/1000)%3600);
     for(i=0;i<SH_EFFECTS.length;i++){
       var a=cfg.amount[i];
       if(SH_EFFECTS[i].id==='motion')a=R.histOk?Math.pow(a,dt>0?dt/16.667:1):0;   // same trail at any FPS
@@ -50856,7 +51176,7 @@ c.PK;})();
     return dt;
   }
   function shSignature(){
-    var s=S.shIntensity+'|'+S.shPreset+'|'+S.shBloomRes+'|'+S.shBloomLevels+'|'+S.shAuto+'|'+S.shPerf+'|'+S.shTargetFps;
+    var s=S.shIntensity+'|'+S.shPreset+'|'+S.shBloomRes+'|'+S.shBloomLevels+'|'+S.shAuto+'|'+S.shPerf+'|'+S.shTargetFps+'|'+S.shGlowStr;
     for(var i=0;i<SH_EFFECTS.length;i++)s+='|'+S[SH_EFFECTS[i].on]+S[SH_EFFECTS[i].str];
     return s;
   }
@@ -50881,6 +51201,7 @@ c.PK;})();
     var sig=shSignature();
     if(sig!==A.sig){A.sig=sig;if(A.paused)SHS.note='';A.paused=false;shRestart();}
     if(A.paused){SHS.state='paused';return;}
+    shWetUpdate(er);
     var cfg=shConfig();
     if(!cfg){SHS.state='idle';return;}
     if(A.suspend){SHS.state='probing';return;}
@@ -50893,7 +51214,7 @@ c.PK;})();
       shSunUpdate(er,pt,fw/fh);
       shNeutral(gl,st);
       var comp=SHR.comp[cfg.mask]||(SHR.comp[cfg.mask]=shProgram(SHR,shCompositeSource(cfg.mask),SH_COMP_UNIFORMS,
-        {u_scene:0,u_bloomTex:1,u_wideTex:2,u_histTex:3,u_rayTex:4}));
+        {u_scene:0,u_bloomTex:1,u_wideTex:2,u_histTex:3,u_rayTex:4,u_expo:5}));
       var ready=shReady(SHR,comp);
       if(cfg.chain){ready=shReady(SHR,SHR.progs.pre)&&ready;ready=shReady(SHR,SHR.progs.adapt)&&ready;
         ready=shReady(SHR,SHR.progs.down)&&ready;ready=shReady(SHR,SHR.progs.up)&&ready;}
@@ -51022,7 +51343,8 @@ c.PK;})();
   SPECIALS.shaders=function(box){
     shStatusLine(box);
     box.appendChild(optRow({id:'shIntensity',name:'Intensity',min:0,max:100,step:1,fmt:shPct}));
-    box.appendChild(optRow({id:'shPreset',name:'Quality',choices:SH_QUALITY,onChange:shPresetChanged}));
+    box.appendChild(optRow({id:'shPreset',name:'Quality',choices:SH_QUALITY,onChange:shPresetChanged,
+      hint:'LOW: light and clean. MEDIUM: the Mellow look. HIGH: deep and cinematic, with more contrast, glow, vignette and sun rays, and lava, fire and torches glowing a lot. CUSTOM: the MEDIUM look with your own bloom settings.'}));
     var act=el('div','tcm-actions');
     act.appendChild(confirmButton('Reset Shader Settings','Click again to reset shaders',shResetSettings));
     box.appendChild(act);
@@ -51063,12 +51385,15 @@ c.PK;})();
     {cat:'shaders',id:'shaders',name:'Shaders',wide:true,always:true,special:'shaders',
       desc:'Post-processing for the 3D world. The HUD and menus stay sharp. Off means vanilla rendering.',
       onChange:function(on){shFailed=null;shAuto.paused=false;shRestart();SHS.note='';if(!on){shRelease();SHS.state='off';}}},
-    {cat:'shaders',id:'shBloom',name:'Bloom',desc:'Soft glow around bright light: torches, lava, glowstone, the sun.',
-      opts:[{id:'shBloomStr',name:'Strength',min:0,max:100,step:1,fmt:shPct}]},
+    {cat:'shaders',id:'shBloom',name:'Bloom',desc:'Soft glow around bright light: torches, lava, glowstone, the sun. Lights glow extra makes lava, fire, torches and glowstone glow on their own (a lot on HIGH).',
+      opts:[{id:'shBloomStr',name:'Strength',min:0,max:100,step:1,fmt:shPct},
+        {id:'shGlowStr',name:'Lights glow extra',min:0,max:100,step:1,fmt:shPct}]},
     {cat:'shaders',id:'shRays',name:'Sun Rays',desc:'Light shafts from the sun and moon through leaves, hills and clouds.',
       opts:[{id:'shRaysStr',name:'Strength',min:0,max:100,step:1,fmt:shPct}]},
     {cat:'shaders',id:'shAtmos',name:'Atmosphere',desc:'Golden sunrise and sunset, warm days, cool blue nights, and a soft sun haze.',
       opts:[{id:'shAtmosStr',name:'Strength',min:0,max:100,step:1,fmt:shPct}]},
+    {cat:'shaders',id:'shUnder',name:'Underwater Rays',desc:'Moving light shafts from the surface and a soft shimmer while you are under water (faint at night).',
+      opts:[{id:'shUnderStr',name:'Strength',min:0,max:100,step:1,fmt:shPct}]},
     {cat:'shaders',id:'shGrade',name:'Color Grading',desc:'Mellow look: soft film curve, warm light, cool shadows, richer colors.',
       opts:[{id:'shGradeStr',name:'Strength',min:0,max:100,step:1,fmt:shPct}]},
     {cat:'shaders',id:'shContrast',name:'Contrast',desc:'Soft S-curve: deeper shadows and brighter highlights without clipping.',
@@ -51083,8 +51408,378 @@ c.PK;})();
       desc:'How much work shaders may do, and what happens when FPS drops.'}
   );
 
+  // World shader effects: waving plants and leaves, water waves and reflections, see-through leaves
+  /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
+     World shader effects: Waving Plants, Water (waves, sky reflections, sun glints) and
+     See-through Leaves. Included into the client scope of thunder-client.js by build.js.
+
+     The world is drawn by Eaglercraft's own shader (assets/eagler/glsl/core.vsh + core.fsh),
+     compiled once per GL state combination. Waving and water are extra GLSL added to that source:
+       - The additions are inside #if blocks that are only true for the block-terrain states
+         (texture + color + lightmap attributes, fog, no normals), so every other shader (GUI,
+         entities, items, particles, sky) compiles exactly as before.
+       - Which vertices belong to a plant, leaves or water is written into the vertex alpha while a
+         chunk is built: alpha 254..250 instead of 255 (renderBlock wrapper below). The added GLSL
+         restores alpha 255, so textures and blending are unchanged. Without the added GLSL the
+         marks are invisible (at most 2% alpha on those vertices).
+       - The added GLSL reads one small uniform buffer (time, strengths, sun). It is bound as
+         "on" only while chunk layers draw (renderBlockLayer wrapper), so nothing else can move.
+       - Waves repeat every 16 blocks (whole-number wave vectors), so they meet exactly across
+         chunk borders, whose vertices are chunk-relative.
+       - WebGL 2 only. The patched source is test-compiled first; if the game ever fails to compile
+         it, the game's own shader is used again and the effect turns itself off.
+     See-through Leaves keeps leaves in their transparent (Fancy) form on Fast graphics.
+
+     Game functions this module replaces (each wrapper always runs the original):
+     @hook C_0 net.lax1dude.eaglercraft.opengl.FixedFunctionPipeline.makeNewPipeline
+     @hook DCQ net.minecraft.client.renderer.RenderGlobal.renderBlockLayer
+     @hook Dt2 net.minecraft.client.renderer.BlockRendererDispatcher.renderBlock
+     @hook DbQ net.minecraft.client.renderer.RenderGlobal.loadRenderers
+
+     Game functions it calls:
+     @use CC6 net.lax1dude.eaglercraft.opengl.FixedFunctionPipeline.destroy
+     @use CA java.util.ArrayList.clear
+
+     Static fields:
+     @set HE0 net.lax1dude.eaglercraft.opengl.FixedFunctionPipeline shaderSourceCacheVSH (core.vsh text; Thunder swaps in the patched text)
+     @set HE1 net.lax1dude.eaglercraft.opengl.FixedFunctionPipeline shaderSourceCacheFSH (core.fsh text)
+     @static HE2 net.lax1dude.eaglercraft.opengl.FixedFunctionPipeline pipelineStateCache
+     @static HE3 net.lax1dude.eaglercraft.opengl.FixedFunctionPipeline pipelineExtStateCache
+     @static HE4 net.lax1dude.eaglercraft.opengl.FixedFunctionPipeline pipelineListTracker
+     @staticset H1M net.lax1dude.eaglercraft.opengl.GLSLHeader.init (GLSL version header)
+     @staticset H1N net.lax1dude.eaglercraft.opengl.GLSLHeader.init (gles2_compat.glsl text)
+     @static H5O net.minecraft.init.Blocks LEAVES
+     @static H5P net.minecraft.init.Blocks LEAVES2
+
+     Classes, virtual methods and fields:
+     @class Ln net.minecraft.block.BlockBush
+     @class Bax net.minecraft.block.BlockLilyPad
+     @class APk net.minecraft.block.BlockDoublePlant
+     @class U6 net.minecraft.block.BlockLeaves
+     @class Rp net.minecraft.block.BlockVine
+     @class Qz net.minecraft.block.BlockLiquid
+     @virtual cV net.minecraft.block.Block getMetaFromState
+     @field n net.minecraft.block.state.BlockStateContainer$StateImplementation.getBlock StateImplementation.block
+     @field eX net.minecraft.block.state.BlockStateContainer$StateImplementation.getMaterial Block.blockMaterial
+     @field i net.minecraft.util.math.Vec3i.getY Vec3i.y
+     @field sX net.lax1dude.eaglercraft.opengl.WorldRenderer.getColorIndex WorldRenderer.vertexCount
+     @field sp net.lax1dude.eaglercraft.opengl.WorldRenderer.getColorIndex WorldRenderer.vertexFormat
+     @field s0 net.lax1dude.eaglercraft.opengl.WorldRenderer.getColorIndex VertexFormat.nextOffset (bytes per vertex)
+     @field ctV net.lax1dude.eaglercraft.opengl.WorldRenderer.getColorIndex VertexFormat.colorElementOffset
+     @field j3 net.lax1dude.eaglercraft.opengl.WorldRenderer.putColorMultiplier WorldRenderer.rawIntBuffer
+     @field bUV net.lax1dude.eaglercraft.opengl.WorldRenderer.setTranslation WorldRenderer.yOffset
+     @field v5 net.lax1dude.eaglercraft.internal.buffer.EaglerArrayIntBuffer.put EaglerArrayIntBuffer.typedArray (Int32Array)
+     @field t3 net.lax1dude.eaglercraft.internal.buffer.EaglerArrayIntBuffer.put EaglerArrayIntBuffer.limit
+     @field bAC net.minecraft.client.renderer.RenderGlobal.loadRenderers BlockLeaves.leavesFancy
+     @field d7 net.minecraft.client.renderer.RenderGlobal.loadRenderers RenderGlobal.world
+     @field fK net.minecraft.client.Minecraft.startGame Minecraft.renderGlobal
+     (Minecraft.world X, World.provider b4, getCelestialAngle Q$, getRainStrength R$, the GL
+     context HEl and its version HEv are declared in thunder-shaders.js; Minecraft HEN in
+     thunder-lan.js; Material.WATER HGM in thunder-client.js.)
+     ------------------------------------------------------------------------------------------- */
+  // vertex alpha marks written while chunks are built (255 = untouched)
+  var WV_PLANT=254,WV_WATER=250,WV_LEAVES=251;   // plants: 254 still, 253 sways, 252 sways twice as far
+  // the terrain shader states the additions compile into
+  var WV_IF='#if defined(EAGLER_HAS_GLES_300) && defined(COMPILE_TEXTURE_ATTRIB) && defined(COMPILE_COLOR_ATTRIB) && '+
+    'defined(COMPILE_LIGHTMAP_ATTRIB) && defined(COMPILE_ENABLE_FOG) && !defined(COMPILE_NORMAL_ATTRIB) && !defined(COMPILE_ENABLE_TEX_GEN)\n'+
+    '#define THUNDER_WORLD\n'+
+    // tw_a: time, plant sway, leaf sway, water wave height; tw_b: reflection strength, 1 while
+    // chunk layers draw; tw_sun: sun (or moon) direction in world space, glint strength
+    'layout(std140) uniform ThunderWorld { vec4 tw_a; vec4 tw_b; vec4 tw_sun; vec4 tw_c; };\n';
+  var WV_VS_DECL=WV_IF+
+    'flat out float v_twKind;\nout vec3 v_twPos;\nout vec3 v_twX;\nout vec3 v_twY;\nout vec3 v_twZ;\n'+
+    'vec4 twColor;\n'+
+    'float twWater(vec2 q, float t) {\n'+
+    '\tconst float K = 0.39269908;\n'+
+    '\treturn 0.5 * sin(K * (2.0 * q.x + q.y) + t * 1.3) + 0.3 * sin(K * (3.0 * q.y - q.x) + t * 1.9) + 0.2 * sin(K * (5.0 * q.x - 3.0 * q.y) + t * 2.7);\n'+
+    '}\n'+
+    'vec3 twVertex(vec3 p) {\n'+
+    '\ttwColor = a_color4f;\n'+
+    '\tv_twKind = 0.0;\n'+
+    '\tv_twPos = p;\n'+
+    '\tmat3 m = mat3(u_modelviewMat4f);\n'+
+    '\tv_twX = m[0];\n\tv_twY = m[1];\n\tv_twZ = m[2];\n'+
+    '\tfloat code = floor(a_color4f.a * 255.0 + 0.5);\n'+
+    '\tif (tw_b.y < 0.5 || code < 249.5 || code > 254.5) return p;\n'+
+    '\ttwColor.a = 1.0;\n'+
+    '\tfloat t = tw_a.x;\n'+
+    '\tconst float K = 0.39269908;\n'+          // 2 pi / 16: every wave repeats each 16 blocks
+    '\tif (code > 251.5) {\n'+
+    // plants: the top moves, the base stays; out of the wind (low sky light) they stay still
+    '\t\tvec3 lm = TEX_MAT3(u_textureMat4f02) * vec3(a_lightmap2f, 1.0);\n'+
+    '\t\tfloat open = smoothstep(0.45, 0.9, lm.y / lm.z);\n'+
+    '\t\tvec2 w = vec2(sin(K * (p.x + p.z) + t * 1.9) + 0.45 * sin(K * (3.0 * p.x - 2.0 * p.z) + t * 3.3),\n'+
+    '\t\t\tsin(K * (p.z - 2.0 * p.x) + t * 1.5) + 0.45 * sin(K * (2.0 * p.x + 3.0 * p.z) + t * 2.9));\n'+
+    '\t\tp.xz += w * (tw_a.y * (254.0 - code) * open);\n'+
+    '\t\tv_twKind = 1.0;\n'+
+    '\t} else if (code > 250.5) {\n'+
+    // leaves and vines: every vertex sways by where it is, so neighbouring blocks stay joined
+    '\t\tp += vec3(sin(K * (p.x + 2.0 * p.y + p.z) + t * 1.7), 0.5 * sin(K * (p.x - p.z + 2.0 * p.y) + t * 2.3),\n'+
+    '\t\t\tsin(K * (2.0 * p.x - p.y + 3.0 * p.z) + t * 1.3)) * tw_a.z;\n'+
+    '\t\tv_twKind = 2.0;\n'+
+    '\t} else {\n'+
+    // water: only the surface moves (whole-block heights such as the bottom stay put)
+    '\t\tv_twKind = 3.0;\n'+
+    '\t\tif (abs(p.y - floor(p.y + 0.5)) > 0.01) p.y += tw_a.w * twWater(p.xz, t);\n'+
+    '\t}\n'+
+    '\treturn p;\n'+
+    '}\n'+
+    '#endif\n';
+  var WV_VS_MAIN='\n#ifdef THUNDER_WORLD\n\tvec3 twP = twVertex(a_position3f);\n#define a_position3f twP\n#define a_color4f twColor\n#endif\n';
+  var WV_FS_DECL=WV_IF+
+    'flat in float v_twKind;\nin vec3 v_twPos;\nin vec3 v_twX;\nin vec3 v_twY;\nin vec3 v_twZ;\n'+
+    // slope of fine ripples (world space), for the reflection and glints
+    'vec2 twSlope(vec2 q, float t) {\n'+
+    '\tconst float K = 0.39269908;\n'+
+    '\tvec2 d = vec2(9.0, 4.0) * (0.020 * cos(K * dot(vec2(9.0, 4.0), q) + t * 2.1));\n'+
+    '\td += vec2(-5.0, 11.0) * (0.016 * cos(K * dot(vec2(-5.0, 11.0), q) + t * 2.6));\n'+
+    '\td += vec2(14.0, -7.0) * (0.010 * cos(K * dot(vec2(14.0, -7.0), q) + t * 3.4));\n'+
+    '\td += vec2(3.0, 17.0) * (0.008 * cos(K * dot(vec2(3.0, 17.0), q) + t * 3.9));\n'+
+    '\treturn d * K;\n'+
+    '}\n'+
+    '#endif\n';
+  // water surfaces reflect the sky (the fog color is the horizon color the game already uses),
+  // more at low angles (Fresnel), less under cover; the sun or moon leaves a glint
+  var WV_FS_WATER='#ifdef THUNDER_WORLD\n'+
+    '\tif (v_twKind > 2.5 && tw_b.x > 0.0) {\n'+
+    '\t\tvec3 twV = v_position4f.xyz / v_position4f.w;\n'+
+    '\t\tvec3 twG = normalize(cross(dFdx(twV), dFdy(twV)));\n'+
+    '\t\tfloat twTop = smoothstep(0.75, 0.95, abs(dot(twG, normalize(v_twY))));\n'+
+    '\t\tif (twTop > 0.0) {\n'+
+    '\t\t\tvec2 twD = twSlope(v_twPos.xz, tw_a.x);\n'+
+    '\t\t\tvec3 twN = normalize(v_twY - v_twX * twD.x - v_twZ * twD.y);\n'+
+    '\t\t\tvec3 twE = normalize(-twV);\n'+
+    '\t\t\tif (dot(twN, twE) < 0.0) twN = -twN;\n'+
+    '\t\t\tfloat twF = 0.08 + 0.92 * pow(1.0 - clamp(dot(twN, twE), 0.0, 1.0), 5.0);\n'+
+    '\t\t\tfloat twSky = smoothstep(0.35, 0.9, v_lightmap2f.y);\n'+
+    '\t\t\tvec3 twS = normalize(v_twX * tw_sun.x + v_twY * tw_sun.y + v_twZ * tw_sun.z);\n'+
+    '\t\t\tfloat twSp = pow(max(dot(reflect(-twE, twN), twS), 0.0), 240.0) * tw_sun.w * twSky;\n'+
+    '\t\t\tfloat twK = tw_b.x * twTop;\n'+
+    '\t\t\tcolor.rgb = mix(color.rgb, u_fogColor4f.rgb * mix(0.4, 1.05, twSky), clamp(twF * twK * 1.2, 0.0, 0.85));\n'+
+    '\t\t\tcolor.rgb += vec3(1.0, 0.92, 0.78) * (twSp * 2.5 * twK);\n'+
+    '\t\t\tcolor.a = clamp(max(color.a, twF * twK) + twSp * twK, 0.0, 1.0);\n'+
+    '\t\t}\n'+
+    '\t}\n'+
+    '#endif\n';
+
+  var WV={patched:false,failed:null,needFlush:false,ov:null,of:null,ovText:'',pv:null,pf:null,
+    uOn:null,uOff:null,data:new Float32Array(16),frame:-1,frameNo:0,on:false,marks:0,compiled:0};
+
+  // the patched shader text for the game's core.vsh / core.fsh text, or null if it is not the
+  // layout this was written for
+  function wvPatch(vs,fs){
+    var vm=vs.indexOf('void main() {'),fo=fs.indexOf('EAGLER_FRAG_OUT()');
+    var fog=/#ifdef COMPILE_ENABLE_FOG\r?\n\s*vec3 fogPos/.exec(fs);
+    if(vm<0||vs.indexOf('void main() {',vm+1)>=0||vs.indexOf('TEX_MAT3(')<0||fo<0||!fog||
+      vs.indexOf('a_color4f')<0||fs.indexOf('vec4 color')<0)return null;
+    var vm2=vm+'void main() {'.length;
+    return {
+      vs:vs.slice(0,vm)+WV_VS_DECL+vs.slice(vm,vm2)+WV_VS_MAIN+vs.slice(vm2),
+      fs:fs.slice(0,fo)+WV_FS_DECL+fs.slice(fo,fog.index)+WV_FS_WATER+fs.slice(fog.index)
+    };
+  }
+  // compile and link the patched text the way the game assembles it (GLSLHeader: version header,
+  // stage define, state defines, compat header, source) for terrain states and for an entity
+  // state, before the game ever sees it
+  var WV_TEST=[
+    ['TEXTURE_ATTRIB','COLOR_ATTRIB','LIGHTMAP_ATTRIB','ENABLE_TEXTURE2D','ENABLE_LIGHTMAP','ENABLE_FOG'],
+    ['TEXTURE_ATTRIB','COLOR_ATTRIB','LIGHTMAP_ATTRIB','ENABLE_TEXTURE2D','ENABLE_LIGHTMAP','ENABLE_ALPHA_TEST',
+      'ENABLE_MC_LIGHTING','ENABLE_ANISOTROPIC_FIX','ENABLE_FOG','BLEND_ADD'],
+    ['TEXTURE_ATTRIB','COLOR_ATTRIB','NORMAL_ATTRIB','ENABLE_TEXTURE2D','ENABLE_LIGHTMAP','ENABLE_ALPHA_TEST',
+      'ENABLE_MC_LIGHTING','ENABLE_FOG']
+  ];
+  function wvTest(p){
+    var gl=HEl,head=$rt_ustr(H1M),compat=$rt_ustr(H1N),i,j,ok=true,log='';
+    for(i=0;i<WV_TEST.length&&ok;i++){
+      var defs='';
+      for(j=0;j<WV_TEST[i].length;j++)defs+='#define COMPILE_'+WV_TEST[i][j]+'\n';
+      defs+='precision lowp int;\nprecision highp float;\nprecision mediump sampler2D;\n\n';
+      var v=gl.createShader(gl.VERTEX_SHADER),f=gl.createShader(gl.FRAGMENT_SHADER),pr=gl.createProgram();
+      gl.shaderSource(v,head+'#define EAGLER_IS_VERTEX_SHADER\n'+defs+'\n'+compat+'\n'+p.vs);gl.compileShader(v);
+      gl.shaderSource(f,head+'#define EAGLER_IS_FRAGMENT_SHADER\n'+defs+'\n'+compat+'\n'+p.fs);gl.compileShader(f);
+      gl.attachShader(pr,v);gl.attachShader(pr,f);gl.linkProgram(pr);
+      if(!gl.getProgramParameter(pr,gl.LINK_STATUS)){
+        ok=false;log=(gl.getShaderInfoLog(v)||'')+(gl.getShaderInfoLog(f)||'')+(gl.getProgramInfoLog(pr)||'');
+      }
+      gl.deleteProgram(pr);gl.deleteShader(v);gl.deleteShader(f);
+    }
+    if(!ok&&W.console&&W.console.warn)W.console.warn('[Thunder] world shader test compile failed:',log);
+    return ok;
+  }
+  // the game's own cache flush (inlined in Minecraft.refreshResources): every compiled shader
+  // state is deleted and compiled again from the current text the next time it is needed
+  function wvFlush(){
+    var a=HE2.data,e=HE3.data,i,j,x;
+    for(i=0;i<a.length;i++)if(a[i]!==null){CC6(a[i]);a[i]=null;}
+    for(i=0;i<e.length;i++){
+      x=e[i];if(x===null)continue;
+      for(j=0;j<x.data.length;j++)if(x.data[j]!==null){CC6(x.data[j]);x.data[j]=null;}
+      e[i]=null;
+    }
+    CA(HE4);
+  }
+  function wvBuffers(){
+    if(WV.uOn)return;
+    var gl=HEl;
+    WV.uOn=gl.createBuffer();WV.uOff=gl.createBuffer();
+    gl.bindBuffer(gl.UNIFORM_BUFFER,WV.uOn);gl.bufferData(gl.UNIFORM_BUFFER,64,gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.UNIFORM_BUFFER,WV.uOff);gl.bufferData(gl.UNIFORM_BUFFER,64,gl.STATIC_DRAW);
+    // binding point 0 always has a buffer, so a patched shader can never draw without one
+    // (the game itself uses no uniform buffers)
+    gl.bindBufferBase(gl.UNIFORM_BUFFER,0,WV.uOff);
+  }
+  function wvWant(){return !!(S.shaders&&(S.shWave||S.shWater))&&HEv===300&&!WV.failed&&!!HEl;}
+  // once per frame, between frames: put the patched or the original text in place
+  function wvSync(){
+    if(WV.needFlush){WV.needFlush=false;wvFlush();}
+    if(wvWant()){
+      if(WV.patched&&HE0===WV.pv&&HE1===WV.pf)return;
+      if(HE0===null||HE1===null)return;                  // the game loads them with its first shader
+      if(HE0!==WV.pv||HE1!==WV.pf){
+        var vs=$rt_ustr(HE0),fs=$rt_ustr(HE1);
+        if(!WV.pv||vs!==WV.ovText){                       // first time, or a reload brought new text
+          var p=wvPatch(vs,fs);
+          if(!p){WV.failed='This game version\'s world shader has a different layout.';return;}
+          if(!wvTest(p)){WV.failed='The world shader did not compile on this device.';return;}
+          WV.ovText=vs;WV.pv=$rt_str(p.vs);WV.pf=$rt_str(p.fs);
+        }
+        WV.ov=HE0;WV.of=HE1;
+      }
+      wvBuffers();
+      wvFlush();HE0=WV.pv;HE1=WV.pf;WV.patched=true;
+    }else if(WV.patched){
+      wvFlush();
+      if(HE0===WV.pv)HE0=WV.ov;
+      if(HE1===WV.pf)HE1=WV.of;
+      WV.patched=false;
+    }
+  }
+  frameTasks.push(function(){WV.frameNo++;try{wvSync();}catch(e){WV.failed='Error: '+(e&&e.message||e);report(e);}});
+
+  // uniform buffer values for this frame
+  function wvUpdate(pt){
+    var d=WV.data,mc=HEN,w=mc&&mc.X,rain=0,sx=0,sy=1,sun=0;
+    try{
+      if(w&&w.b4&&w.b4.Tv()){
+        if(!(pt>=0&&pt<=1))pt=1;
+        var ang=Q$(w,pt)*6.283185307179586;
+        sx=-Math.sin(ang);sy=Math.cos(ang);rain=clamp(Number(R$(w,pt))||0,0,1);
+        if(sy>-0.05)sun=clamp((sy+0.05)*6,0,1);
+        else{sx=-sx;sy=-sy;sun=0.3*clamp((sy-0.05)*6,0,1);}   // the moon
+        sun*=1-rain;
+      }
+    }catch(_){}
+    var wave=S.shWave?clamp(Number(S.shWaveStr)||0,0,100)/100:0,water=S.shWater?clamp(Number(S.shWaterStr)||0,0,100)/100:0;
+    var wind=1+rain*0.8;
+    d[0]=(now()/1000)%3600;d[1]=0.075*wave*wind;d[2]=0.035*wave*wind;d[3]=0.06*water;
+    d[4]=water;d[5]=1;d[6]=0;d[7]=0;
+    d[8]=sx;d[9]=sy;d[10]=0;d[11]=sun;
+    d[12]=rain;d[13]=0;d[14]=0;d[15]=0;
+    var gl=HEl;
+    gl.bindBuffer(gl.UNIFORM_BUFFER,WV.uOn);gl.bufferSubData(gl.UNIFORM_BUFFER,0,d);
+  }
+  // chunk layers: the added GLSL is only active while these draw
+  var origDCQ=DCQ;
+  DCQ=function(a,b,c,d,e){
+    if(!WV.patched||!WV.uOn)return origDCQ(a,b,c,d,e);
+    var gl=HEl;
+    try{if(WV.frame!==WV.frameNo){WV.frame=WV.frameNo;wvUpdate(c);}gl.bindBufferBase(gl.UNIFORM_BUFFER,0,WV.uOn);}catch(x){report(x);}
+    var r=origDCQ(a,b,c,d,e);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER,0,WV.uOff);
+    return r;
+  };
+  // If the game ever fails to compile the patched text for some state, that state (and, from
+  // the next frame, every other) goes back to the game's own shader and the effect turns off.
+  var origC_0=C_0;
+  C_0=function(b,c,d){
+    if(!WV.patched||$rt_resuming())return origC_0(b,c,d);
+    try{var r=origC_0(b,c,d);if(!$rt_suspending())WV.compiled++;return r;}
+    catch(e){
+      WV.failed='The world shader did not compile for one of the game\'s states.';report(e);
+      if(HE0===WV.pv)HE0=WV.ov;
+      if(HE1===WV.pf)HE1=WV.of;
+      WV.patched=false;WV.needFlush=true;
+      return origC_0(b,c,d);
+    }
+  };
+
+  // ---- vertex marks, written while a chunk is built ----------------------------------------
+  var wvI32=null,wvF32=null;
+  function wvFloats(a){if(a!==wvI32){wvI32=a;wvF32=new Float32Array(a.buffer,a.byteOffset,a.length);}return wvF32;}
+  function wvMark(state,pos,buf,n0){
+    var blk=state.n,kind;
+    if(!blk)return;
+    if(blk instanceof Ln){if(blk instanceof Bax||!S.shWave)return;kind=1;}   // plants, not lily pads
+    else if(blk instanceof U6||blk instanceof Rp){if(!S.shWave)return;kind=2;}
+    else if(blk instanceof Qz){if(blk.eX!==HGM||!S.shWater)return;kind=3;}   // water, not lava
+    else return;
+    var fmt=buf.sp,ib=buf.j3,a=ib&&ib.v5,n1=buf.sX;
+    if(!fmt||fmt.s0!==28||fmt.ctV!==12||!a||n1*7>ib.t3)return;   // block vertex layout only
+    var f=wvFloats(a),v,o,code=kind===2?WV_LEAVES:WV_WATER,by=0,top=0;
+    if(kind===1){
+      by=pos.i+buf.bUV+0.5;                               // half way up the block, chunk-relative
+      if(blk instanceof APk&&(blk.cV(state)&8))top=1;      // upper half of a tall plant
+    }
+    for(v=n0;v<n1;v++){
+      o=v*7;
+      if(kind===1)code=WV_PLANT-top-(f[o+1]>by?1:0);
+      a[o+3]=(a[o+3]&0xFFFFFF)|(code<<24);
+    }
+    WV.marks++;
+  }
+  var origDt2=Dt2;
+  Dt2=function(a,b,c,d,e){
+    var n0;
+    if($rt_resuming())n0=$rt_nativeThread().pop();
+    else n0=e?e.sX|0:0;
+    var r=origDt2(a,b,c,d,e);
+    if($rt_suspending()){$rt_nativeThread().push(n0);return r;}
+    if(r&&e&&(S.shWave||S.shWater)&&e.sX>n0){try{wvMark(b,c,e,n0);}catch(x){report(x);}}
+    return r;
+  };
+
+  // ---- See-through Leaves -------------------------------------------------------------------
+  // loadRenderers copies Fancy/Fast graphics into both leaf blocks, then chunks are rebuilt over
+  // the next frames; setting the flag right after keeps leaves transparent in that rebuild.
+  var origDbQ=DbQ;
+  DbQ=function(a){
+    origDbQ(a);
+    if($rt_suspending())return;
+    if(S.clearLeaves){if(H5O)H5O.bAC=1;if(H5P)H5P.bAC=1;}
+  };
+  // rebuild every chunk (what changing Graphics does), on the game thread
+  function wvReload(){
+    runOnGame([function(){
+      var rg=HEN&&HEN.fK;
+      if($rt_resuming()||(rg&&rg.d7!==null))DbQ(rg);
+    }]);
+  }
+  function wvToggled(){
+    // turning a kind on needs its marks, which are only written while chunks are built
+    var want=!!(S.shWave||S.shWater);
+    if(want)wvReload();
+  }
+
+  TC.world={
+    state:function(){return {patched:WV.patched,failed:WV.failed,marks:WV.marks,compiled:WV.compiled,webgl2:HEv===300};},
+    reload:wvReload
+  };
+
+  MODULES.push(
+    {cat:'shaders',id:'shWave',name:'Waving Plants',onChange:wvToggled,
+      desc:'Grass, flowers, crops, saplings, leaves and vines sway in the wind, a little more in rain. Plants in caves stay still. Needs WebGL 2.',
+      opts:[{id:'shWaveStr',name:'Strength',min:0,max:100,step:1,fmt:shPct}]},
+    {cat:'shaders',id:'shWater',name:'Water',onChange:wvToggled,
+      desc:'Gentle waves on the water surface, sky reflections that grow at low angles, and a glint from the sun or moon. Needs WebGL 2.',
+      opts:[{id:'shWaterStr',name:'Strength',min:0,max:100,step:1,fmt:shPct}]},
+    {cat:'visual',id:'clearLeaves',name:'See-through Leaves',onChange:wvReload,
+      desc:'Leaves you can see through, even on Fast graphics. Off: leaves follow the Graphics setting.'}
+  );
+
   // Friends: open this singleplayer world to friends with a join code, or join a friend's world
   /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
      Thunder LAN: open a singleplayer world to friends, and join a friend's world with a code.
      Included into the client scope of thunder-client.js by build.js. How it works, what was
      tested and the limits: thunder/NETWORKING.md.
@@ -52019,6 +52714,7 @@ c.PK;})();
 
   // Title screen: animated Thunder storm background with mouse parallax, and the Thunder logo
   /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
      Thunder title screen: an animated storm behind the title screen and the Thunder logo.
      Included into the client scope of thunder-client.js by build.js.
 
@@ -52045,12 +52741,16 @@ c.PK;})();
      @use GCZ net.minecraft.client.renderer.texture.TextureManager.loadTexture
      @use Cq8 net.minecraft.client.renderer.texture.TextureManager.deleteTexture
      @use FGe java.util.HashMap.remove
+     @use EHt net.minecraft.client.gui.Gui.drawString
      @class Hj net.minecraft.client.gui.GuiMainMenu
+     @virtual dK net.minecraft.client.gui.GuiMainMenu drawScreen
      @static LpF net.minecraft.client.gui.GuiMainMenu MINECRAFT_TITLE_TEXTURES (textures/gui/title/minecraft.png)
      @static LpG net.minecraft.client.gui.GuiMainMenu field_194400_H (textures/gui/title/edition.png)
 
      Instance fields:
      @field cEl net.minecraft.client.gui.GuiMainMenu.drawScreen GuiMainMenu.minceraftRoll
+     @field boX net.minecraft.client.gui.GuiMainMenu.drawScreen GuiMainMenu.splashText
+     @field J net.minecraft.client.gui.GuiMainMenu.drawScreen GuiScreen.fontRenderer
      @field gj net.minecraft.client.gui.GuiMainMenu.renderSkybox Minecraft.displayWidth
      @field fU net.minecraft.client.gui.GuiMainMenu.renderSkybox Minecraft.displayHeight
      @field bH net.minecraft.client.gui.GuiMainMenu.renderSkybox Minecraft.renderEngine
@@ -52490,10 +53190,34 @@ c.PK;})();
     else if(!S.titleLogo&&tlState===2)tlRemove();
   });
 
+  // ---- splash texts and the owner line -------------------------------------------------------
+  // The yellow splash is picked once per title screen; with Thunder splashes on, most of the time
+  // it is one of these instead of a vanilla line. The owner line sits above the version text.
+  var TT_SPLASHES=['ThunderGamey is the GOAT!','ThunderGamey is HIM!','All hail ThunderGamey!','ThunderGamey never misses!',
+    'ThunderGamey carries!','ThunderGamey: 1000 IQ!','ThunderGamey owns the storm!','Strike like ThunderGamey!',
+    'ThunderGamey >>> everyone','ThunderGamey cooked with this one!','Built by the legend ThunderGamey!',
+    'Jayvardhan Ginni is the GOAT!','Jayvardhan is built different!','Jayvardhan: certified genius!',
+    'Powered by Jayvardhan\'s big brain!','Jayvardhan is the main character!','Jayvardhan Ginni, the one and only!',
+    'Jayvardhan cooked with this one!','Jayvardhan never loses!','Jayvardhan Ginni = legend!',
+    'Thunder Client by Jayvardhan Ginni!','Jayvardhan made this. W.'];
+  // drawScreen is virtual: the game calls it through the class prototype, so that slot is wrapped
+  var ttMenu=null,ttProto=Hj.prototype,ttOrigDraw=ttProto.dK;
+  ttProto.dK=function(b,c,d){
+    if(!$rt_resuming()&&this!==ttMenu){
+      ttMenu=this;
+      if(S.titleSplash&&Math.random()<0.75)this.boX=$rt_str(TT_SPLASHES[Math.floor(Math.random()*TT_SPLASHES.length)]);
+    }
+    var r=ttOrigDraw.call(this,b,c,d);
+    if($rt_suspending())return r;
+    try{EHt(this,this.J,$rt_str(OWNER_LINE),2,(this.L|0)-30,0xFFD84A);}catch(e){report(e);}
+    return r;
+  };
+
   // ---- menu -------------------------------------------------------------------------------------
   MODULES.push({cat:'visual',id:'titleBg',name:'Thunder Title Screen',
     desc:'Animated storm behind the title screen: clouds, lightning, sparks and a blocky skyline that shift with the mouse.',opts:[
       {id:'titleLogo',name:'Thunder logo'},
+      {id:'titleSplash',name:'Thunder splash texts'},
       {id:'titleLightning',name:'Lightning'},
       {id:'titleParallax',name:'Mouse parallax',min:0,max:100,step:5,fmt:shPct},
       {id:'titleQuality',name:'Quality',choices:['Auto','Low','Medium','High']}]});
@@ -52506,6 +53230,7 @@ c.PK;})();
 
   // Menus: storm backgrounds, glass lists, Thunder buttons, sliders and text boxes everywhere
   /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
      Thunder menus: every menu in the Thunder style instead of dirt and grey buttons.
      Included into the client scope of thunder-client.js by build.js, after thunder-title.js,
      whose storm (tbStorm) it draws.
@@ -52824,6 +53549,7 @@ c.PK;})();
 
   // Built-in resource packs: Thunder 1.21.11 and Thunder PvP, added to the pack list on first start
   /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
      Built-in resource packs: Thunder 1.21.11 and Thunder PvP (built by thunder/packs/build_packs.py,
      served next to the page in packs/). On the first start they are added to the game's resource
      pack list exactly like Options > Resource Packs > "Open resource pack folder" would add them
@@ -53034,6 +53760,7 @@ c.PK;})();
 
   // Max FPS: one-click fastest settings, and Undo
   /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
      Max FPS: one click sets the fastest settings for this browser, one click puts them back.
      Game settings go through the game's own setters (the same calls the Video Settings buttons
      make, so chunks are rebuilt where the game rebuilds them) and are saved to options.txt;
@@ -53065,7 +53792,7 @@ c.PK;})();
      ------------------------------------------------------------------------------------------- */
   var FPS_UNDO='thunderMaxFpsUndo';
   var FPS_RD=6;                                   // chunks; lower is kept
-  var FPS_THUNDER={shaders:false,menuStorm:false,titleQuality:1};   // title quality 1 = Low
+  var FPS_THUNDER={shaders:false,menuStorm:false,titleQuality:1,clearLeaves:false};   // title quality 1 = Low
   var fpsBusy=false,fpsNote='';
 
   function fpsSettings(gs){
@@ -53153,7 +53880,11 @@ c.PK;})();
       fpsBusy=false;fpsNote='Your previous settings are back.';
       try{W.localStorage.removeItem(FPS_UNDO);}catch(_){}
     }]));
-    fpsThunder(u.thunder||{});
+    // a snapshot from an older version may lack a setting Max FPS now changes: that one goes back
+    // to its default
+    var th=u.thunder||{},id;
+    for(id in FPS_THUNDER)if(!Object.prototype.hasOwnProperty.call(th,id))th[id]=DEFAULTS[id];
+    fpsThunder(th);
     return true;
   }
 
@@ -53167,7 +53898,7 @@ c.PK;})();
   };
 
   MODULES.push({cat:'utility',id:null,special:'maxfps',name:'Max FPS',wide:true,
-    desc:'One click for the fastest settings: render distance 6 or less, Fast graphics, smooth lighting, clouds and entity shadows off, minimal particles, unlimited framerate, shaders off and plain menu backgrounds. In a world it also tests VSync on and off and keeps whichever is faster on this device. Undo puts everything back.'});
+    desc:'One click for the fastest settings: render distance 6 or less, Fast graphics, smooth lighting, clouds and entity shadows off, minimal particles, unlimited framerate, shaders off, solid leaves and plain menu backgrounds. In a world it also tests VSync on and off and keeps whichever is faster on this device. Undo puts everything back.'});
   SPECIALS.maxfps=function(box){
     var kv=el('div','tcm-kv');box.appendChild(kv);
     function row(label){kv.appendChild(el('span',null,label));var b=el('b',null,'-');kv.appendChild(b);return b;}

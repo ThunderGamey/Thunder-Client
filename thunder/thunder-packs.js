@@ -1,4 +1,5 @@
   /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
      Built-in resource packs: Thunder 1.21.11 and Thunder PvP (built by thunder/packs/build_packs.py,
      served next to the page in packs/). On the first start they are added to the game's resource
      pack list exactly like Options > Resource Packs > "Open resource pack folder" would add them

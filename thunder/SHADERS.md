@@ -116,9 +116,10 @@ rays and golden sunsets. Effects run in this order inside the composite:
 
 | Effect | Default | What it does |
 |---|---|---|
-| Bloom | on, 60 % | Soft, slightly warm glow around bright light (torches, lava, glowstone, the sun, which becomes a glowing disc). Adaptive threshold, see above. |
-| Ambient Glow | on, 50 % | Wide, soft spill of bright light into the surroundings, plus a small lift in very dark scenes. |
+| Bloom | on, 60 % | Soft, slightly warm glow around bright light (torches, lava, glowstone, the sun, which becomes a glowing disc). Adaptive threshold, see above. **Lights glow extra** (70 %) also feeds warm, saturated, bright texels (lava, fire, torch flames, glowstone, lit redstone lamps) into the bloom whatever the threshold, so they glow on their own: a little on LOW, a lot on HIGH, and a little under half as much in bright daylight. Sunlit sand, wood and stone are too pale to count. |
+| Ambient Glow | on, 50 % | Wide, soft spill of bright light into the surroundings, plus a small lift in very dark scenes. In a bright scene (the measured average brightness) the spill is cut to about a third, so daylight does not turn into haze. |
 | Sun Rays | on, 65 % | Light shafts from the sun (or, fainter and bluish, the moon) through gaps in leaves, trunks, hills and clouds. Added with a screen blend in the sun's color: golden at sunrise/sunset, warm white by day. By day under open sky half of it stays when the sun is out of view (looking down or away), coming in from the screen edge on the sun's side; off below the horizon, in caves and under roofs, in rain, and in the Nether/End. |
+| Underwater Rays | on, 70 % | While the camera is in water: moving light shafts fanning down from the surface above the screen, a soft caustic shimmer and a deeper blue-green. It eases in and out as the camera dips (about 0.3 s) and follows daylight (faint at night). |
 | Atmosphere | on, 60 % | Time-of-day light: golden sunrise and sunset, warm day, cool blue night, grey rain. Plus a soft haze of sunlight around the sun and an aerial haze along the horizon (placed from the camera pitch, tinted by the low sun when facing it). The tint spares blue sky and, at night, bright light sources; haze and glow only appear where the blurred scene is bright, so caves and walls stay clear. |
 | Color Grading | on, 75 % | The Mellow grade: shadows and mid-tones opened up a little, vibrance (dull colors gain the most), warm light and cool shadows, deeper blue sky and water, slightly lifted blacks, and a soft highlight shoulder that keeps hue. Warmth is weighted by (1 − chroma), so saturated colors keep their hue. |
 | Contrast | on, 35 % | S-curve on luminance, applied by scaling the color, so hue and saturation are preserved and nothing clips. |
@@ -151,8 +152,28 @@ than its own glow, which looked like a dark spot in the middle of the sun.
 
 ## Quality presets
 
-The presets only change bloom workload: the resolution the blur runs at, and how many blur levels
-there are. The effects look the same at every preset; lower presets give a slightly softer bloom.
+A preset sets the bloom workload (the resolution the blur runs at, and how many blur levels there
+are) and a **look**: every effect's own strength slider is multiplied by the preset's factor, so
+LOW, MEDIUM and HIGH look clearly different, not only sharper or softer.
+
+| Effect | LOW | MEDIUM | HIGH |
+|---|---|---|---|
+| Bloom | 0.6 | 1 | 1.6 |
+| Lights glow extra | 1.0 | 1.6 | 3.0 |
+| Ambient Glow | 0.4 | 1 | 1.9 |
+| Sun Rays | 0.55 | 1 | 1.45 |
+| Atmosphere | 0.6 | 1 | 1.35 |
+| Underwater Rays | 0.6 | 1 | 1.4 |
+| Color Grading | 0.6 | 1 | 1.15 |
+| Contrast | 0.4 | 1 | 3.4 |
+| Vignette | 0.4 | 1 | 2.2 |
+| Motion Blur | 1 | 1 | 1 |
+
+LOW is light and clean, MEDIUM is the Mellow look, HIGH is deep and cinematic: more contrast, a
+strong vignette, warmer light, longer rays and lights that glow a lot. CUSTOM uses the MEDIUM look
+with your own bloom settings. Blends that would overshoot are capped (Color Grading and Contrast
+at 1, Motion Blur at 0.9). Measured at noon on the test scene (1280×720, wall area): the screen
+corners are 182 / 165 / 141 bright on LOW / MEDIUM / HIGH, and color saturation 54 / 63 / 73.
 
 | Preset | Bloom resolution | Blur levels | Passes / frame | Work at 1280×720 |
 |---|---|---|---|---|
@@ -190,6 +211,41 @@ dominate. So LOW and MEDIUM overlap within run-to-run noise, while HIGH is consi
 expensive. The deterministic workload differs as in the table above (10 / 12 / 16 passes,
 1.88 / 2.00 / 2.46 MPx). None of this is representative of a real GPU, where the same full-screen
 passes typically cost well under a millisecond.
+
+## World effects: waving plants, water, see-through leaves
+
+These change the world's own shader, not the post-processing pass (code: `thunder-world.js`).
+They follow the Shaders switch and need WebGL 2.
+
+| Setting | Default | What it does |
+|---|---|---|
+| Waving Plants | on, 60 % | Grass, ferns, flowers, saplings, crops, mushrooms, tall plants, leaves and vines sway in the wind, more in rain. Plants move at the top and keep their base; tall plants bend as one piece; plants with little sky light (caves) stay still. Leaves and vines move as a whole, by position, so neighbouring blocks stay joined. |
+| Water | on, 70 % | The water surface moves in gentle waves (only the surface; sides follow it, the bottom stays). Flat water reflects the sky (the fog color the game already uses for the horizon) more at low angles (Fresnel) and less under cover, with fine moving ripples and a glint from the sun or moon. |
+| See-through Leaves (Visual tab) | on | Leaves stay transparent (their Fancy form) even on Fast graphics. Off: leaves follow the Graphics setting. Max FPS turns it off. |
+
+How it works:
+
+- Eaglercraft compiles `assets/eagler/glsl/core.vsh` / `core.fsh` once per GL state combination
+  (`FixedFunctionPipeline.makeNewPipeline`, source cached in two static fields). Thunder adds its
+  GLSL to that text inside `#if` blocks that are only true for block terrain (texture, color and
+  lightmap attributes, fog, no normals), so GUI, entity, item, particle and sky shaders compile
+  exactly as before. Switching on or off deletes the compiled states (the same flush the game does
+  on a resource reload) and they are compiled again from the new text.
+- Which vertices belong to a plant, leaves or water is written into the vertex alpha while a chunk
+  is built (`BlockRendererDispatcher.renderBlock`): 254 plant base, 253 plant top, 252 top of a
+  tall plant, 251 leaves and vines, 250 water, instead of 255. The added GLSL turns it back to 255.
+  Without it the marks are invisible (at most 2 % alpha on those vertices).
+- The added GLSL reads one 64-byte uniform buffer (time, strengths, sun direction). The buffer that
+  says "move" is bound only while chunk layers draw (`RenderGlobal.renderBlockLayer`), so nothing
+  else can move. The game itself uses no uniform buffers.
+- Waves repeat every 16 blocks, so they meet exactly at chunk borders (chunk vertices are stored
+  relative to their chunk).
+- The patched text is compiled and linked once for three game states before it is used. If the
+  game ever fails to compile it for some state anyway, that state and then all others go back to
+  the game's own shader and the effect reports itself off (`ThunderClient.world.state()`).
+- See-through Leaves: `RenderGlobal.loadRenderers` copies the Graphics setting into both leaf
+  blocks; right after it, Thunder sets them transparent again. Toggling it rebuilds the chunks, as
+  changing Graphics does.
 
 ## Auto quality and the FPS safety net
 
@@ -245,6 +301,10 @@ values that differ from the defaults are saved.
 | `shBloomRes`, `shBloomLevels` | 2, 4 | CUSTOM: bloom at 1/2^n, blur levels |
 | `shAuto`, `shTargetFps`, `shPerf` | true, 30, false | auto quality, its target, Performance Mode |
 | `shBloom`/`shBloomStr`, `shAmbient`, `shRays`, `shAtmos`, `shGrade`, `shContrast`, `shVignette`, `shMotion` (each with `…Str`) | see Effects | per-effect switch and strength |
+| `shGlowStr` | 70 | Bloom > Lights glow extra % |
+| `shUnder`/`shUnderStr` | true, 70 | Underwater Rays |
+| `shWave`/`shWaveStr`, `shWater`/`shWaterStr` | true, 60 / true, 70 | Waving Plants, Water (world shader) |
+| `clearLeaves` | true | See-through Leaves (Visual tab) |
 
 **Reset Shader Settings** (two clicks) restores every shader setting except the ON/OFF switch,
 and forgets the level auto quality learned. **Reset all** in the menu footer also switches

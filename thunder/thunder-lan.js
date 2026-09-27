@@ -1,4 +1,5 @@
   /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
      Thunder LAN: open a singleplayer world to friends, and join a friend's world with a code.
      Included into the client scope of thunder-client.js by build.js. How it works, what was
      tested and the limits: thunder/NETWORKING.md.

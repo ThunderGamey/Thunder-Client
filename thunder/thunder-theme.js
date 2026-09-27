@@ -1,4 +1,5 @@
   /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
      Thunder menus: every menu in the Thunder style instead of dirt and grey buttons.
      Included into the client scope of thunder-client.js by build.js, after thunder-title.js,
      whose storm (tbStorm) it draws.

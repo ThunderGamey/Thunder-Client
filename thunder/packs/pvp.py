@@ -1,7 +1,14 @@
 """Thunder PvP - a clean PvP look, made to sit on top of Thunder 1.21.11.
+Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
 
 Every texture here is built by this script from the 1.21.11 ones (nothing is copied from other
 packs):
+  - plain armor: worn armor in one flat colour per piece with a darker edge on every face, and
+    matching flat armor icons
+  - flat swords and tools: one tone per material with a dark outline and a light top edge
+  - calmer blocks: grass, dirt, stone, cobblestone, planks, sand, gravel, wool and more with
+    less noise
+  - small clean crit and sharpness particles
   - hotbar: separate dark slots with gaps, light grey selected slot, matching off-hand slot
   - end crystals: wireframe glass cages around a bright pink core
   - obsidian: dark and smooth, cobweb: bright white, glass: clear (frame only)
@@ -138,10 +145,146 @@ def build(lib, v12, m, base):
             cell = pa.crop((x, y, x + 8, y + 8)).resize((4, 4), Image.NEAREST)
             lib.clear(pa, (x, y, x + 8, y + 8))
             pa.paste(cell, (x + 2, y + 2))
+    for idx, shape in ((65, _CRIT), (66, _MAGIC_CRIT)):   # crit and sharpness hits: small and clean
+        x, y = idx % 16 * 8, idx // 16 * 8
+        lib.clear(pa, (x, y, x + 8, y + 8))
+        for j, row in enumerate(shape):
+            for i, ch in enumerate(row):
+                if ch != '.':
+                    pa.putpixel((x + i, y + j), (255, 255, 255, 255) if ch == '#' else (205, 205, 205, 255))
     pk.put_png(T('particle/particles.png'), pa)
+
+    # Plain armor, flat swords and tools --------------------------------------------------------
+    for mat in ('diamond', 'iron', 'gold'):
+        for layer in (1, 2):
+            n = 'models/armor/%s_layer_%d.png' % (mat, layer)
+            pk.put_png(T(n), _flat_armor(b121(n)))
+        for piece in ('helmet', 'chestplate', 'leggings', 'boots'):
+            n = 'items/%s_%s.png' % (mat, piece)
+            pk.put_png(T(n), _flat_item(b121(n), 2))
+    for mat in ('wood', 'stone', 'iron', 'gold', 'diamond'):
+        for tool in ('sword', 'axe', 'pickaxe'):
+            n = 'items/%s_%s.png' % (mat, tool)
+            pk.put_png(T(n), _flat_item(b121(n), 3))
+    for n, k in (('ender_pearl', 3), ('apple_golden', 3), ('snowball', 2)):
+        pk.put_png(T('items/%s.png' % n), _flat_item(b121('items/%s.png' % n), k))
+
+    # Calmer blocks: fewer tones, single stray pixels removed ----------------------------------------
+    for n in _CLEAN_BLOCKS:
+        if meta121('blocks/%s.png' % n) is None and T('blocks/%s.png' % n) in base.files:
+            pk.put_png(T('blocks/%s.png' % n), _clean(b121('blocks/%s.png' % n), 4))
 
     pk.put_png('pack.png', _icon(m))
     return pk
+
+
+_CRIT = ['........', '...#....', '...#....', '.##+##..', '...#....', '...#....', '........', '........']
+_MAGIC_CRIT = ['........', '........', '..+.+...', '...#....', '..+.+...', '........', '........', '........']
+_CLEAN_BLOCKS = (['dirt', 'grass_side', 'grass_top', 'stone', 'cobblestone', 'sand', 'gravel', 'end_stone', 'netherrack',
+                  'sandstone_normal', 'sandstone_top', 'sandstone_bottom', 'snow', 'brick', 'stonebrick', 'clay',
+                  'hardened_clay', 'log_oak', 'log_spruce', 'log_birch']
+                 + ['planks_%s' % w for w in ('oak', 'spruce', 'birch', 'jungle', 'acacia', 'big_oak')]
+                 + ['wool_colored_%s' % c for c in ('white', 'orange', 'magenta', 'light_blue', 'yellow', 'lime', 'pink', 'gray',
+                                                    'silver', 'cyan', 'purple', 'blue', 'brown', 'green', 'red', 'black')])
+_N4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
+
+
+def _lum(c):
+    return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]
+
+
+def _shade(c, f):
+    """Darker (f < 1) or lighter (f > 1) version of a colour, same hue."""
+    h, l, s = colorsys.rgb_to_hls(*(v / 255 for v in c[:3]))
+    l = l * f if f < 1 else l + (1 - l) * (f - 1)
+    return tuple(int(round(v * 255)) for v in colorsys.hls_to_rgb(h, max(0.0, min(1.0, l)), s))
+
+
+def _palette(colors, k):
+    """k representative colours (median cut + k-means) and each input colour's group."""
+    s = Image.new('RGB', (len(colors), 1))
+    s.putdata(colors)
+    q = s.quantize(colors=k, method=Image.Quantize.MEDIANCUT, kmeans=6)
+    return q.getpalette()[:3 * k], _pixels(q)
+
+
+def _clean(im, k):
+    """Fewer tones (k colours from the texture itself) and no single stray pixels."""
+    w, h = im.size
+    px = im.load()
+    solid = [(x, y) for y in range(h) for x in range(w) if px[x, y][3] >= 128]
+    if not solid:
+        return im
+    pal, grp = _palette([px[p][:3] for p in solid], k)
+    idx = dict(zip(solid, grp))
+    out = im.copy()
+    op = out.load()
+    for (x, y), g in idx.items():
+        nb = [idx[(x + dx, y + dy)] for dx, dy in _N4 if (x + dx, y + dy) in idx]
+        if len(nb) >= 3 and g not in nb:
+            g = max(set(nb), key=nb.count)
+        op[x, y] = (pal[3 * g], pal[3 * g + 1], pal[3 * g + 2], px[x, y][3])
+    return out
+
+
+def _flat_item(im, k, dark=0.42, light=1.28):
+    """Plain item: one tone per material (k groups), dark outline, light rim on the top-left."""
+    w, h = im.size
+    px = im.load()
+
+    def solid(x, y):
+        return 0 <= x < w and 0 <= y < h and px[x, y][3] >= 128
+    edge = {(x, y) for y in range(h) for x in range(w) if solid(x, y) and any(not solid(x + dx, y + dy) for dx, dy in _N4)}
+    inner = [(x, y) for y in range(h) for x in range(w) if solid(x, y) and (x, y) not in edge]
+    if not inner:
+        return im
+    _, grp = _palette([px[p][:3] for p in inner], k)
+    gof = dict(zip(inner, grp))
+    base = {}
+    for g in set(grp):
+        members = sorted((px[p][:3] for p in inner if gof[p] == g), key=_lum)
+        base[g] = members[len(members) // 2]
+    out = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+    op = out.load()
+    for (x, y) in inner:
+        c = base[gof[(x, y)]]
+        if (x - 1, y) in edge or (x, y - 1) in edge:
+            c = _shade(c, light)
+        op[x, y] = c + (255,)
+    for (x, y) in edge:
+        nb = [gof[(x + dx, y + dy)] for dx, dy in _N4 + ((1, 1), (-1, -1), (1, -1), (-1, 1)) if (x + dx, y + dy) in gof]
+        c = base[max(set(nb), key=nb.count)] if nb else px[x, y][:3]
+        op[x, y] = _shade(c, dark) + (255,)
+    return out
+
+
+# armor model boxes (u, v, w, h, d) on the 64x32 sheet: head, head overlay, body, arm, leg
+_ARMOR_BOXES = [(0, 0, 8, 8, 8), (32, 0, 8, 8, 8), (16, 16, 8, 12, 4), (40, 16, 4, 12, 4), (0, 16, 4, 12, 4)]
+
+
+def _flat_armor(im, dark=0.55):
+    """Plain worn armor: every painted face in the armor's main colour with a darker 1-texel edge."""
+    w, h = im.size
+    s = max(1, w // 64)
+    px = im.load()
+    cols = sorted((px[x, y][:3] for y in range(h) for x in range(w) if px[x, y][3] >= 128), key=_lum)
+    if not cols:
+        return im
+    base = cols[len(cols) * 6 // 10]
+    out = im.copy()
+    op = out.load()
+    for (u, v, bw, bh, bd) in _ARMOR_BOXES:
+        for (fx, fy, fw, fh) in _box_faces(u, v, bw, bh, bd):
+            x0, y0, x1, y1 = fx * s, fy * s, (fx + fw) * s, (fy + fh) * s
+
+            def solid(a, b):
+                return x0 <= a < x1 and y0 <= b < y1 and px[a, b][3] >= 128
+            for y in range(y0, y1):
+                for x in range(x0, x1):
+                    if px[x, y][3] >= 128:
+                        rim = any(not solid(x + dx * s, y + dy * s) for dx, dy in _N4)
+                        op[x, y] = (_shade(base, dark) if rim else base) + (255,)
+    return out
 
 
 MODEL = 'assets/minecraft/models/item/'

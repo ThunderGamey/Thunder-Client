@@ -1,4 +1,5 @@
   /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
      Thunder title screen: an animated storm behind the title screen and the Thunder logo.
      Included into the client scope of thunder-client.js by build.js.
 
@@ -25,12 +26,16 @@
      @use GCZ net.minecraft.client.renderer.texture.TextureManager.loadTexture
      @use Cq8 net.minecraft.client.renderer.texture.TextureManager.deleteTexture
      @use FGe java.util.HashMap.remove
+     @use EHt net.minecraft.client.gui.Gui.drawString
      @class Hj net.minecraft.client.gui.GuiMainMenu
+     @virtual dK net.minecraft.client.gui.GuiMainMenu drawScreen
      @static LpF net.minecraft.client.gui.GuiMainMenu MINECRAFT_TITLE_TEXTURES (textures/gui/title/minecraft.png)
      @static LpG net.minecraft.client.gui.GuiMainMenu field_194400_H (textures/gui/title/edition.png)
 
      Instance fields:
      @field cEl net.minecraft.client.gui.GuiMainMenu.drawScreen GuiMainMenu.minceraftRoll
+     @field boX net.minecraft.client.gui.GuiMainMenu.drawScreen GuiMainMenu.splashText
+     @field J net.minecraft.client.gui.GuiMainMenu.drawScreen GuiScreen.fontRenderer
      @field gj net.minecraft.client.gui.GuiMainMenu.renderSkybox Minecraft.displayWidth
      @field fU net.minecraft.client.gui.GuiMainMenu.renderSkybox Minecraft.displayHeight
      @field bH net.minecraft.client.gui.GuiMainMenu.renderSkybox Minecraft.renderEngine
@@ -470,10 +475,34 @@
     else if(!S.titleLogo&&tlState===2)tlRemove();
   });
 
+  // ---- splash texts and the owner line -------------------------------------------------------
+  // The yellow splash is picked once per title screen; with Thunder splashes on, most of the time
+  // it is one of these instead of a vanilla line. The owner line sits above the version text.
+  var TT_SPLASHES=['ThunderGamey is the GOAT!','ThunderGamey is HIM!','All hail ThunderGamey!','ThunderGamey never misses!',
+    'ThunderGamey carries!','ThunderGamey: 1000 IQ!','ThunderGamey owns the storm!','Strike like ThunderGamey!',
+    'ThunderGamey >>> everyone','ThunderGamey cooked with this one!','Built by the legend ThunderGamey!',
+    'Jayvardhan Ginni is the GOAT!','Jayvardhan is built different!','Jayvardhan: certified genius!',
+    'Powered by Jayvardhan\'s big brain!','Jayvardhan is the main character!','Jayvardhan Ginni, the one and only!',
+    'Jayvardhan cooked with this one!','Jayvardhan never loses!','Jayvardhan Ginni = legend!',
+    'Thunder Client by Jayvardhan Ginni!','Jayvardhan made this. W.'];
+  // drawScreen is virtual: the game calls it through the class prototype, so that slot is wrapped
+  var ttMenu=null,ttProto=Hj.prototype,ttOrigDraw=ttProto.dK;
+  ttProto.dK=function(b,c,d){
+    if(!$rt_resuming()&&this!==ttMenu){
+      ttMenu=this;
+      if(S.titleSplash&&Math.random()<0.75)this.boX=$rt_str(TT_SPLASHES[Math.floor(Math.random()*TT_SPLASHES.length)]);
+    }
+    var r=ttOrigDraw.call(this,b,c,d);
+    if($rt_suspending())return r;
+    try{EHt(this,this.J,$rt_str(OWNER_LINE),2,(this.L|0)-30,0xFFD84A);}catch(e){report(e);}
+    return r;
+  };
+
   // ---- menu -------------------------------------------------------------------------------------
   MODULES.push({cat:'visual',id:'titleBg',name:'Thunder Title Screen',
     desc:'Animated storm behind the title screen: clouds, lightning, sparks and a blocky skyline that shift with the mouse.',opts:[
       {id:'titleLogo',name:'Thunder logo'},
+      {id:'titleSplash',name:'Thunder splash texts'},
       {id:'titleLightning',name:'Lightning'},
       {id:'titleParallax',name:'Mouse parallax',min:0,max:100,step:5,fmt:shPct},
       {id:'titleQuality',name:'Quality',choices:['Auto','Low','Medium','High']}]});

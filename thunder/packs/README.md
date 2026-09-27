@@ -7,7 +7,7 @@ player. To use both, select **Thunder 1.21.11** and then **Thunder PvP**, so PvP
 | Pack | What it is |
 | --- | --- |
 | `Thunder-1.21.11.zip` | The textures of Minecraft Java 1.21.11, converted to the names and sheet layouts of 1.12. |
-| `Thunder-PvP.zip` | A clean PvP look (small totem, low fire, wireframe crystals, gapped hotbar), made from the 1.21.11 textures to sit on top of Thunder 1.21.11. |
+| `Thunder-PvP.zip` | A clean PvP look (plain armor, flat swords and tools, calmer blocks, clean crits, small totem, low fire, wireframe crystals, gapped hotbar), made from the 1.21.11 textures to sit on top of Thunder 1.21.11. |
 
 Both use `pack_format` 3 (1.12) and pass the Pack Doctor (`node thunder/pack-doctor-cli.js <zip>`).
 
@@ -39,6 +39,13 @@ Both use `pack_format` 3 (1.12) and pass the Pack Doctor (`node thunder/pack-doc
 
 These are original textures, made by `pvp.py` from the 1.21.11 ones.
 
+- **Plain armor:** worn diamond, iron and gold armor in one flat colour per piece with a darker
+  edge around every face, and matching flat armor icons.
+- **Swords and tools:** swords, axes and pickaxes (wood to diamond) with one tone per material, a
+  dark outline and a light top-left edge. Ender pearls, golden apples and snowballs match.
+- **Calmer blocks:** grass, dirt, stone, cobblestone, planks, logs, sand, gravel, sandstone,
+  wool, bricks, end stone, netherrack, snow and clay with fewer tones and no stray pixels.
+- **Particles:** crit hits are a small clean plus, sharpness hits a small x.
 - **Hotbar:** separate dark slots with gaps, a light grey selected slot, and a matching off-hand
   slot.
 - **End crystals:** a thin wire cage around a bright pink core.
@@ -53,6 +60,13 @@ These are original textures, made by `pvp.py` from the 1.21.11 ones.
   - no pumpkin blur, no vignette, and no sweep or damage-heart particles
   - smaller explosions and potion swirls
   - shorter grass and ferns
+
+## Items newer than 1.12
+
+The mace, spear, wind charge and other items added after 1.12 do not exist in this game version,
+so no 1.12 resource pack can give them a texture. On a newer server the proxy (ViaVersion /
+ViaBackwards) sends each of them to a 1.12 client as some existing 1.12 item instead; retexturing
+that item would retexture the real one too.
 
 ## Rebuilding
 
