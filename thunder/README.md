@@ -1,8 +1,8 @@
 # Thunder Client build
 
 `classes.js` is generated. Edit `thunder/thunder-client.js` (and `thunder/thunder-shaders.js`,
-`thunder/thunder-lan.js`, `thunder/thunder-title.js` and `thunder/thunder-theme.js`, which it
-pulls in with `// @include`), then run:
+`thunder/thunder-lan.js`, `thunder/thunder-title.js`, `thunder/thunder-theme.js` and
+`thunder/thunder-packs.js`, which it pulls in with `// @include`), then run:
 
 ```
 node thunder/build.js
@@ -67,6 +67,17 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   of `widgets.png` while `GuiButton.drawButton` runs (the hotbar keeps the real one), with white
   labels; text boxes, the Edit Profile boxes and the Credits panel are recoloured. Right Shift >
   Visual > Thunder Menus: on/off, storm or plain dark backgrounds (fastest), Thunder buttons.
+- `thunder-packs.js` - the built-in resource packs (Thunder 1.21.11 and Thunder PvP, in
+  `packs/`). On first start they are written into the game's own resource pack storage and
+  `resourcepacks/manifest.json`, exactly as the game's own import would write them, so they
+  appear in Options > Resource Packs.
+  - It uses no game code, and only opens the storage after the game has created it.
+  - A pack the player deletes stays deleted.
+  - A pack whose zip changed (hash in `packs/packs.json`) is updated in place.
+  - Right Shift > Utility > Built-in Resource Packs shows the status and can add them again.
+
+  The packs themselves are built by `thunder/packs/build_packs.py`; see
+  [packs/README.md](packs/README.md).
 - `thunder-shaders.js` - optional shader/post-processing system (Right Shift > Shaders). How it
   hooks the renderer, the pipeline, presets, FPS safety and limits: [SHADERS.md](SHADERS.md).
 - `thunder-lan.js` - Friends: open a singleplayer world to friends with a join code and join a

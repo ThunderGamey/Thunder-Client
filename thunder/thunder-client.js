@@ -1478,4 +1478,7 @@
 
   // Menus: storm backgrounds, glass lists, Thunder buttons, sliders and text boxes everywhere
   // @include thunder-theme.js
+
+  // Built-in resource packs: Thunder 1.21.11 and Thunder PvP, added to the pack list on first start
+  // @include thunder-packs.js
 })();

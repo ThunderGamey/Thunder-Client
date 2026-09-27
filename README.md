@@ -19,8 +19,15 @@ This project is a version of eaglercraftX based on Minecraft 1.12, specifically 
   Source and build: [`thunder/`](thunder/README.md), shaders:
   [`thunder/SHADERS.md`](thunder/SHADERS.md), Friends: [`thunder/NETWORKING.md`](thunder/NETWORKING.md).
 - **`index.html`** - the original WASM-GC launcher (unchanged).
-- **`Thunder-Updated-Textures-FIXED.zip`** - the Thunder resource pack (newer-style textures for
-  1.12), checked with the Pack Doctor (`thunder-pack-doctor.html`).
+- **`packs/`** - Thunder's two built-in resource packs, which appear in Options > Resource Packs
+  the first time the client is opened:
+  - **Thunder 1.21.11**: Minecraft 1.21.11 textures converted for 1.12.
+  - **Thunder PvP**: small totem, low fire, wireframe crystals and a clean hotbar. Put it above
+    Thunder 1.21.11.
+
+  What is in them and how they are built: [`thunder/packs/README.md`](thunder/packs/README.md).
+- **`Thunder-Updated-Textures-FIXED.zip`** - the older Thunder resource pack (newer-style
+  textures for 1.12), checked with the Pack Doctor (`thunder-pack-doctor.html`).
 
 ## License
 

@@ -1,0 +1,18 @@
+{
+  "packs": [
+    {
+      "file": "Thunder-1.21.11.zip",
+      "folder": "Thunder-1_21_11",
+      "name": "Thunder 1.21.11",
+      "version": "a4ab4c82193ba284",
+      "size": 887881
+    },
+    {
+      "file": "Thunder-PvP.zip",
+      "folder": "Thunder-PvP",
+      "name": "Thunder PvP",
+      "version": "e5e45f79f8e3b896",
+      "size": 47450
+    }
+  ]
+}
