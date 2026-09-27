@@ -1,12 +1,14 @@
 # Built-in resource packs
 
 Thunder ships two resource packs in [`packs/`](../../packs) and adds them to the game's pack list
-the first time someone opens the client (Options > Resource Packs). Nothing is switched on for the
-player. To use both, select **Thunder 1.21.11** and then **Thunder PvP**, so PvP sits on top.
+the first time someone opens the client (Options > Resource Packs). **Thunder 1.21.11** is then
+switched on once, the same way the Done button of that screen does it; switched off later, it stays
+off. **Thunder PvP** is never switched on for the player: to use it, select it so it sits above
+Thunder 1.21.11.
 
 | Pack | What it is |
 | --- | --- |
-| `Thunder-1.21.11.zip` | The textures of Minecraft Java 1.21.11, converted to the names and sheet layouts of 1.12. |
+| `Thunder-1.21.11.zip` | The textures of Minecraft Java 1.21.11, converted to the names and sheet layouts of 1.12, plus the items added since 1.12 (maces, spears, wind charges, netherite gear, ...) for newer servers. |
 | `Thunder-PvP.zip` | A clean PvP look (plain armor, flat swords and tools, calmer blocks, clean crits, small totem, low fire, wireframe crystals, gapped hotbar), made from the 1.21.11 textures to sit on top of Thunder 1.21.11. |
 
 Both use `pack_format` 3 (1.12) and pass the Pack Doctor (`node thunder/pack-doctor-cli.js <zip>`).
@@ -63,10 +65,28 @@ These are original textures, made by `pvp.py` from the 1.21.11 ones.
 
 ## Items newer than 1.12
 
-The mace, spear, wind charge and other items added after 1.12 do not exist in this game version,
-so no 1.12 resource pack can give them a texture. On a newer server the proxy (ViaVersion /
-ViaBackwards) sends each of them to a 1.12 client as some existing 1.12 item instead; retexturing
-that item would retexture the real one too.
+The mace, the spears, the wind charge, netherite gear and the other items added after 1.12 do not
+exist in this game version. On a newer server the proxy (ViaVersion / ViaBackwards) sends each of
+them to a 1.12 client as an old item with a name in front of it, such as "1.21.11 Netherite Spear"
+or "1.21 Mace".
+
+- **In the pack:** Thunder 1.21.11 has a model and a texture for every item added since 1.12
+  (`models/item/thunder/` and `textures/items/thunder/`), named after the item's English name in
+  lower-case words: `mace`, `wind_charge`, `netherite_spear`, `netherite_sword`, ...
+- **Spears:** they also get `<name>_in_hand`, the long spear model from 1.21.11, used while one is
+  held.
+- **Worn armor:** netherite, copper and turtle armor get their 1.21.11 layer textures
+  (`textures/models/armor/`).
+- **How 1.12 loads them:** 1.12 only loads the models that some item uses, so the models are listed
+  as overrides of `models/item/barrier.json` with a predicate that never matches. Barriers look the
+  same as before.
+- **How they are drawn:** `thunder/thunder-items.js` (Right Shift > Visual > Newer Items on Servers,
+  on by default) draws the matching model for any item with such a name: in the hotbar and
+  inventories, in the hand, dropped on the ground and on other players, and it gives worn armor
+  named that way its texture. Items without such a name are left alone, so a real iron sword still
+  looks like an iron sword.
+- **Not covered:** blocks added after 1.12, and thrown wind charges, tridents and other newer
+  entities. Only items are re-skinned.
 
 ## Rebuilding
 
@@ -77,7 +97,8 @@ python3 thunder/packs/build_packs.py            # needs Python 3.8+ and Pillow
 The builder does three things:
 
 1. Reads the 1.12 layouts from the game's own `assets.epk` (read only).
-2. Downloads the 1.21.11 textures once into `~/.cache/thunder-packs/1.21.11`, from
+2. Downloads the 1.21.11 textures (and the English item names and the spear, mace and crossbow
+   models it needs) once into `~/.cache/thunder-packs/1.21.11`, from
    github.com/InventivetalentDev/minecraft-assets (branch `1.21.11`).
 3. Writes both zips and `packs/packs.json`.
 

@@ -48955,6 +48955,7 @@ c.PK;})();
     shRays:true,shRaysStr:65,shAtmos:true,shAtmosStr:60,shGlowStr:70,shUnder:true,shUnderStr:70,
     // World shader effects (thunder-world.js): waving plants, water; see-through leaves (Visual)
     shWave:true,shWaveStr:60,shWater:true,shWaterStr:70,clearLeaves:true,
+    newItems:true,           // thunder-items.js: newer items on servers drawn with the 1.21.11 pack's models
     titleBg:true,titleLogo:true,titleSplash:true,titleLightning:true,titleParallax:60,titleQuality:0,
     menuTheme:true,menuStorm:true,menuButtons:true
   };
@@ -50454,6 +50455,127 @@ c.PK;})();
   };
   MODULES.unshift({cat:'hud',id:'hudTheme',name:'HUD Style & Layout',special:'hudedit',wide:true,always:true,
     desc:'On: every HUD module in a Thunder box (dark glass, cyan edge; keys light up while held). Off: plain text. Edit HUD Layout: drag boxes to move them, scroll over a box to resize it, right-click to reset it.'});
+
+  // Newer items on servers (maces, spears, wind charges, netherite gear) with their 1.21.11 models
+  /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
+     Newer items on servers: maces, spears, wind charges, netherite gear and everything else added
+     after 1.12. Included into the client scope of thunder-client.js by build.js.
+
+     A newer server (through ViaVersion / ViaBackwards) sends a 1.12 client every item 1.12 does not
+     have as an old item renamed "<version> <Name>", for example "1.21.11 Netherite Spear" or
+     "1.21 Mace". When an item has such a name and the resource packs have the model
+     item/thunder/<name in lower_case_words> (the Thunder 1.21.11 pack has one for every item added
+     since 1.12), that model is drawn instead of the old item: in the hotbar and inventories, in
+     the hand, on the ground and on other players. While held, <...>_in_hand is used when it
+     exists (the long spear models). Worn netherite, copper and turtle armor named that way is
+     drawn with the pack's own armor textures, but only while that pack's models are loaded.
+     Items without such a name, and everything with the setting off, are left to the game.
+
+     Game functions this module replaces (each wrapper falls through to the original):
+     @hook EAO net.minecraft.client.renderer.RenderItem.getItemModelWithOverrides
+     @hook D$Y net.minecraft.client.renderer.entity.layers.LayerArmorBase.renderArmorLayer
+     @hook CVz net.minecraft.client.renderer.entity.layers.LayerArmorBase.getArmorResource
+
+     Game functions, classes and fields it uses:
+     @use D8D net.minecraft.client.renderer.block.model.ModelManager.getModel
+     @use Ehd net.minecraft.client.renderer.block.model.ModelResourceLocation.<init>
+     @use Gp7 net.minecraft.util.ResourceLocation.<init>
+     @use FWd net.minecraft.item.ItemStack.hasDisplayName
+     @class Hr net.minecraft.client.renderer.block.model.ModelResourceLocation
+     @class Bb net.minecraft.util.ResourceLocation
+     @field u1 net.minecraft.client.Minecraft.getRenderItem Minecraft.renderItem
+     @field wb net.minecraft.client.renderer.RenderItem.getItemModelWithOverrides RenderItem.itemModelMesher
+     @field M8 net.minecraft.client.renderer.RenderItem.getItemModelWithOverrides ItemModelMesher.modelManager
+     @field WL net.minecraft.client.renderer.block.model.ModelManager.getModel ModelManager.defaultModel (the missing model)
+     @field dhm net.minecraft.client.renderer.block.model.ModelManager.getModel ModelManager.modelRegistry
+     @field bg2 net.minecraft.item.ItemStack.hasTagCompound ItemStack.isEmpty
+     @field bU net.minecraft.item.ItemStack.hasTagCompound ItemStack.stackTagCompound
+     (ItemStack.getDisplayName EJu and EntityLivingBase.getItemStackFromSlot yE are declared in
+     thunder-client.js, the Minecraft instance HEN in thunder-lan.js.)
+     ------------------------------------------------------------------------------------------- */
+  var NI={reg:null,cache:{},armor:null,res:{}};
+  var NI_ARMOR={netherite:'netherite',copper:'copper'};
+  // "1.21.11 Netherite Spear" -> "netherite_spear" (the same rule as build_packs.py model_key);
+  // null for a name without a version in front
+  function niKey(name){
+    var t=String(name).replace(/\u00a7./g,'').replace(/^\s+|\s+$/g,'');
+    var m=/^\d+\.\d+(?:\.\d+)?\s+(.+)$/.exec(t);
+    if(!m)return null;
+    return m[1].toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||null;
+  }
+  // the game's ModelManager (Minecraft.renderItem -> itemModelMesher -> modelManager)
+  function niManager(){var r=HEN&&HEN.u1,w=r&&r.wb;return w&&w.M8||null;}
+  // a baked model from the loaded packs, or null when no pack has it
+  function niGet(mm,key){
+    var loc=new Hr();
+    Ehd(loc,$rt_str('minecraft:item/thunder/'+key),$rt_str('inventory'));
+    var m=D8D(mm,loc);
+    return m!==null&&m!==mm.WL?m:null;
+  }
+  function niModel(mm,name,hand){
+    if(mm.dhm!==NI.reg){NI.reg=mm.dhm;NI.cache={};}          // models were reloaded
+    var ck=(hand?'h':'g')+name,r=NI.cache[ck];
+    if(r!==undefined)return r;
+    r=null;
+    var key=niKey(name);
+    if(key){
+      if(hand)r=niGet(mm,key+'_in_hand');
+      if(!r)r=niGet(mm,key);
+    }
+    NI.cache[ck]=r;
+    return r;
+  }
+  // a stack worth a look: not empty, with a tag and a custom name
+  function niNamed(st){return st!==null&&!st.bg2&&st.bU!==null&&!!FWd(st);}
+
+  // RenderItem.getItemModelWithOverrides(stack, world, entity): world and entity are both set
+  // only when an item is drawn in a hand
+  var origEAO=EAO;
+  EAO=function(a,b,c,d){
+    if(S.newItems&&!$rt_resuming()){
+      try{
+        var mm=a.wb&&a.wb.M8;
+        if(mm&&niNamed(b)){
+          var m=niModel(mm,$rt_ustr(EJu(b)),c!==null&&d!==null);
+          if(m)return m;
+        }
+      }catch(e){report(e);}
+    }
+    return origEAO(a,b,c,d);
+  };
+
+  // Worn armor: renderArmorLayer looks up the piece in the slot, then asks getArmorResource for
+  // its texture; the piece is remembered in between.
+  var origDY=D$Y;
+  D$Y=function(a,b,c,d,e,f,g,h,i,j){
+    if(!$rt_resuming()){
+      NI.armor=null;
+      if(S.newItems&&b&&j){try{var st=b.yE(j);if(niNamed(st))NI.armor=st;}catch(x){report(x);}}
+    }
+    origDY(a,b,c,d,e,f,g,h,i,j);
+    if(!$rt_suspending())NI.armor=null;
+  };
+  function niArmorTexture(st,legs){
+    var name=$rt_ustr(EJu(st)),key=niKey(name),m=key&&/^([a-z]+)_(helmet|chestplate|leggings|boots)$/.exec(key),mat,mm;
+    if(m)mat=NI_ARMOR[m[1]];
+    else if(key==='turtle_shell')mat='turtle';
+    if(!mat||!(mm=niManager())||!niModel(mm,name,false))return null;   // that pack is not loaded
+    var path='textures/models/armor/'+mat+'_layer_'+(legs?2:1)+'.png',r=NI.res[path];
+    if(!r){r=new Bb();Gp7(r,$rt_str(path));NI.res[path]=r;}
+    return r;
+  }
+  var origCVz=CVz;
+  CVz=function(a,b,c,d){
+    if(NI.armor!==null&&d===null&&!$rt_resuming()){
+      try{var r=niArmorTexture(NI.armor,!!c);if(r)return r;}catch(e){report(e);}
+    }
+    return origCVz(a,b,c,d);
+  };
+
+  TC.items={key:niKey,cached:function(){var o={},k;for(k in NI.cache)o[k]=!!NI.cache[k];return o;}};
+  MODULES.push({cat:'visual',id:'newItems',name:'Newer Items on Servers',
+    desc:'Maces, spears, wind charges, netherite gear and other items from newer versions show with their real textures on servers that send them renamed (such as "1.21.11 Netherite Spear"). Needs the Thunder 1.21.11 pack.'});
 
   // Shaders: optional post-processing of the world image (off by default)
   /* -------------------------------------------------------------------------------------------
@@ -53554,14 +53676,29 @@ c.PK;})();
      served next to the page in packs/). On the first start they are added to the game's resource
      pack list exactly like Options > Resource Packs > "Open resource pack folder" would add them
      (files under resourcepacks/<folder>/ in the game's IndexedDB filesystem, plus an entry in
-     resourcepacks/manifest.json), so they show up there ready to switch on. Nothing is switched on.
+     resourcepacks/manifest.json), so they show up there.
 
-     Uses no game code. It only opens the filesystem database after the game has created it
-     (the open is aborted if the database does not exist yet), writes each pack in one
-     transaction, and never touches worlds, options or other packs. A pack the player deletes stays
+     Writing the packs uses no game code. It only opens the filesystem database after the game has
+     created it (the open is aborted if the database does not exist yet), writes each pack in one
+     transaction, and never touches worlds or other packs. A pack the player deletes stays
      deleted. packs/packs.json (written by the build script) lists each pack with a hash of its zip;
      when that changes, a pack the player still has is replaced in place (same folder, so it stays
      switched on if it was).
+
+     Thunder 1.21.11 is switched on once per browser, the way Options > Resource Packs > Done does
+     it: put into the selected list (below the packs already on, so Thunder PvP and others stay on
+     top), saved to options.txt, resources reloaded. Switched off later, it stays off. Thunder PvP
+     is never switched on for the player. When 1.21.11 was updated in place while on, the
+     resources are reloaded once so the new version shows straight away.
+     @use CAR net.minecraft.client.resources.ResourcePackRepository.updateRepositoryEntriesAll
+     @use CqD net.minecraft.client.resources.ResourcePackRepository.setRepositories
+     @use E1W net.minecraft.client.Minecraft.refreshResources
+     @field H$ net.minecraft.client.gui.GuiScreenResourcePacks.actionPerformed Minecraft.mcResourcePackRepository
+     @field B3 net.minecraft.client.resources.ResourcePackRepository.updateRepositoryEntriesAll ResourcePackRepository.repositoryEntriesAll
+     @field bGf net.minecraft.client.resources.ResourcePackRepository.setRepositories ResourcePackRepository.repositoryEntries (switched on, bottom first)
+     @field AA net.minecraft.client.gui.GuiScreenResourcePacks.actionPerformed GameSettings.resourcePacks
+     @field Tj net.minecraft.client.resources.ResourcePackRepository$Entry.getResourcePackName Entry.reResourcePack
+     @field UL net.minecraft.client.resources.ResourcePackRepository$Entry.getResourcePackName EaglerFolderResourcePack folder name
      ------------------------------------------------------------------------------------------- */
   (function(){
     var DB_NAME='_net_lax1dude_eaglercraft_v1_8_internal_PlatformFilesystem_1_12_2_';
@@ -53570,7 +53707,8 @@ c.PK;})();
     var LIST='packs/packs.json';
     // names for the menu card until packs.json has been read
     var PACKS=[{folder:'Thunder-1_21_11',name:'Thunder 1.21.11'},{folder:'Thunder-PvP',name:'Thunder PvP'}];
-    var state={status:'waiting',installed:[],skipped:[],error:null,tries:0};
+    var state={status:'waiting',installed:[],skipped:[],error:null,tries:0,enabled:''};
+    var AUTO='thunderPack121On',MAIN='Thunder-1_21_11';
     var IDB=W.indexedDB;
 
     function readMark(){try{return JSON.parse(W.localStorage.getItem(MARK)||'{}')||{};}catch(_){return {};}}
@@ -53681,7 +53819,7 @@ c.PK;})();
       var mark=readMark(),todo;
       return loadList().then(function(list){
         todo=list.filter(function(p){return force||mark[p.folder]!==p.version;});
-        if(!todo.length){state.status='done';return null;}
+        if(!todo.length){state.status='done';autoEnable(false);return null;}
         state.status='opening';
         return openExisting();
       }).then(function(db){
@@ -53708,7 +53846,11 @@ c.PK;})();
               });
             });
           },Promise.resolve());
-        }).then(function(){db.close();state.status='done';return state;},function(e){
+        }).then(function(){
+          db.close();state.status='done';
+          autoEnable(todo.some(function(p){return p.folder===MAIN&&state.installed.indexOf(p.name)>=0;}));
+          return state;
+        },function(e){
           try{db.close();}catch(_){}
           throw e;
         });
@@ -53717,6 +53859,45 @@ c.PK;})();
         if(W.console&&W.console.warn)W.console.warn('[Thunder] built-in packs: '+state.error);
         return state;
       });
+    }
+
+    // Thunder 1.21.11 on (see the header). Steps run on the game thread between frames; a step that
+    // makes a game call makes exactly one, and makes it again when the game resumes it.
+    function autoEnable(updated){
+      var want=false;
+      try{want=!W.localStorage.getItem(AUTO);}catch(_){}
+      if(!want&&!updated)return;
+      var repo=null,gs=null,list=null,apply=false,reload=false;
+      function named(x){return !!x&&!!x.Tj&&$rt_ustr(x.Tj.UL)===MAIN;}
+      runOnGame([
+        function(){
+          if(!$rt_resuming()){repo=HEN&&HEN.H$;gs=HEN&&HEN.G;}
+          if($rt_resuming()||repo)CAR(repo);                 // read the pack list again
+        },
+        function(){
+          if(!repo||!gs)return;
+          var all=repo.B3,sel=repo.bGf,e=null,on=false,i;
+          for(i=0;i<EH(all);i++)if(named(Bm(all,i))){e=Bm(all,i);break;}
+          for(i=0;i<EH(sel);i++)if(named(Bm(sel,i)))on=true;
+          if(!e)return;                                       // not in the list (the player deleted it)
+          if(want&&!on){
+            list=Bq();Y(list,e);
+            for(i=0;i<EH(sel);i++)Y(list,Bm(sel,i));
+            apply=true;
+          }
+          reload=apply||(on&&updated);
+          try{W.localStorage.setItem(AUTO,'1');}catch(_){}
+        },
+        function(){if($rt_resuming()||apply)CqD(repo,list);},
+        function(){
+          if(!apply)return;
+          CA(gs.AA);
+          for(var i=0;i<EH(list);i++)Y(gs.AA,Bm(list,i).Tj.UL);
+        },
+        function(){if($rt_resuming()||apply)DuB(gs);},       // options.txt
+        function(){if($rt_resuming()||reload)E1W(HEN);},      // reload textures and models
+        function(){state.enabled=apply?'switched on':reload?'reloaded after an update':'already on';}
+      ]);
     }
 
     function reinstall(){state.installed=[];state.skipped=[];state.error=null;state.tries=0;return run(true);}
@@ -53728,7 +53909,7 @@ c.PK;})();
 
     // Right Shift > Utility card: what is in the pack list, and a way to add a deleted pack back.
     MODULES.push({cat:'utility',id:null,special:'builtinpacks',name:'Built-in Resource Packs',
-      desc:'Thunder 1.21.11 (the Minecraft 1.21.11 look) and Thunder PvP (small totem, low fire, wireframe crystals, clean hotbar) are in Options > Resource Packs. To use both, put Thunder PvP above Thunder 1.21.11.'});
+      desc:'Thunder 1.21.11 (the Minecraft 1.21.11 look, plus maces, spears, wind charges and other newer items on servers) is switched on for you. Thunder PvP (plain armor, small totem, low fire, clean hotbar) is in Options > Resource Packs: put it above Thunder 1.21.11.'});
     SPECIALS.builtinpacks=function(box){
       var n=el('div','tcm-note','Checking your resource pack list...');
       box.appendChild(n);

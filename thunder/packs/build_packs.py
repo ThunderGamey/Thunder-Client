@@ -24,6 +24,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import struct
 import sys
 import time
@@ -146,6 +147,14 @@ class Mc121:
 
     def img(self, p):
         return Image.open(io.BytesIO(self.raw(p))).convert('RGBA')
+
+    def extra(self, p):
+        """A non-texture asset (lang file, model), downloaded once into the cache."""
+        f = os.path.join(self.cache, p)
+        if not os.path.exists(f):
+            os.makedirs(os.path.dirname(f), exist_ok=True)
+            open(f, 'wb').write(self._get(SRC + p))
+        return open(f, 'rb').read()
 
     def sprite(self, p):
         return self.img('textures/gui/sprites/' + p + '.png')
@@ -475,8 +484,10 @@ def build_121(v12, m):
             continue
         fn = (lambda im: tint(im, WATER_TINT)) if n.startswith('water_') else None
         copy('blocks/' + n + '.png', src, fn)
+    used = set()
     for n in v12.names('textures/items'):
         src = 'item/' + names.item_name(n) + '.png'
+        used.add(src)
         if n.startswith('empty_armor_slot_'):
             src = 'gui/sprites/container/slot/' + n[len('empty_armor_slot_'):] + '.png'
         if not m.has('textures/' + src):
@@ -520,6 +531,7 @@ def build_121(v12, m):
     pk.put(T('models/armor/leather_layer_1_overlay.png'), m.raw('textures/entity/equipment/humanoid/leather_overlay.png'))
     pk.put(T('models/armor/leather_layer_2_overlay.png'),
            m.raw('textures/entity/equipment/humanoid_leggings/leather_overlay.png'))
+    new_items(pk, m, used)
     for kind in ('normal', 'trapped', 'christmas'):
         single = m.img('textures/entity/chest/%s.png' % kind)
         pk.put_png(T('entity/chest/%s.png' % kind), remap_boxes((64, 64), CHEST12, [(single, CHEST21)]))
@@ -811,6 +823,71 @@ def pack_icon_121(m):
                 c = side[int(u), int(v)]
                 po[X, Y] = (int(c[0] * shade), int(c[1] * shade), int(c[2] * shade), c[3])
     return out
+
+
+# ---------------------------------------------------------------------------------------------
+# Items newer than 1.12
+#
+# A newer server (through ViaVersion / ViaBackwards) sends a 1.12 client every item that 1.12 does
+# not have as an old item renamed "<version> <Name>", for example "1.21.11 Netherite Spear" or
+# "1.21 Mace". Thunder Client (thunder-items.js) draws an item with such a name with the model
+# item/thunder/<name as lower_case_words> from this pack, and with <...>_in_hand while it is held
+# when that model exists (the spears). 1.12 only loads item models that an item uses, so every one
+# of these is also listed as an override of the barrier item with a predicate no barrier ever has
+# (damage >= 2): the game then loads and bakes them, and never shows them on a barrier.
+
+NEW_HANDHELD = re.compile(r'_(sword|axe|pickaxe|shovel|hoe)$|^(breeze_rod|trident)$')
+NEW_TEXTURE = {'crossbow': 'crossbow_standby'}      # items whose icon is not named after the item
+
+
+def model_key(name):
+    """'Netherite Spear' -> 'netherite_spear' (the same rule as thunder-items.js)."""
+    return re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')
+
+
+def new_items(pk, m, used):
+    lang = json.loads(m.extra('lang/en_us.json'))
+    spear = json.loads(m.extra('models/item/spear_in_hand.json'))
+    mace = json.loads(m.extra('models/item/handheld_mace.json'))
+    crossbow = json.loads(m.extra('models/item/crossbow.json'))
+    models, seen = [], set()
+    for k in sorted(lang):
+        if not k.startswith('item.minecraft.') or k.count('.') != 2:
+            continue
+        iid = k[len('item.minecraft.'):]
+        src = 'item/%s.png' % NEW_TEXTURE.get(iid, iid)
+        if not m.has('textures/' + src) or src in used:
+            continue
+        key = model_key(lang[k])
+        if not key or key in seen:         # several items share one name (smithing templates, discs)
+            continue
+        seen.add(key)
+        pk.put(pk.tex('items/thunder/%s.png' % iid), m.raw('textures/' + src))
+        mdl = {'parent': 'item/handheld' if NEW_HANDHELD.search(iid) else 'item/generated',
+               'textures': {'layer0': 'items/thunder/' + iid}}
+        if iid == 'mace':
+            mdl['display'] = mace['display']
+        elif iid == 'crossbow':
+            mdl['display'] = crossbow['display']
+        pk.put_json(MC + 'models/item/thunder/%s.json' % key, mdl)
+        models.append('item/thunder/' + key)
+        hand = 'item/%s_in_hand.png' % iid
+        if iid.endswith('_spear') and m.has('textures/' + hand):
+            pk.put(pk.tex('items/thunder/%s_in_hand.png' % iid), m.raw('textures/' + hand))
+            pk.put_json(MC + 'models/item/thunder/%s_in_hand.json' % key,
+                        {'parent': 'item/generated', 'textures': {'layer0': 'items/thunder/%s_in_hand' % iid},
+                         'display': spear['display']})
+            models.append('item/thunder/%s_in_hand' % key)
+    # worn armor of the newer materials (drawn for a renamed piece, see thunder-items.js)
+    for mat, src in (('netherite', 'netherite'), ('copper', 'copper'), ('turtle', 'turtle_scute')):
+        for layer, folder in ((1, 'humanoid'), (2, 'humanoid_leggings')):
+            f = 'textures/entity/equipment/%s/%s.png' % (folder, src)
+            if m.has(f):
+                pk.put(pk.tex('models/armor/%s_layer_%d.png' % (mat, layer)), m.raw(f))
+    pk.put_json(MC + 'models/item/barrier.json', {
+        'parent': 'item/generated', 'textures': {'layer0': 'items/barrier'},
+        'overrides': [{'predicate': {'damage': 2}, 'model': x} for x in models]})
+    log('newer items: %d models' % len(models))
 
 
 def main():

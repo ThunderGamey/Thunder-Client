@@ -4,8 +4,9 @@ Thunder Client is created and owned by Jayvardhan Ginni (ThunderGamey).
 
 `classes.js` is generated. Edit `thunder/thunder-client.js` (and `thunder/thunder-hud.js`,
 `thunder/thunder-shaders.js`, `thunder/thunder-world.js`, `thunder/thunder-lan.js`,
-`thunder/thunder-title.js`, `thunder/thunder-theme.js`, `thunder/thunder-packs.js` and
-`thunder/thunder-perf.js`, which it pulls in with `// @include`), then run:
+`thunder/thunder-title.js`, `thunder/thunder-theme.js`, `thunder/thunder-packs.js`,
+`thunder/thunder-items.js` and `thunder/thunder-perf.js`, which it pulls in with `// @include`),
+then run:
 
 ```
 node thunder/build.js
@@ -85,13 +86,27 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   `packs/`). On first start they are written into the game's own resource pack storage and
   `resourcepacks/manifest.json`, exactly as the game's own import would write them, so they
   appear in Options > Resource Packs.
-  - It uses no game code, and only opens the storage after the game has created it.
+  - Writing the packs uses no game code, and only opens the storage after the game has created it.
+  - Thunder 1.21.11 is then switched on once per browser, the way Options > Resource Packs > Done
+    does it (`ResourcePackRepository.setRepositories`, `GameSettings.resourcePacks`, saved to
+    options.txt, resources reloaded), below any packs already on. Switched off later, it stays
+    off (`localStorage["thunderPack121On"]`). Thunder PvP is never switched on for the player.
   - A pack the player deletes stays deleted.
-  - A pack whose zip changed (hash in `packs/packs.json`) is updated in place.
+  - A pack whose zip changed (hash in `packs/packs.json`) is updated in place; when 1.21.11 was
+    on, the resources are reloaded once so the new version shows straight away.
   - Right Shift > Utility > Built-in Resource Packs shows the status and can add them again.
 
   The packs themselves are built by `thunder/packs/build_packs.py`; see
   [packs/README.md](packs/README.md).
+- `thunder-items.js` - Newer Items on Servers (Right Shift > Visual, on by default). A newer server
+  sends every item 1.12 does not have (mace, spears, wind charge, netherite gear, ...) as an old
+  item named like "1.21.11 Netherite Spear". For such a name, the model
+  `item/thunder/<name in lower_case_words>` from the resource packs is drawn instead
+  (`RenderItem.getItemModelWithOverrides`): in the GUI, in the hand (`<name>_in_hand` first, the
+  long spears), on the ground and on other players. Worn netherite, copper and turtle armor named
+  that way gets the pack's armor texture (`LayerArmorBase.renderArmorLayer` +
+  `getArmorResource`). Items without such a name, or when no loaded pack has the model, are left
+  to the game. The models are in Thunder 1.21.11 (see [packs/README.md](packs/README.md)).
 - `thunder-perf.js` - Max FPS (Right Shift > Utility): one click applies the fastest settings.
   - Game settings: render distance 6 or less, Fast graphics, smooth lighting, clouds and entity
     shadows off, minimal particles and unlimited framerate. These go through the game's own

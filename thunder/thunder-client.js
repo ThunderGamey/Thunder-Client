@@ -228,6 +228,7 @@
     shRays:true,shRaysStr:65,shAtmos:true,shAtmosStr:60,shGlowStr:70,shUnder:true,shUnderStr:70,
     // World shader effects (thunder-world.js): waving plants, water; see-through leaves (Visual)
     shWave:true,shWaveStr:60,shWater:true,shWaterStr:70,clearLeaves:true,
+    newItems:true,           // thunder-items.js: newer items on servers drawn with the 1.21.11 pack's models
     titleBg:true,titleLogo:true,titleSplash:true,titleLightning:true,titleParallax:60,titleQuality:0,
     menuTheme:true,menuStorm:true,menuButtons:true
   };
@@ -1436,6 +1437,9 @@
 
   // HUD widgets (Thunder boxes) and the drag / scroll HUD editor
   // @include thunder-hud.js
+
+  // Newer items on servers (maces, spears, wind charges, netherite gear) with their 1.21.11 models
+  // @include thunder-items.js
 
   // Shaders: optional post-processing of the world image (off by default)
   // @include thunder-shaders.js

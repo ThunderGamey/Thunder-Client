@@ -4,14 +4,29 @@
      served next to the page in packs/). On the first start they are added to the game's resource
      pack list exactly like Options > Resource Packs > "Open resource pack folder" would add them
      (files under resourcepacks/<folder>/ in the game's IndexedDB filesystem, plus an entry in
-     resourcepacks/manifest.json), so they show up there ready to switch on. Nothing is switched on.
+     resourcepacks/manifest.json), so they show up there.
 
-     Uses no game code. It only opens the filesystem database after the game has created it
-     (the open is aborted if the database does not exist yet), writes each pack in one
-     transaction, and never touches worlds, options or other packs. A pack the player deletes stays
+     Writing the packs uses no game code. It only opens the filesystem database after the game has
+     created it (the open is aborted if the database does not exist yet), writes each pack in one
+     transaction, and never touches worlds or other packs. A pack the player deletes stays
      deleted. packs/packs.json (written by the build script) lists each pack with a hash of its zip;
      when that changes, a pack the player still has is replaced in place (same folder, so it stays
      switched on if it was).
+
+     Thunder 1.21.11 is switched on once per browser, the way Options > Resource Packs > Done does
+     it: put into the selected list (below the packs already on, so Thunder PvP and others stay on
+     top), saved to options.txt, resources reloaded. Switched off later, it stays off. Thunder PvP
+     is never switched on for the player. When 1.21.11 was updated in place while on, the
+     resources are reloaded once so the new version shows straight away.
+     @use CAR net.minecraft.client.resources.ResourcePackRepository.updateRepositoryEntriesAll
+     @use CqD net.minecraft.client.resources.ResourcePackRepository.setRepositories
+     @use E1W net.minecraft.client.Minecraft.refreshResources
+     @field H$ net.minecraft.client.gui.GuiScreenResourcePacks.actionPerformed Minecraft.mcResourcePackRepository
+     @field B3 net.minecraft.client.resources.ResourcePackRepository.updateRepositoryEntriesAll ResourcePackRepository.repositoryEntriesAll
+     @field bGf net.minecraft.client.resources.ResourcePackRepository.setRepositories ResourcePackRepository.repositoryEntries (switched on, bottom first)
+     @field AA net.minecraft.client.gui.GuiScreenResourcePacks.actionPerformed GameSettings.resourcePacks
+     @field Tj net.minecraft.client.resources.ResourcePackRepository$Entry.getResourcePackName Entry.reResourcePack
+     @field UL net.minecraft.client.resources.ResourcePackRepository$Entry.getResourcePackName EaglerFolderResourcePack folder name
      ------------------------------------------------------------------------------------------- */
   (function(){
     var DB_NAME='_net_lax1dude_eaglercraft_v1_8_internal_PlatformFilesystem_1_12_2_';
@@ -20,7 +35,8 @@
     var LIST='packs/packs.json';
     // names for the menu card until packs.json has been read
     var PACKS=[{folder:'Thunder-1_21_11',name:'Thunder 1.21.11'},{folder:'Thunder-PvP',name:'Thunder PvP'}];
-    var state={status:'waiting',installed:[],skipped:[],error:null,tries:0};
+    var state={status:'waiting',installed:[],skipped:[],error:null,tries:0,enabled:''};
+    var AUTO='thunderPack121On',MAIN='Thunder-1_21_11';
     var IDB=W.indexedDB;
 
     function readMark(){try{return JSON.parse(W.localStorage.getItem(MARK)||'{}')||{};}catch(_){return {};}}
@@ -131,7 +147,7 @@
       var mark=readMark(),todo;
       return loadList().then(function(list){
         todo=list.filter(function(p){return force||mark[p.folder]!==p.version;});
-        if(!todo.length){state.status='done';return null;}
+        if(!todo.length){state.status='done';autoEnable(false);return null;}
         state.status='opening';
         return openExisting();
       }).then(function(db){
@@ -158,7 +174,11 @@
               });
             });
           },Promise.resolve());
-        }).then(function(){db.close();state.status='done';return state;},function(e){
+        }).then(function(){
+          db.close();state.status='done';
+          autoEnable(todo.some(function(p){return p.folder===MAIN&&state.installed.indexOf(p.name)>=0;}));
+          return state;
+        },function(e){
           try{db.close();}catch(_){}
           throw e;
         });
@@ -167,6 +187,45 @@
         if(W.console&&W.console.warn)W.console.warn('[Thunder] built-in packs: '+state.error);
         return state;
       });
+    }
+
+    // Thunder 1.21.11 on (see the header). Steps run on the game thread between frames; a step that
+    // makes a game call makes exactly one, and makes it again when the game resumes it.
+    function autoEnable(updated){
+      var want=false;
+      try{want=!W.localStorage.getItem(AUTO);}catch(_){}
+      if(!want&&!updated)return;
+      var repo=null,gs=null,list=null,apply=false,reload=false;
+      function named(x){return !!x&&!!x.Tj&&$rt_ustr(x.Tj.UL)===MAIN;}
+      runOnGame([
+        function(){
+          if(!$rt_resuming()){repo=HEN&&HEN.H$;gs=HEN&&HEN.G;}
+          if($rt_resuming()||repo)CAR(repo);                 // read the pack list again
+        },
+        function(){
+          if(!repo||!gs)return;
+          var all=repo.B3,sel=repo.bGf,e=null,on=false,i;
+          for(i=0;i<EH(all);i++)if(named(Bm(all,i))){e=Bm(all,i);break;}
+          for(i=0;i<EH(sel);i++)if(named(Bm(sel,i)))on=true;
+          if(!e)return;                                       // not in the list (the player deleted it)
+          if(want&&!on){
+            list=Bq();Y(list,e);
+            for(i=0;i<EH(sel);i++)Y(list,Bm(sel,i));
+            apply=true;
+          }
+          reload=apply||(on&&updated);
+          try{W.localStorage.setItem(AUTO,'1');}catch(_){}
+        },
+        function(){if($rt_resuming()||apply)CqD(repo,list);},
+        function(){
+          if(!apply)return;
+          CA(gs.AA);
+          for(var i=0;i<EH(list);i++)Y(gs.AA,Bm(list,i).Tj.UL);
+        },
+        function(){if($rt_resuming()||apply)DuB(gs);},       // options.txt
+        function(){if($rt_resuming()||reload)E1W(HEN);},      // reload textures and models
+        function(){state.enabled=apply?'switched on':reload?'reloaded after an update':'already on';}
+      ]);
     }
 
     function reinstall(){state.installed=[];state.skipped=[];state.error=null;state.tries=0;return run(true);}
@@ -178,7 +237,7 @@
 
     // Right Shift > Utility card: what is in the pack list, and a way to add a deleted pack back.
     MODULES.push({cat:'utility',id:null,special:'builtinpacks',name:'Built-in Resource Packs',
-      desc:'Thunder 1.21.11 (the Minecraft 1.21.11 look) and Thunder PvP (small totem, low fire, wireframe crystals, clean hotbar) are in Options > Resource Packs. To use both, put Thunder PvP above Thunder 1.21.11.'});
+      desc:'Thunder 1.21.11 (the Minecraft 1.21.11 look, plus maces, spears, wind charges and other newer items on servers) is switched on for you. Thunder PvP (plain armor, small totem, low fire, clean hotbar) is in Options > Resource Packs: put it above Thunder 1.21.11.'});
     SPECIALS.builtinpacks=function(box){
       var n=el('div','tcm-note','Checking your resource pack list...');
       box.appendChild(n);
