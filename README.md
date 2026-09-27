@@ -10,7 +10,8 @@ This project is a version of eaglercraftX based on Minecraft 1.12, specifically 
 ## Thunder Client
 
 - **`index-js.html`** - Thunder Client on the Eaglercraft 1.12 JavaScript runtime: custom HUD,
-  Right Shift menu (HUD, combat, movement, visual options including Hand Item Size and Hitboxes),
+  Right Shift menu (HUD, combat, movement, visual options including Hand Item Size and Hitboxes,
+  and a one-click Max FPS that also tests whether VSync on or off is faster on your device),
   optional Mellow-style shaders, an animated Thunder title screen (storm clouds, lightning, sparks
   and a blocky skyline that shift with the mouse, and the THUNDER CLIENT logo), Thunder menus
   everywhere (storm backgrounds, glass lists, Thunder buttons, sliders and text boxes), and **Friends**:

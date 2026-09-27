@@ -1,8 +1,9 @@
 # Thunder Client build
 
 `classes.js` is generated. Edit `thunder/thunder-client.js` (and `thunder/thunder-shaders.js`,
-`thunder/thunder-lan.js`, `thunder/thunder-title.js`, `thunder/thunder-theme.js` and
-`thunder/thunder-packs.js`, which it pulls in with `// @include`), then run:
+`thunder/thunder-lan.js`, `thunder/thunder-title.js`, `thunder/thunder-theme.js`,
+`thunder/thunder-packs.js` and `thunder/thunder-perf.js`, which it pulls in with `// @include`),
+then run:
 
 ```
 node thunder/build.js
@@ -78,6 +79,18 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
 
   The packs themselves are built by `thunder/packs/build_packs.py`; see
   [packs/README.md](packs/README.md).
+- `thunder-perf.js` - Max FPS (Right Shift > Utility): one click applies the fastest settings.
+  - Game settings: render distance 6 or less, Fast graphics, smooth lighting, clouds and entity
+    shadows off, minimal particles and unlimited framerate. These go through the game's own
+    setters and are saved to options.txt.
+  - Thunder settings: shaders off, plain menu backgrounds, Low title quality.
+  - In a world it counts frames with VSync on and off for a few seconds each and keeps the faster
+    one. VSync off helps a strong GPU but can flood a weak one: on a software GPU it went from
+    60 to about 10 FPS.
+  - Undo restores the previous settings.
+
+  The FPS HUD module now shows the game's own frame count (what F3 shows) instead of the
+  browser's animation-frame rate.
 - `thunder-shaders.js` - optional shader/post-processing system (Right Shift > Shaders). How it
   hooks the renderer, the pipeline, presets, FPS safety and limits: [SHADERS.md](SHADERS.md).
 - `thunder-lan.js` - Friends: open a singleplayer world to friends with a join code and join a

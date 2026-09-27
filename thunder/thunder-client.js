@@ -99,6 +99,7 @@
    @static HFj net.minecraft.util.EnumHand MAIN_HAND
    @static Lkd net.minecraft.client.renderer.block.model.ItemCameraTransforms$TransformType FIRST_PERSON_LEFT_HAND
    @static Lke net.minecraft.client.renderer.block.model.ItemCameraTransforms$TransformType FIRST_PERSON_RIGHT_HAND
+   @staticset HEO net.minecraft.client.Minecraft.runGameLoop (Minecraft.debugFPS: frames drawn in the last second)
 
    Instance fields (checked against a method that reads them):
    @field dk net.minecraft.client.gui.GuiIngame.renderHotbarItem GuiIngame.mc
@@ -374,17 +375,9 @@
     D.addEventListener('pointerlockchange',function(){if(D.pointerLockElement)seenLock=true;});
   }
 
-  // FPS counter
-  var fpsFrames=0,fpsValue=0,fpsLast=now();
-  function markFrame(){
-    fpsFrames++;
-    var t=now();
-    if(t-fpsLast>=500){fpsValue=Math.round(fpsFrames*1000/(t-fpsLast));fpsFrames=0;fpsLast=t;}
-  }
-  if(W.requestAnimationFrame){
-    var tick=function(){markFrame();W.requestAnimationFrame(tick);};
-    W.requestAnimationFrame(tick);
-  }
+  // FPS: the game's own count of frames drawn in the last second (what F3 shows). Counting
+  // requestAnimationFrame callbacks would only show the screen refresh rate once VSync is off.
+  function gameFps(){return HEO|0;}
   function trimClicks(){
     var t=Date.now();
     while(clicks.length&&t-clicks[0]>1000)clicks.shift();
@@ -1161,7 +1154,7 @@
       w:width,h:height,cx:(width/2)|0,offLeft:true};
     try{ctx.offLeft=CiU(DlC(player))===HJu;}catch(_){}
     var itemHud=!YZ(mc.dw)&&!!ctx.ri&&!!ctx.tm;     // no hotbar (so no item HUD) in spectator
-    if(S.fps)left.push(['FPS '+fpsValue,0xFFFFFF]);
+    if(S.fps)left.push(['FPS '+gameFps(),0xFFFFFF]);
     if(S.cps)left.push(['CPS '+clicks.length,0xFFFFFF]);
     if(S.coords&&havePos)left.push(['XYZ '+fmt1(px)+' / '+fmt1(py)+' / '+fmt1(pz),0xFFFFFF]);
     if(S.direction&&typeof player.C==='number'){
@@ -1481,4 +1474,7 @@
 
   // Built-in resource packs: Thunder 1.21.11 and Thunder PvP, added to the pack list on first start
   // @include thunder-packs.js
+
+  // Max FPS: one-click fastest settings, and Undo
+  // @include thunder-perf.js
 })();
