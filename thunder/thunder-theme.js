@@ -45,6 +45,8 @@
      @hook Efa net.minecraft.client.gui.FontRenderer.drawString
      @class Zj net.lax1dude.eaglercraft.profile.GuiScreenEditProfile
      @class UF net.peyton.eagler.gui.GuiCredits
+     @class ID net.minecraft.client.gui.inventory.GuiContainer
+     @field iX net.minecraft.util.ResourceLocation.getResourcePath ResourceLocation.resourcePath
      @virtual dK net.lax1dude.eaglercraft.profile.GuiScreenEditProfile drawScreen
      @virtual dK net.peyton.eagler.gui.GuiCredits drawScreen
      @virtual VV net.minecraft.client.gui.GuiButton func_191745_a
@@ -192,8 +194,24 @@
     if(!$rt_resuming())thSlot=a;
     return origGkZ(a);
   };
+  // Dark Containers (Visual): inventories, chests, furnaces and every other container screen
+  // draw their background texture darkened (a colour multiplier set right after the texture is
+  // bound; the game sets white again before its next drawing), and their grey titles light
+  var thDarkTex=(typeof WeakMap==='function')?new WeakMap():null;
+  function thContainerTex(b){
+    var r=thDarkTex?thDarkTex.get(b):undefined;
+    if(r===undefined){
+      var p=b.iX,t=p!==null?$rt_ustr(p):'';
+      r=t.indexOf('textures/gui/container/')===0||t==='textures/gui/recipe_book.png';
+      if(thDarkTex)thDarkTex.set(b,r);
+    }
+    return r;
+  }
+  function thDarkOn(){return !!(S.darkContainers&&HEN&&HEN.cm instanceof ID);}
   var origD17=D17;
   D17=function(a,b){
+    var dark=!$rt_resuming()&&b!==null&&thDarkOn()&&thContainerTex(b);
+    if(dark){var r0=origD17(a,b);if(!$rt_suspending())CFi(0.34,0.38,0.46,1.0);return r0;}
     if(!$rt_resuming()&&b!==null){
       if(b===LGh&&thCredits>0){
         if(thButtonsOn())b=thCreditsTex.loc;
@@ -296,6 +314,7 @@
   var TH_BRIGHT={'0':'f','1':'9','2':'a','3':'b','4':'c','5':'d','8':'7'};
   var origEfa=Efa;
   Efa=function(a,b,c,d,e){
+    if(e===4210752&&!$rt_resuming()&&thDarkOn())e=0xE2EAF2;   // container titles on the dark background
     if(thCredits>0&&!$rt_resuming()&&thButtonsOn()){
       if(e===4210784)e=0xDCE6F0;
       if(b!==null){
@@ -325,5 +344,7 @@
     desc:'Thunder look for every menu: storm backgrounds, glass lists, Thunder buttons, sliders and text boxes.',opts:[
       {id:'menuStorm',name:'Storm backgrounds (off: plain dark, fastest)'},
       {id:'menuButtons',name:'Thunder buttons'}]});
+  MODULES.push({cat:'visual',id:'darkContainers',name:'Dark Inventories',
+    desc:'Dark mode for your inventory, chests, furnaces and every other container screen, with light titles. Works with any resource pack.'});
   TC.theme={state:function(){return {made:thState,buttons:thButtonsOn(),bg:thBgOn(),storm:thStormOn(),frame:tbFrameId,
     locs:thTex.map(function(T){return !!T.loc;})};}};

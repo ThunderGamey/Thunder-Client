@@ -48774,6 +48774,8 @@ c.PK;})();
    @use AIz net.minecraft.client.gui.ScaledResolution.getScaledWidth
    @use ASe net.minecraft.client.gui.ScaledResolution.getScaledHeight
    (Gui.drawRect D49 and TextureManager.bindTexture D17 are hooked by thunder-theme.js)
+   (Minecraft.displayGuiScreen GGs is hooked by thunder-boot.js, GuiIngameMenu Bxj is declared in
+   thunder-lan.js)
    @use CFi net.lax1dude.eaglercraft.opengl.GlStateManager.color
    @use Eu0 net.lax1dude.eaglercraft.opengl.GlStateManager.pushMatrix
    @use ECi net.lax1dude.eaglercraft.opengl.GlStateManager.popMatrix
@@ -48960,7 +48962,7 @@ c.PK;})();
     hitEffect:0,hitEffectAmt:1,hitEffectSound:true,
     titleBg:true,titleLogo:true,titleSplash:true,titleLightning:true,titleParallax:60,titleQuality:0,
     titleClickBolt:true,menuSounds:true,   // click the title storm for lightning; storm sounds on menus only
-    menuTheme:true,menuStorm:true,menuButtons:true,
+    menuTheme:true,menuStorm:true,menuButtons:true,darkContainers:true,
     quickStart:true,         // thunder-boot.js: no Edit Profile screen at start
     noGlint:false,noRain:false,noPumpkin:false,  // thunder-tweaks.js
     // thunder-combat.js: totem counter and pickup notifier (HUD boxes), red crosshair on players,
@@ -48971,7 +48973,11 @@ c.PK;})();
     zoom:true,zoomLevel:4,zoomSmooth:true,zoomScroll:true,zoomSens:true,zoomToggle:false,
     // thunder-qol.js
     toggleSneak:false,clearChat:false,hidePasswords:true,ownName:false,crystalOpt:true,xpClumps:true,
-    fastXp:false,menuSfx:true
+    fastXp:false,menuSfx:true,
+    // thunder-minimap.js: minimap (size in px, zoom in px per block, 0 top right / 1 top left)
+    minimap:true,minimapSize:130,minimapZoom:2,minimapCorner:0,minimapRound:false,minimapCoords:true,worldMap:true,
+    // thunder-extras.js
+    shulkerPreview:true,boat360:true
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -49239,8 +49245,8 @@ c.PK;})();
     '.tcm-btn:active,.tcm-seg button:active,.tcm-tab:active,.tcm-more:active{transform:translateY(1px)}',
     '.tcm-switch:active:after{width:18px}.tcm-switch.tcm-on:active:after{transform:translateX(12px)}',
     '.tcm-seg{display:flex;gap:3px;margin-top:7px;padding:3px;border-radius:9px;background:rgba(3,7,12,.6);border:1px solid rgba(110,140,160,.22)}',
-    '.tcm-swatches{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}',
-    '.tcm-swatches button{width:20px;height:20px;padding:0;border-radius:6px;border:2px solid rgba(3,7,12,.8);cursor:pointer;',
+    '.tcm-swatches{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}',
+    '.tcm-swatches button{width:19px;height:19px;padding:0;border-radius:6px;border:2px solid rgba(3,7,12,.8);cursor:pointer;',
       'box-shadow:0 0 0 1px rgba(110,140,160,.35);transition:transform .1s,box-shadow .1s}',
     '.tcm-swatches button:hover{transform:scale(1.12)}',
     '.tcm-swatches button.tcm-on{box-shadow:0 0 0 2px #eaf6ff,0 0 10px rgba(79,209,255,.6)}',
@@ -49278,18 +49284,38 @@ c.PK;})();
   function repaint(id){(painters[id]||[]).forEach(function(fn){try{fn();}catch(_){}});}
   function runLive(){for(var i=0;i<liveFns.length;i++){try{liveFns[i]();}catch(_){}}}
 
+  // Thunder's own screens (this menu, the HUD editor, the world map) are page overlays that let go
+  // of the mouse, and the game answers a released mouse by opening its pause menu. When one was
+  // opened during play, closing the last one closes that pause menu again (which takes the mouse
+  // back), so you are straight back in the game. Checked on the game thread a frame later, so an
+  // overlay opened in between (menu -> HUD editor) or a screen the game opened meanwhile (joining
+  // a friend's world) is left alone.
+  var overlayChecks=[],overlayFromPlay=false;
+  function overlayOpen(){for(var i=0;i<overlayChecks.length;i++){try{if(overlayChecks[i]())return true;}catch(_){}}return false;}
+  function overlayOpening(){if(!overlayOpen()&&HEN&&HEN.X&&HEN.cm===null)overlayFromPlay=true;}
+  function overlayClosed(){
+    runOnGame([function(){
+      if(!overlayFromPlay||overlayOpen())return;
+      overlayFromPlay=false;
+      if(HEN&&HEN.X&&HEN.cm instanceof Bxj)GGs(HEN,null);
+    }]);
+  }
+  overlayChecks.push(function(){return menuOpen;});
+
   function toggleMenu(){if(menuOpen)hideMenu();else showMenu();}
   function hideMenu(){
+    var was=menuOpen;
     if(menuOpen)menuSound(false);
     menuOpen=false;
     if(liveTimer){W.clearInterval(liveTimer);liveTimer=0;}
+    if(was)overlayClosed();
     if(!backdrop)return;
     backdrop.classList.remove('tcm-open');
     W.setTimeout(function(){if(!menuOpen)backdrop.style.display='none';},130);
   }
   function showMenu(){
     if(!backdrop)buildMenu();
-    if(!menuOpen)menuSound(true);
+    if(!menuOpen){menuSound(true);overlayOpening();}
     menuOpen=true;
     resetArmed=0;
     render();
@@ -49564,7 +49590,8 @@ c.PK;})();
     function row(k,v){kv.appendChild(el('span',null,k));kv.appendChild(el('b',null,v));}
     row('Created and owned by',OWNER_FULL);
     row('Client','Thunder Client for Eaglercraft 1.12.2');
-    row('Built on','Eaglercraft 1.12.2 by lax1dude; Minecraft and its assets by Mojang');
+    row('Built on','Eaglercraft 1.12.2 by lax1dude');
+    row('Minecraft','Minecraft and its assets by Mojang');
   }
   TC.openMenu=showMenu;TC.closeMenu=hideMenu;TC.toggleMenu=toggleMenu;
   TC.reset=function(){for(var id in DEFAULTS)S[id]=DEFAULTS[id];save();if(menuOpen)render();};
@@ -50385,7 +50412,7 @@ c.PK;})();
   }
   // lay out and draw every enabled widget
   function hudWidgets(ctx){
-    var themed=!!S.hudTheme,content=hudContent(ctx),W0=ctx.w,H0=ctx.h,cur=[5,5],rects={};
+    var themed=!!S.hudTheme,content=hudContent(ctx),W0=ctx.w,H0=ctx.h,cur=[5+mmReserve(W0,1),5+mmReserve(W0,0)],rects={};
     hudScreen.w=W0;hudScreen.h=H0;
     for(var i=0;i<HUD_WIDGETS.length;i++){
       var wd=HUD_WIDGETS[i],c=content[wd.id];
@@ -50466,6 +50493,7 @@ c.PK;})();
     ov.addEventListener('mouseup',function(){hudEditDrop();});
     ov.addEventListener('mouseleave',function(){hudEditDrop();});
     (D.body||D.documentElement).appendChild(ov);
+    overlayOpening();
     hudEditing=true;
     try{if(D.exitPointerLock&&D.pointerLockElement)D.exitPointerLock();}catch(_){}
     hudEditTick();
@@ -50475,7 +50503,9 @@ c.PK;})();
     W.cancelAnimationFrame(HE.raf);
     if(HE.ov.parentNode)HE.ov.parentNode.removeChild(HE.ov);
     HE=null;hudEditing=false;hudSave();
+    overlayClosed();
   }
+  overlayChecks.push(function(){return hudEditing;});
   function hudEditBox(id){
     var b=el('div','the-box');b.appendChild(el('div','the-tag',''));
     b.addEventListener('mousedown',function(e){
@@ -51416,6 +51446,429 @@ c.PK;})();
     {cat:'utility',id:'menuSfx',name:'Menu Sounds',
       desc:'A short electric sound when the Thunder menu opens and closes.'});
 
+  // Minimap and World Map (M)
+  /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
+     Minimap and World Map (Right Shift > Utility), in the spirit of Xaero's. Included into the
+     client scope of thunder-client.js by build.js.
+     - Minimap: a small map in the corner of the screen, north up, with an arrow for you, dots
+       for other players, and your coordinates under it.
+     - World Map: press M in a world for a full-screen map of everywhere you have been this
+       session. Drag to move it, scroll to zoom, M or Esc to close.
+     The map is drawn from the chunks the game already has loaded: for every column the highest
+     block that stops light (the game's own heightmap) in that block's map colour, the same
+     colours vanilla maps use, shaded lighter or darker by the height of the block to its north
+     so hills stand out. Where a roof covers the column near the top of the world (the Nether),
+     it looks down from your own height instead. Chunks are read a few per frame, nearest first,
+     and read again every 20 seconds so changes show. Nothing is sent to the server; the map is
+     kept for this session only.
+     Game functions, classes and fields it uses:
+     @use Cwu net.minecraft.client.multiplayer.ChunkProviderClient.getLoadedChunk
+     @use FUh net.minecraft.world.chunk.Chunk.getHeightValue
+     @use FaW net.minecraft.world.chunk.Chunk.getBlockState
+     @use GeK net.minecraft.block.state.BlockStateContainer$StateImplementation.getMapColor
+     @use T0 net.minecraft.util.math.BlockPos.<init>
+     @class Ba net.minecraft.util.math.BlockPos
+     @class AB7 net.minecraft.client.gui.GuiChat
+     @field Db net.minecraft.world.World.getChunkFromChunkCoordsIfLoaded World.chunkProvider
+     @field cAi net.minecraft.block.material.MapColor.<init> MapColor.colorValue
+     @field e4 net.minecraft.world.World.getPlayerEntityByName World.playerEntities
+     @field m net.minecraft.world.chunk.Chunk.getBlockState Vec3i.x
+     @field i net.minecraft.world.chunk.Chunk.getBlockState Vec3i.y
+     @field l net.minecraft.world.chunk.Chunk.getBlockState Vec3i.z
+     @field yW net.minecraft.client.gui.GuiIngame.renderAttackIndicator GameSettings.hideGUI
+     @field HZ net.minecraft.client.Minecraft.runGameLoop Minecraft.toastGui
+     @field wH net.minecraft.client.gui.toasts.GuiToast.func_191783_a GuiToast.visible
+     (Entity position b/f/c, rotationYaw C, the list helpers EH and Bm, and the rest are declared
+     in thunder-client.js and the other modules.)
+     ------------------------------------------------------------------------------------------- */
+  var MM={tiles:{},count:0,world:null,pos:null,scanned:0,lastRescan:0,box:null,cv:null,cx2:null,coords:null,
+    scratch:null,sctx:null,big:null,open:false,view:{x:0,z:0,scale:2},drag:null,heights:{}};
+  var MM_RESCAN_MS=20000,MM_MAX_TILES=8000;
+  function mmKey(cx,cz){return cx+','+cz;}
+
+  // one chunk's 16x16 map image (ImageData) and its column heights, or null when it is not loaded
+  function mmScan(w,cx,cz,py){
+    var ch=Cwu(w.Db,cx,cz);
+    if(!ch)return null;
+    if(!MM.pos){MM.pos=new Ba();T0(MM.pos,0,0,0);}
+    var pos=MM.pos,img=new W.ImageData(16,16),d=img.data,hs=new W.Int16Array(256),x,z,y,st,mc,col,i;
+    var north=MM.heights[mmKey(cx,cz-1)];
+    for(z=0;z<16;z++)for(x=0;x<16;x++){
+      i=z*16+x;
+      y=FUh(ch,x,z)-1;
+      if(y>=120&&py<118){                              // a roof (the Nether): look down from your height
+        y=Math.min(py+1,y);
+        while(y>0&&!mmSolid(w,ch,x,y,z,cx*16+x,cz*16+z))y--;
+      }
+      hs[i]=y;
+      if(y<0){d[i*4+3]=0;continue;}
+      st=FaW(ch,x,y,z);
+      pos.m=cx*16+x;pos.i=y;pos.l=cz*16+z;
+      mc=st?GeK(st,w,pos):null;
+      col=mc?mc.cAi|0:0;
+      if(!col){d[i*4+3]=0;continue;}
+      var ny=z>0?hs[i-16]:(north?north[240+x]:y),f=y>ny?1.0:y<ny?0.72:0.86;
+      d[i*4]=((col>>16)&255)*f;d[i*4+1]=((col>>8)&255)*f;d[i*4+2]=(col&255)*f;d[i*4+3]=255;
+    }
+    MM.heights[mmKey(cx,cz)]=hs;
+    return img;
+  }
+  // a block with a map colour (not air) at local x, y, z (world column wx, wz)
+  function mmSolid(w,ch,x,y,z,wx,wz){
+    var st=FaW(ch,x,y,z);
+    if(!st)return false;
+    var p=MM.pos;p.m=wx;p.i=y;p.l=wz;
+    var mc=GeK(st,w,p);
+    return !!(mc&&mc.cAi);
+  }
+  function mmClear(){MM.tiles={};MM.heights={};MM.count=0;}
+
+  // a few chunks per frame: missing ones nearest first, then ones older than 20 s
+  function mmUpdate(){
+    var w=HEN&&HEN.X,p=HEN&&HEN.v;
+    if(w!==MM.world){MM.world=w;mmClear();}
+    if(!w||!p||(!S.minimap&&!MM.open))return;
+    var pcx=Math.floor(p.b/16),pcz=Math.floor(p.c/16),py=Math.floor(p.f),t=now(),budget=3,r,dx,dz,k,tile;
+    for(r=0;r<=10&&budget>0;r++){
+      for(dz=-r;dz<=r&&budget>0;dz++)for(dx=-r;dx<=r&&budget>0;dx++){
+        if(Math.max(Math.abs(dx),Math.abs(dz))!==r)continue;
+        k=mmKey(pcx+dx,pcz+dz);tile=MM.tiles[k];
+        if(tile&&t-tile.t<MM_RESCAN_MS+r*1500)continue;
+        var img=mmScan(w,pcx+dx,pcz+dz,py);
+        if(!img){if(!tile)continue;tile.t=t;continue;}  // not loaded: keep what we saw before
+        if(!tile)MM.count++;
+        MM.tiles[k]={img:img,t:t,cx:pcx+dx,cz:pcz+dz};
+        MM.scanned++;budget--;
+      }
+    }
+    if(MM.count>MM_MAX_TILES){                         // forget the farthest chunks
+      var all=[];for(k in MM.tiles)all.push(MM.tiles[k]);
+      all.sort(function(a,b){return (Math.abs(b.cx-pcx)+Math.abs(b.cz-pcz))-(Math.abs(a.cx-pcx)+Math.abs(a.cz-pcz));});
+      for(var i=0;i<all.length-MM_MAX_TILES*0.8;i++){delete MM.tiles[mmKey(all[i].cx,all[i].cz)];MM.count--;}
+    }
+  }
+
+  // draws the map around block (x, z) into ctx (w x h pixels) at `scale` pixels per block
+  function mmPaint(ctx,w,h,x,z,scale){
+    var halfW=w/scale/2,halfH=h/scale/2;
+    var c0x=Math.floor((x-halfW)/16),c1x=Math.floor((x+halfW)/16),c0z=Math.floor((z-halfH)/16),c1z=Math.floor((z+halfH)/16);
+    var sw=(c1x-c0x+1)*16,sh=(c1z-c0z+1)*16;
+    if(!MM.scratch||MM.scratch.width<sw||MM.scratch.height<sh){
+      MM.scratch=D.createElement('canvas');MM.scratch.width=Math.max(sw,64);MM.scratch.height=Math.max(sh,64);
+      MM.sctx=MM.scratch.getContext('2d');
+    }
+    var s=MM.sctx,cx,cz,tile;
+    s.clearRect(0,0,sw,sh);
+    for(cz=c0z;cz<=c1z;cz++)for(cx=c0x;cx<=c1x;cx++){
+      tile=MM.tiles[mmKey(cx,cz)];
+      if(tile)s.putImageData(tile.img,(cx-c0x)*16,(cz-c0z)*16);
+    }
+    ctx.imageSmoothingEnabled=false;
+    ctx.drawImage(MM.scratch,x-halfW-c0x*16,z-halfH-c0z*16,w/scale,h/scale,0,0,w,h);
+  }
+  // an arrow pointing where yaw looks (Minecraft yaw: 0 = south, 90 = west)
+  function mmArrow(ctx,x,y,yaw,size,fill){
+    var a=(yaw+180)*Math.PI/180;
+    ctx.save();ctx.translate(x,y);ctx.rotate(a);
+    ctx.beginPath();ctx.moveTo(0,-size);ctx.lineTo(size*0.7,size*0.8);ctx.lineTo(0,size*0.4);ctx.lineTo(-size*0.7,size*0.8);ctx.closePath();
+    ctx.fillStyle=fill;ctx.strokeStyle='rgba(3,8,14,.9)';ctx.lineWidth=1.5;ctx.fill();ctx.stroke();
+    ctx.restore();
+  }
+  function mmPlayers(ctx,w,h,x,z,scale,self,clip){
+    var list=HEN.X&&HEN.X.e4,n=list?EH(list):0,i,e;
+    for(i=0;i<n;i++){
+      e=Bm(list,i);
+      if(!e||e===self)continue;
+      var px=w/2+(e.b-x)*scale,py=h/2+(e.c-z)*scale;
+      if(clip&&(px<3||py<3||px>w-3||py>h-3))continue;
+      ctx.fillStyle='#eaf6ff';ctx.strokeStyle='rgba(3,8,14,.9)';ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.arc(px,py,3,0,Math.PI*2);ctx.fill();ctx.stroke();
+    }
+  }
+
+  // ---- minimap (DOM canvas over the game) ------------------------------------------------------
+  var MM_CSS=[
+    '#thunder-minimap{position:fixed;z-index:1400;pointer-events:none;display:none;font:11px/1.2 "Segoe UI",system-ui,sans-serif;transition:top .25s}',
+    '#thunder-minimap canvas{display:block;border-radius:10px;border:1px solid rgba(79,209,255,.55);',
+      'box-shadow:0 0 0 1px rgba(3,8,14,.8),0 0 14px rgba(79,209,255,.25);background:rgba(5,9,15,.85)}',
+    '#thunder-minimap.round canvas{border-radius:50%}',
+    '#thunder-minimap .tm-xyz{margin-top:4px;text-align:center;color:#cfeeff;text-shadow:0 1px 2px #000,0 0 6px rgba(0,0,0,.8)}',
+    '#thunder-worldmap{position:fixed;inset:0;z-index:2147483500;background:#05090f;display:none;cursor:grab;user-select:none}',
+    '#thunder-worldmap.drag{cursor:grabbing}',
+    '#thunder-worldmap canvas{position:absolute;inset:0}',
+    '#thunder-worldmap .tw-bar{position:absolute;left:50%;top:14px;transform:translateX(-50%);padding:8px 14px;border-radius:10px;',
+      'background:rgba(7,12,19,.92);border:1px solid rgba(79,209,255,.35);color:#cfeeff;font:12px "Segoe UI",system-ui,sans-serif;pointer-events:none}',
+    '#thunder-worldmap .tw-bar b{color:#f1faff;letter-spacing:.08em;margin-right:10px}'
+  ].join('');
+  function mmStyle(){
+    if(D.getElementById('thunder-minimap-style'))return;
+    var st=D.createElement('style');st.id='thunder-minimap-style';st.textContent=MM_CSS;(D.head||D.documentElement).appendChild(st);
+  }
+  function mmBox(){
+    if(MM.box)return MM.box;
+    mmStyle();
+    var b=D.createElement('div');b.id='thunder-minimap';
+    var cv=D.createElement('canvas');b.appendChild(cv);
+    var xyz=D.createElement('div');xyz.className='tm-xyz';b.appendChild(xyz);
+    (D.body||D.documentElement).appendChild(b);
+    MM.box=b;MM.cv=cv;MM.cx2=cv.getContext('2d');MM.coords=xyz;
+    return b;
+  }
+  function mmShown(){
+    var mc=HEN,gs=mc&&mc.G;
+    return !!(S.minimap&&mc&&mc.X&&mc.v&&gs&&!gs.yW&&!gs.Ph&&!menuOpen&&!hudEditing&&!MM.open&&(mc.cm===null||mc.cm instanceof AB7));
+  }
+  // Toasts (advancements, new recipes, tutorial hints) slide in at the top right, 32 GUI units
+  // a row; a top-right minimap moves down below the rows in use so it never covers one.
+  // Returns the CSS pixels to leave above the minimap for them.
+  function mmToastPx(){
+    if((S.minimapCorner|0)!==0)return 0;
+    var tg=HEN&&HEN.HZ,v=tg&&tg.wH,d=v&&v.data,n=0,i;
+    if(!d)return 0;
+    for(i=0;i<d.length;i++)if(d[i]!==null)n=i+1;
+    return n?Math.ceil(n*32*W.innerWidth/Math.max(1,hudScreen.w||W.innerWidth/2)):0;
+  }
+  // GUI units the minimap takes in a top corner (0 right, 1 left): the HUD boxes of that side
+  // start below it
+  function mmReserve(guiW,corner){
+    if(!mmShown()||(S.minimapCorner|0)!==corner)return 0;
+    var px=10+mmToastPx()+clamp(Number(S.minimapSize)||140,80,260)+(S.minimapCoords?18:0)+4;
+    return Math.ceil(px*guiW/Math.max(1,W.innerWidth));
+  }
+  function mmDraw(){
+    var show=mmShown(),b=MM.box;
+    if(!show){if(b)b.style.display='none';return;}
+    b=mmBox();
+    var size=Math.round(clamp(Number(S.minimapSize)||140,80,260)),dpr=Math.min(2,W.devicePixelRatio||1);
+    if(MM.cv.width!==size*dpr){MM.cv.width=MM.cv.height=size*dpr;MM.cv.style.width=MM.cv.style.height=size+'px';}
+    b.className=S.minimapRound?'round':'';
+    var corner=S.minimapCorner|0;                      // 0 top right, 1 top left
+    b.style.top=(10+mmToastPx())+'px';b.style.right=corner===0?'10px':'';b.style.left=corner===1?'10px':'';
+    b.style.display='block';
+    var p=HEN.v,ctx=MM.cx2,wpx=size*dpr,scale=clamp(Number(S.minimapZoom)||2,1,6)*dpr;
+    ctx.clearRect(0,0,wpx,wpx);
+    ctx.save();
+    if(S.minimapRound){ctx.beginPath();ctx.arc(wpx/2,wpx/2,wpx/2,0,Math.PI*2);ctx.clip();}
+    mmPaint(ctx,wpx,wpx,p.b,p.c,scale);
+    mmPlayers(ctx,wpx,wpx,p.b,p.c,scale,p,true);
+    ctx.restore();
+    mmArrow(ctx,wpx/2,wpx/2,p.C,6*dpr,'#5fd7ff');
+    // N marker
+    ctx.fillStyle='#ffd84a';ctx.font='bold '+(10*dpr)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='top';
+    ctx.fillText('N',wpx/2,3*dpr);
+    MM.coords.textContent=Math.floor(p.b)+', '+Math.floor(p.f)+', '+Math.floor(p.c);
+    MM.coords.style.display=S.minimapCoords?'block':'none';
+  }
+
+  // ---- world map (full screen) -----------------------------------------------------------------
+  function wmBuild(){
+    if(MM.big)return MM.big;
+    mmStyle();
+    var ov=D.createElement('div');ov.id='thunder-worldmap';
+    var cv=D.createElement('canvas');ov.appendChild(cv);
+    var bar=D.createElement('div');bar.className='tw-bar';
+    bar.innerHTML='<b>WORLD MAP</b>Drag to move \u2022 scroll to zoom \u2022 M or Esc to close';
+    ov.appendChild(bar);
+    ['mousedown','mouseup','click','dblclick','contextmenu','wheel','mousemove'].forEach(function(t){
+      ov.addEventListener(t,function(e){e.stopPropagation();if(t!=='mousemove'&&t!=='wheel')e.preventDefault();},false);
+    });
+    ov.addEventListener('mousedown',function(e){MM.drag={x:e.clientX,y:e.clientY,vx:MM.view.x,vz:MM.view.z};ov.className='drag';});
+    ov.addEventListener('mousemove',function(e){
+      if(!MM.drag)return;
+      MM.view.x=MM.drag.vx-(e.clientX-MM.drag.x)/MM.view.scale;MM.view.z=MM.drag.vz-(e.clientY-MM.drag.y)/MM.view.scale;
+    });
+    var end=function(){MM.drag=null;ov.className='';};
+    ov.addEventListener('mouseup',end);ov.addEventListener('mouseleave',end);
+    ov.addEventListener('wheel',function(e){
+      e.preventDefault();
+      MM.view.scale=clamp(MM.view.scale*(e.deltaY<0?1.25:0.8),0.25,12);
+    },{passive:false});
+    (D.body||D.documentElement).appendChild(ov);
+    MM.big={ov:ov,cv:cv,ctx:cv.getContext('2d')};
+    return MM.big;
+  }
+  function wmOpen(){
+    if(MM.open||!HEN||!HEN.X||!HEN.v||HEN.cm!==null||menuOpen)return;
+    var B=wmBuild();
+    overlayOpening();
+    MM.open=true;MM.view.x=HEN.v.b;MM.view.z=HEN.v.c;
+    B.ov.style.display='block';
+    try{if(D.exitPointerLock&&D.pointerLockElement)D.exitPointerLock();}catch(_){}
+  }
+  function wmClose(){
+    if(!MM.open)return;
+    MM.open=false;MM.drag=null;
+    if(MM.big)MM.big.ov.style.display='none';
+    overlayClosed();
+  }
+  overlayChecks.push(function(){return MM.open;});
+  function wmDraw(){
+    if(!MM.open)return;
+    if(!HEN||!HEN.X){wmClose();return;}
+    var B=MM.big,w=W.innerWidth,h=W.innerHeight,dpr=Math.min(2,W.devicePixelRatio||1);
+    if(B.cv.width!==Math.round(w*dpr)||B.cv.height!==Math.round(h*dpr)){
+      B.cv.width=Math.round(w*dpr);B.cv.height=Math.round(h*dpr);B.cv.style.width=w+'px';B.cv.style.height=h+'px';
+    }
+    var ctx=B.ctx,W2=B.cv.width,H2=B.cv.height,sc=MM.view.scale*dpr,p=HEN.v;
+    ctx.fillStyle='#05090f';ctx.fillRect(0,0,W2,H2);
+    mmPaint(ctx,W2,H2,MM.view.x,MM.view.z,sc);
+    mmPlayers(ctx,W2,H2,MM.view.x,MM.view.z,sc,p,false);
+    mmArrow(ctx,W2/2+(p.b-MM.view.x)*sc,H2/2+(p.c-MM.view.z)*sc,p.C,8*dpr,'#5fd7ff');
+    ctx.fillStyle='#cfeeff';ctx.font=(12*dpr)+'px sans-serif';ctx.textAlign='left';ctx.textBaseline='bottom';
+    ctx.fillText('You: '+Math.floor(p.b)+', '+Math.floor(p.f)+', '+Math.floor(p.c)+'   \u2022   '+MM.count+' chunks seen',12*dpr,H2-10*dpr);
+  }
+  // M opens and closes the world map; while it is open, keys stay away from the game
+  if(W.addEventListener)W.addEventListener('keydown',function(e){
+    try{
+      var code=e&&e.code;
+      if(MM.open){
+        if((code==='KeyM'||code==='Escape')&&!e.repeat)wmClose();
+        if(code!=='F11')kill(e);
+        return;
+      }
+      if(code==='KeyM'&&!e.repeat&&S.worldMap&&HEN&&HEN.X&&HEN.cm===null&&!menuOpen&&!hudEditing){kill(e);wmOpen();}
+    }catch(_){}
+  },true);
+
+  frameTasks.push(function(){
+    try{mmUpdate();}catch(e){report(e);}
+    try{mmDraw();}catch(e){report(e);}
+    try{wmDraw();}catch(e){report(e);}
+  });
+  TC.minimap={state:function(){return {tiles:MM.count,scanned:MM.scanned,open:MM.open,shown:!!(MM.box&&MM.box.style.display==='block')};},
+    openWorldMap:wmOpen,closeWorldMap:wmClose};
+  MODULES.push(
+    {cat:'utility',id:'minimap',name:'Minimap',
+      desc:'A small map in the corner: north up, an arrow for you, dots for other players and your coordinates under it. Made from the chunks the game has loaded.',
+      opts:[{id:'minimapSize',name:'Size',min:80,max:260,step:10,fmt:function(v){return v+' px';}},
+        {id:'minimapZoom',name:'Zoom',min:1,max:6,step:0.5,fmt:function(v){return v+'x';}},
+        {id:'minimapCorner',name:'Corner',choices:['Top right','Top left']},
+        {id:'minimapRound',name:'Round'},
+        {id:'minimapCoords',name:'Coordinates under it'}]},
+    {cat:'utility',id:'worldMap',name:'World Map',
+      desc:'Press M in a world for a full-screen map of everywhere you have been this session. Drag to move, scroll to zoom, M or Esc to close.'});
+
+  // Shulker preview, boat view 360
+  /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
+     Extras. Included into the client scope of thunder-client.js by build.js.
+     - Shulker Preview (Utility): hovering a shulker box in any inventory shows its 27 slots, with
+       the real items and counts, in a Thunder panel under its tooltip; no need to place and open it.
+     - Boat View 360 (Movement): in a boat you can look all the way around; the game normally
+       stops your view 105 degrees to either side of the boat.
+
+     Game functions this module replaces:
+     @hook FUA net.minecraft.entity.item.EntityBoat.applyYawToEntity
+     @hook EZV net.minecraft.client.gui.GuiScreen.renderToolTip
+     @virtual dIm net.minecraft.client.gui.GuiScreen renderToolTip
+
+     Game functions, classes and fields it uses:
+     @use FUK net.minecraft.client.gui.GuiScreen.func_191927_a (getItemToolTip)
+     @use GJz net.minecraft.inventory.ItemStackHelper.func_191283_b
+     @use GZ2 net.minecraft.util.NonNullList.func_191197_a
+     @use DA net.minecraft.util.NonNullList.get
+     @use E$k net.minecraft.nbt.NBTTagCompound.getCompoundTag
+     @class NR net.minecraft.item.ItemShulkerBox
+     @field hr net.minecraft.client.gui.GuiScreen.drawHoveringText GuiScreen.itemRender
+     @field q net.minecraft.client.gui.GuiScreen.drawHoveringText GuiScreen.width
+     @field L net.minecraft.client.gui.GuiScreen.drawHoveringText GuiScreen.height
+     (GuiScreen CO and fontRenderer J, ItemStack.EMPTY HHk, getItem C51, isEmpty CCI, the list
+     helpers EH / Bm and FontRenderer.getStringWidth CC are declared in the other modules.)
+     ------------------------------------------------------------------------------------------- */
+  // ---- Boat View 360 ---------------------------------------------------------------------------
+  // EntityBoat.applyYawToEntity(boat, rider) turns the rider's body with the boat and clamps the
+  // rider's view to 105 degrees either side; for you, only the body part is kept
+  var origFUA=FUA;
+  FUA=function(a,b){
+    if(S.boat360&&!$rt_resuming()&&HEN&&b===HEN.v){
+      try{b.cnp(a.C);}catch(e){report(e);}
+      return;
+    }
+    return origFUA(a,b);
+  };
+
+  // ---- Shulker Preview -------------------------------------------------------------------------
+  var SP={cache:(typeof WeakMap==='function'?new WeakMap():null),shown:0};
+  // the 27 stacks inside a shulker box item (read with the game's own ItemStackHelper, like the
+  // block does when it is placed), or null for anything else. Remembered per item tag.
+  function spItems(st){
+    if(st===null||CCI(st)||!(C51(st) instanceof NR))return null;
+    var tag=st.bU;
+    if(tag===null)return [];
+    var hit=SP.cache?SP.cache.get(tag):undefined;
+    if(hit!==undefined)return hit;
+    var list=GZ2(27,HHk),out=[];
+    GJz(E$k(tag,$rt_str('BlockEntityTag')),list);
+    for(var i=0;i<27;i++){var s=DA(list,i);out.push(s!==null&&!CCI(s)?s:null);}
+    if(SP.cache)SP.cache.set(tag,out);
+    return out;
+  }
+  // queues the panel under the tooltip GuiScreen.drawHoveringText just drew (same size rules)
+  function spOps(gui,st,mx,my){
+    var items=spItems(st);
+    if(!items)return false;
+    var font=gui.J,lines=FUK(gui,st),n=lines?EH(lines):0,w=0,i;
+    for(i=0;i<n;i++)w=Math.max(w,CC(font,Bm(lines,i)));
+    var tx=mx+12,ty=my-12,th=8+(n>1?2+(n-1)*10:0);
+    if(tx+w>gui.q)tx=tx-28-w;
+    if(ty+th+6>gui.L)ty=gui.L-th-6;
+    var pw=9*18+6,ph=3*18+6,px=Math.max(2,Math.min(tx-3,gui.q-pw-2)),py=ty+th+7;
+    if(py+ph>gui.L-2)py=Math.max(2,ty-4-3-ph);
+    SP.shown++;
+    opPush();op(DPm,0.0,0.0,400.0);
+    rect(px,py,px+pw,py+ph,0xF0080E16|0);
+    rect(px,py,px+pw,py+1,0xFF3A8BB8|0);rect(px,py+ph-1,px+pw,py+ph,0xFF3A8BB8|0);
+    rect(px,py+1,px+1,py+ph-1,0xFF3A8BB8|0);rect(px+pw-1,py+1,px+pw,py+ph-1,0xFF3A8BB8|0);
+    for(i=0;i<27;i++){
+      var sx=px+3+(i%9)*18,sy=py+3+((i/9)|0)*18;
+      rect(sx,sy,sx+18,sy+18,0x33000000|0);
+      rect(sx+1,sy+1,sx+17,sy+17,0x2A4FD1FF|0);
+    }
+    itemsBegin();
+    for(i=0;i<27;i++){
+      if(!items[i])continue;
+      var ix=px+4+(i%9)*18,iy=py+4+((i/9)|0)*18;
+      op(FkK,gui.hr,HEN.v,items[i],ix,iy);
+      op(F8l,gui.hr,font,items[i],ix,iy);
+    }
+    itemsEnd();
+    opPop();
+    return true;
+  }
+  // GuiScreen.renderToolTip(gui, stack, x, y). Most screens call it through the class's
+  // prototype slot (which holds the original), the creative inventory calls it by name, so the
+  // function is wrapped and the prototype slot pointed at the wrapper. The vanilla tooltip draws
+  // first; the panel's draw list then runs like the HUD's (TeaVM-resumable).
+  var origEZV=EZV;
+  EZV=function(a,b,c,d){
+    var st=0,list=null,i=0,t;
+    if($rt_resuming()){t=$rt_nativeThread();i=t.pop();list=t.pop();st=t.pop();}
+    if(st===0){
+      origEZV(a,b,c,d);
+      if($rt_suspending()){$rt_nativeThread().push(0,null,0);return;}
+      list=null;
+      if(S.shulkerPreview&&HEN&&HEN.v){
+        ops=[];opDepth=0;
+        try{if(spOps(a,b,c,d))list=ops;}catch(e){report(e);list=null;}
+        ops=null;
+      }
+      i=0;
+    }
+    if(list){
+      try{i=runOps(list,i);}
+      catch(e){report(e);i=-1;unwindOps();}
+      if(i>=0){$rt_nativeThread().push(1,list,i);return;}
+    }
+  };
+  CO.prototype.dIm=function(b,c,d){return EZV(this,b,c,d);};
+  TC.extras={shulker:function(){return SP.shown;}};
+  MODULES.push(
+    {cat:'utility',id:'shulkerPreview',name:'Shulker Preview',
+      desc:'Hover a shulker box in any inventory to see all 27 slots, with the real items and counts, under its tooltip. No need to place it and open it.'},
+    {cat:'movement',id:'boat360',name:'Boat View 360',
+      desc:'In a boat you can look all the way around. Normally the game stops your view 105 degrees to either side.'});
+
   // Shaders: optional post-processing of the world image (off by default)
   /* -------------------------------------------------------------------------------------------
      Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
@@ -52347,7 +52800,7 @@ c.PK;})();
       hint:'Steps quality down when FPS stays under the target and back up when there is room.'}));
     box.appendChild(optRow({id:'shTargetFps',name:'Target FPS',min:20,max:60,step:5,fmt:shFps}));
     box.appendChild(optRow({id:'shPerf',name:'Performance Mode',
-      hint:'Lightest shaders: color grading, time-of-day light, contrast and vignette only (no bloom, glow, sun rays or motion blur).'}));
+      hint:'Lightest shaders: color grading, time-of-day light, contrast and vignette only (no bloom, glow or sun rays).'}));
     box.appendChild(el('div','tcm-sub','Custom quality'));
     box.appendChild(optRow({id:'shBloomRes',name:'Bloom resolution',min:1,max:3,step:1,fmt:shRes,invert:true,onChange:shToCustom}));
     box.appendChild(optRow({id:'shBloomLevels',name:'Bloom blur levels',min:1,max:7,step:1,fmt:shLevels,onChange:shToCustom}));
@@ -54310,6 +54763,8 @@ c.PK;})();
      @hook Efa net.minecraft.client.gui.FontRenderer.drawString
      @class Zj net.lax1dude.eaglercraft.profile.GuiScreenEditProfile
      @class UF net.peyton.eagler.gui.GuiCredits
+     @class ID net.minecraft.client.gui.inventory.GuiContainer
+     @field iX net.minecraft.util.ResourceLocation.getResourcePath ResourceLocation.resourcePath
      @virtual dK net.lax1dude.eaglercraft.profile.GuiScreenEditProfile drawScreen
      @virtual dK net.peyton.eagler.gui.GuiCredits drawScreen
      @virtual VV net.minecraft.client.gui.GuiButton func_191745_a
@@ -54457,8 +54912,24 @@ c.PK;})();
     if(!$rt_resuming())thSlot=a;
     return origGkZ(a);
   };
+  // Dark Containers (Visual): inventories, chests, furnaces and every other container screen
+  // draw their background texture darkened (a colour multiplier set right after the texture is
+  // bound; the game sets white again before its next drawing), and their grey titles light
+  var thDarkTex=(typeof WeakMap==='function')?new WeakMap():null;
+  function thContainerTex(b){
+    var r=thDarkTex?thDarkTex.get(b):undefined;
+    if(r===undefined){
+      var p=b.iX,t=p!==null?$rt_ustr(p):'';
+      r=t.indexOf('textures/gui/container/')===0||t==='textures/gui/recipe_book.png';
+      if(thDarkTex)thDarkTex.set(b,r);
+    }
+    return r;
+  }
+  function thDarkOn(){return !!(S.darkContainers&&HEN&&HEN.cm instanceof ID);}
   var origD17=D17;
   D17=function(a,b){
+    var dark=!$rt_resuming()&&b!==null&&thDarkOn()&&thContainerTex(b);
+    if(dark){var r0=origD17(a,b);if(!$rt_suspending())CFi(0.34,0.38,0.46,1.0);return r0;}
     if(!$rt_resuming()&&b!==null){
       if(b===LGh&&thCredits>0){
         if(thButtonsOn())b=thCreditsTex.loc;
@@ -54561,6 +55032,7 @@ c.PK;})();
   var TH_BRIGHT={'0':'f','1':'9','2':'a','3':'b','4':'c','5':'d','8':'7'};
   var origEfa=Efa;
   Efa=function(a,b,c,d,e){
+    if(e===4210752&&!$rt_resuming()&&thDarkOn())e=0xE2EAF2;   // container titles on the dark background
     if(thCredits>0&&!$rt_resuming()&&thButtonsOn()){
       if(e===4210784)e=0xDCE6F0;
       if(b!==null){
@@ -54590,6 +55062,8 @@ c.PK;})();
     desc:'Thunder look for every menu: storm backgrounds, glass lists, Thunder buttons, sliders and text boxes.',opts:[
       {id:'menuStorm',name:'Storm backgrounds (off: plain dark, fastest)'},
       {id:'menuButtons',name:'Thunder buttons'}]});
+  MODULES.push({cat:'visual',id:'darkContainers',name:'Dark Inventories',
+    desc:'Dark mode for your inventory, chests, furnaces and every other container screen, with light titles. Works with any resource pack.'});
   TC.theme={state:function(){return {made:thState,buttons:thButtonsOn(),bg:thBgOn(),storm:thStormOn(),frame:tbFrameId,
     locs:thTex.map(function(T){return !!T.loc;})};}};
 

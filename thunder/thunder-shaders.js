@@ -928,7 +928,7 @@
       hint:'Steps quality down when FPS stays under the target and back up when there is room.'}));
     box.appendChild(optRow({id:'shTargetFps',name:'Target FPS',min:20,max:60,step:5,fmt:shFps}));
     box.appendChild(optRow({id:'shPerf',name:'Performance Mode',
-      hint:'Lightest shaders: color grading, time-of-day light, contrast and vignette only (no bloom, glow, sun rays or motion blur).'}));
+      hint:'Lightest shaders: color grading, time-of-day light, contrast and vignette only (no bloom, glow or sun rays).'}));
     box.appendChild(el('div','tcm-sub','Custom quality'));
     box.appendChild(optRow({id:'shBloomRes',name:'Bloom resolution',min:1,max:3,step:1,fmt:shRes,invert:true,onChange:shToCustom}));
     box.appendChild(optRow({id:'shBloomLevels',name:'Bloom blur levels',min:1,max:7,step:1,fmt:shLevels,onChange:shToCustom}));

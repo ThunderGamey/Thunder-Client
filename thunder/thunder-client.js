@@ -47,6 +47,8 @@
    @use AIz net.minecraft.client.gui.ScaledResolution.getScaledWidth
    @use ASe net.minecraft.client.gui.ScaledResolution.getScaledHeight
    (Gui.drawRect D49 and TextureManager.bindTexture D17 are hooked by thunder-theme.js)
+   (Minecraft.displayGuiScreen GGs is hooked by thunder-boot.js, GuiIngameMenu Bxj is declared in
+   thunder-lan.js)
    @use CFi net.lax1dude.eaglercraft.opengl.GlStateManager.color
    @use Eu0 net.lax1dude.eaglercraft.opengl.GlStateManager.pushMatrix
    @use ECi net.lax1dude.eaglercraft.opengl.GlStateManager.popMatrix
@@ -233,7 +235,7 @@
     hitEffect:0,hitEffectAmt:1,hitEffectSound:true,
     titleBg:true,titleLogo:true,titleSplash:true,titleLightning:true,titleParallax:60,titleQuality:0,
     titleClickBolt:true,menuSounds:true,   // click the title storm for lightning; storm sounds on menus only
-    menuTheme:true,menuStorm:true,menuButtons:true,
+    menuTheme:true,menuStorm:true,menuButtons:true,darkContainers:true,
     quickStart:true,         // thunder-boot.js: no Edit Profile screen at start
     noGlint:false,noRain:false,noPumpkin:false,  // thunder-tweaks.js
     // thunder-combat.js: totem counter and pickup notifier (HUD boxes), red crosshair on players,
@@ -244,7 +246,11 @@
     zoom:true,zoomLevel:4,zoomSmooth:true,zoomScroll:true,zoomSens:true,zoomToggle:false,
     // thunder-qol.js
     toggleSneak:false,clearChat:false,hidePasswords:true,ownName:false,crystalOpt:true,xpClumps:true,
-    fastXp:false,menuSfx:true
+    fastXp:false,menuSfx:true,
+    // thunder-minimap.js: minimap (size in px, zoom in px per block, 0 top right / 1 top left)
+    minimap:true,minimapSize:130,minimapZoom:2,minimapCorner:0,minimapRound:false,minimapCoords:true,worldMap:true,
+    // thunder-extras.js
+    shulkerPreview:true,boat360:true
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -512,8 +518,8 @@
     '.tcm-btn:active,.tcm-seg button:active,.tcm-tab:active,.tcm-more:active{transform:translateY(1px)}',
     '.tcm-switch:active:after{width:18px}.tcm-switch.tcm-on:active:after{transform:translateX(12px)}',
     '.tcm-seg{display:flex;gap:3px;margin-top:7px;padding:3px;border-radius:9px;background:rgba(3,7,12,.6);border:1px solid rgba(110,140,160,.22)}',
-    '.tcm-swatches{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}',
-    '.tcm-swatches button{width:20px;height:20px;padding:0;border-radius:6px;border:2px solid rgba(3,7,12,.8);cursor:pointer;',
+    '.tcm-swatches{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}',
+    '.tcm-swatches button{width:19px;height:19px;padding:0;border-radius:6px;border:2px solid rgba(3,7,12,.8);cursor:pointer;',
       'box-shadow:0 0 0 1px rgba(110,140,160,.35);transition:transform .1s,box-shadow .1s}',
     '.tcm-swatches button:hover{transform:scale(1.12)}',
     '.tcm-swatches button.tcm-on{box-shadow:0 0 0 2px #eaf6ff,0 0 10px rgba(79,209,255,.6)}',
@@ -551,18 +557,38 @@
   function repaint(id){(painters[id]||[]).forEach(function(fn){try{fn();}catch(_){}});}
   function runLive(){for(var i=0;i<liveFns.length;i++){try{liveFns[i]();}catch(_){}}}
 
+  // Thunder's own screens (this menu, the HUD editor, the world map) are page overlays that let go
+  // of the mouse, and the game answers a released mouse by opening its pause menu. When one was
+  // opened during play, closing the last one closes that pause menu again (which takes the mouse
+  // back), so you are straight back in the game. Checked on the game thread a frame later, so an
+  // overlay opened in between (menu -> HUD editor) or a screen the game opened meanwhile (joining
+  // a friend's world) is left alone.
+  var overlayChecks=[],overlayFromPlay=false;
+  function overlayOpen(){for(var i=0;i<overlayChecks.length;i++){try{if(overlayChecks[i]())return true;}catch(_){}}return false;}
+  function overlayOpening(){if(!overlayOpen()&&HEN&&HEN.X&&HEN.cm===null)overlayFromPlay=true;}
+  function overlayClosed(){
+    runOnGame([function(){
+      if(!overlayFromPlay||overlayOpen())return;
+      overlayFromPlay=false;
+      if(HEN&&HEN.X&&HEN.cm instanceof Bxj)GGs(HEN,null);
+    }]);
+  }
+  overlayChecks.push(function(){return menuOpen;});
+
   function toggleMenu(){if(menuOpen)hideMenu();else showMenu();}
   function hideMenu(){
+    var was=menuOpen;
     if(menuOpen)menuSound(false);
     menuOpen=false;
     if(liveTimer){W.clearInterval(liveTimer);liveTimer=0;}
+    if(was)overlayClosed();
     if(!backdrop)return;
     backdrop.classList.remove('tcm-open');
     W.setTimeout(function(){if(!menuOpen)backdrop.style.display='none';},130);
   }
   function showMenu(){
     if(!backdrop)buildMenu();
-    if(!menuOpen)menuSound(true);
+    if(!menuOpen){menuSound(true);overlayOpening();}
     menuOpen=true;
     resetArmed=0;
     render();
@@ -837,7 +863,8 @@
     function row(k,v){kv.appendChild(el('span',null,k));kv.appendChild(el('b',null,v));}
     row('Created and owned by',OWNER_FULL);
     row('Client','Thunder Client for Eaglercraft 1.12.2');
-    row('Built on','Eaglercraft 1.12.2 by lax1dude; Minecraft and its assets by Mojang');
+    row('Built on','Eaglercraft 1.12.2 by lax1dude');
+    row('Minecraft','Minecraft and its assets by Mojang');
   }
   TC.openMenu=showMenu;TC.closeMenu=hideMenu;TC.toggleMenu=toggleMenu;
   TC.reset=function(){for(var id in DEFAULTS)S[id]=DEFAULTS[id];save();if(menuOpen)render();};
@@ -1513,6 +1540,12 @@
   // Quality of life: toggle sneak, clear chat, password hider, own name tag, crystal optimizer,
   // XP orb clumping, fast XP, menu sounds
   // @include thunder-qol.js
+
+  // Minimap and World Map (M)
+  // @include thunder-minimap.js
+
+  // Shulker preview, boat view 360
+  // @include thunder-extras.js
 
   // Shaders: optional post-processing of the world image (off by default)
   // @include thunder-shaders.js

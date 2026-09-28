@@ -47,6 +47,55 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
 
 ## Subsystems
 
+- `index-js.html` (the page) - the Thunder loading screen: a storm (clouds, rain, lightning, a
+  thunder with every flash) with the logo and a loading bar, shown the moment the page opens.
+  `classes.js` is loaded with `defer`, so the page draws while it downloads. The bar follows the
+  real start-up (`window.main` defined, then `TC.boot()`: the game object exists, a menu has been
+  on screen for three frames, the built-in packs are no longer busy). Browsers allow sound only
+  after the first click or key press, and the game itself waits for one before it starts its
+  sound (its own click screen is under the loading screen), so while sound is locked the screen
+  says CLICK ANYWHERE TO START and lets clicks through to the game; once the first menu is up,
+  clicks stop at the loading screen. Then the THUNDER CLIENT splash strikes three times and the
+  storm clears. The loading screen sits on `<html>`, not `<body>`, because the game empties
+  `<body>` (its container) when it starts. A crash report, or the tap-to-launch box of mobile
+  browsers, is never hidden.
+- `thunder-boot.js` - `TC.boot()` for the loading screen, and Quick Start (Right Shift > Utility,
+  on): `Minecraft.displayGuiScreen` opens the title screen instead of the Eaglercraft Edit Profile
+  screen the game opens at start (Edit Profile stays a button on the title screen), and leaves out
+  the default-username reminder.
+- `thunder-combat.js` - Totem Counter and Pickup Notifier (HUD boxes, movable in the HUD editor;
+  pickups come from the game's own "item collected" message, `SPacketCollectItem.processPacket`,
+  so only real pickups show), Target Crosshair (aiming at a player within reach: the crosshair,
+  drawn again from the same texture in red, and a lock-on frame; "Mobs too" option) and Shield
+  Status (the off-hand shield slot glows in the ready colour, or the disabled colour with a fill
+  that drains as the axe cooldown from `CooldownTracker` runs out; colours are swatches).
+- `thunder-tweaks.js` - No Enchant Glint (`ItemStack.hasEffect` and
+  `LayerArmorBase.renderEnchantedGlint`), No Rain (`EntityRenderer.renderRainSnow` and
+  `addRainParticles`: no rain, splashes or rain sounds) and No Pumpkin Blur
+  (`GuiIngame.renderPumpkinOverlay`).
+- `thunder-zoom.js` - Zoom (Utility): hold C (or tap it with "Toggle"); the FOV of the world
+  (not the hand) is divided in the `getFOVModifier` wrapper, glides in and out, the mouse wheel
+  zooms further while zoomed (the event never reaches the game, so the hotbar stays), and mouse
+  sensitivity is lowered with the zoom and put back exactly when it ends or a screen opens.
+- `thunder-qol.js` - Toggle Sneak (`MovementInputFromOptions.updatePlayerMoveState`), Clear Chat
+  (black boxes left out while `GuiNewChat.drawChat` runs), Password Hider (the chat box draws
+  `/login ****`; the text itself is unchanged), Show Own Name Tag (the `canRenderName` prototype
+  slot of `RenderLivingBase`, third person), Crystal Optimizer (an end crystal you hit is removed
+  on your screen at once after `PlayerControllerMP.attackEntity`), XP Orb Clumping (only the first
+  orb in each half-block cell is drawn per frame), Fast XP (no right-click delay with a bottle o'
+  enchanting in hand; off by default) and Menu Sounds (open / close sounds of the Right Shift menu).
+- `thunder-minimap.js` - Minimap (top corner, north up, players as dots, coordinates) and World
+  Map (M: full screen, drag and scroll). Both are drawn from the chunks the game has loaded:
+  the heightmap top block of every column in its map colour (`getMapColor`), shaded by the height
+  of the block to its north; under a roof near the top of the world (the Nether) it looks down
+  from your own height. A few chunks are read per frame, nearest first, again every 20 s; the map
+  is kept for the session only. The HUD boxes on the minimap's side start below it, and in the top
+  right it moves down while the game shows toasts (advancements, recipes, tutorial hints).
+- `thunder-extras.js` - Shulker Preview (a 9 x 3 panel with the box's items and counts under its
+  tooltip, read with the game's own `ItemStackHelper`; `GuiScreen.renderToolTip` is wrapped and
+  its prototype slot pointed at the wrapper, since the creative inventory calls it by name) and
+  Boat View 360 (`EntityBoat.applyYawToEntity` keeps turning your body with the boat but no longer
+  clamps your view to 105 degrees).
 - `thunder-hud.js` - the HUD widgets (FPS, CPS, coordinates, direction, speed, food, sprint,
   clock, memory, potion effects, keystrokes). With HUD Style on each is a Thunder box (dark glass,
   cyan edge; keys light up cyan while held), drawn by the game's own GUI code. Right Shift > HUD >
@@ -55,6 +104,10 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   it to put it back, Esc or Done to finish. Positions are stored as a fraction of the free space
   on each axis (`localStorage["thunderHudLayout_v1"]`), so a box against an edge stays there in any
   window size. The pause menu, which opens when the mouse is released, is not drawn while editing.
+  The Right Shift menu, the HUD editor and the world map all release the mouse, and the game
+  answers by opening its pause menu; when one of them was opened during play, closing the last one
+  closes that pause menu again (`displayGuiScreen(null)` on the game thread), so you are straight
+  back in the game. A pause menu or inventory you opened yourself stays open.
 - `thunder-client.js` - HUD, Right Shift menu, settings, the hooks listed in its header. Among
   them: Hand Item Size (scales the real first-person sword/shield through
   `ItemRenderer.renderItemInFirstPerson` + `renderItemSide`, first-person transforms only),
@@ -78,12 +131,19 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   storm sounds, parallax strength, quality. The storm is made once per frame into its own texture
   (at half size on Low, and only every other frame while Low is still slow) and copied wherever
   it is shown.
-- `thunder_ambient.js` (next to `index-js.html`, not in `classes.js`) - the storm sounds of the
-  menus: wind, low air and distant thunder now and then, all made in the browser (Web Audio, no
-  sound files), plus the crack of a clicked strike. `thunder-title.js` blocks them while a world
-  or server is open, so they never play in game, and turns them on or off with Right Shift >
-  Visual > Thunder Title Screen > Storm sounds.
-- `thunder-theme.js` - Thunder Menus: every menu in the Thunder style. The dirt behind menus
+- `thunder_ambient.js` (next to `index-js.html`, not in `classes.js`) - every sound the page
+  makes outside the game, made in the browser (Web Audio, no sound files): `thunder(big, far)`,
+  one lightning strike (a zap and crackle, a distorted crack, then a rolling rumble with sub-bass,
+  through a compressor), used by the loading screen and by every strike on the title screen (the
+  ones you click are heavier; lightning inside the clouds is only a far rumble); the loading
+  screen's rain; and the menu ambience (wind, low air, a distant rumble now and then). Nothing is
+  scheduled before the browser allows sound, so nothing piles up to play at once later.
+  `thunder-title.js` blocks it all while a world or server is open, so none of it plays in game,
+  and turns it on or off with Right Shift > Visual > Thunder Title Screen > Storm sounds. The
+  build stamps its URL with its own hash like `classes.js`.
+- `thunder-theme.js` - Dark Inventories (Visual, on): container screens (inventory, chests,
+  furnaces, ...) draw their background texture with a dark colour multiplier set right after it
+  is bound, and their grey titles light, with any resource pack. Thunder Menus: every menu in the Thunder style. The dirt behind menus
   (`GuiScreen.drawBackground`) becomes the storm; lists (worlds, servers, options, packs, ...)
   get the storm under a see-through glass area and repaint it in their header and footer
   (`GuiSlot.overlayBackground`); buttons and sliders draw from a Thunder copy of the button rows
@@ -119,10 +179,12 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   `getArmorResource`). Items without such a name, or when no loaded pack has the model, are left
   to the game. The models are in Thunder 1.21.11 (see [packs/README.md](packs/README.md)). The
   card's "Check the item in my hand" says what the held item was seen as.
-- `thunder-hitfx.js` - Right Shift > Visual > Hit Particles (off by default).
-  `Minecraft.clickMouse` is wrapped to read what you left-clicked; between frames (runOnGame)
-  `ParticleManager.emitParticleAtEntity` adds bursts (crit, magic, flame, hearts, sparkles, end
-  rod or totem) on the player or mob you hit. Options: particle type and amount.
+- `thunder-hitfx.js` - Right Shift > Visual > Hit Effects (off by default).
+  `Minecraft.clickMouse` is wrapped to read what you left-clicked; between frames (runOnGame) the
+  effect is made on the player or mob you hit: Thunder shock (a jagged little bolt of blue
+  enchanted-hit particles from above their head into the body, sparks, and a zap sound), Lightning
+  strike (the game's own lightning bolt, effect only, with its crack and rumble), or a burst of
+  crit, magic, flame, heart, end rod or totem particles. Only you see and hear it.
 - `thunder-perf.js` - Max FPS (Right Shift > Utility): one click applies the fastest settings.
   - Game settings: render distance 6 or less, Fast graphics, smooth lighting, clouds and entity
     shadows off, minimal particles and unlimited framerate. These go through the game's own

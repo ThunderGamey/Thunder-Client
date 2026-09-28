@@ -19,11 +19,18 @@ in Right Shift > Utility > Readme.
 
 ## Thunder Client
 
-- **`index-js.html`** - Thunder Client on the Eaglercraft 1.12 JavaScript runtime: a Thunder-style
+- **`index-js.html`** - Thunder Client on the Eaglercraft 1.12 JavaScript runtime. The Thunder
+  loading screen (a storm with thunder, the logo and a loading bar that follows the real start-up)
+  shows the moment the page opens, and the game starts straight on the title screen (no Edit
+  Profile screen every time). A Thunder-style
   HUD you can rearrange (drag boxes to move them, scroll to resize them), Right Shift menu (HUD,
   combat, movement, visual options including Hand Item Size, Hitboxes, See-through Leaves and
-  Hit Particles, and a one-click Max FPS that also tests whether VSync on or off is faster on your
-  device),
+  Hit Effects (a thunder shock or lightning on what you hit), and a one-click Max FPS that also
+  tests whether VSync on or off is faster on your device); Totem Counter, Pickup Notifier, Target
+  Crosshair, Shield Status colours, Zoom (hold C, scroll to zoom further), Minimap and World Map
+  (M), Shulker Preview, Toggle Sneak, Clear Chat, Password Hider, Show Own Name Tag, Crystal
+  Optimizer, XP Orb Clumping, Fast XP, Boat View 360, No Enchant Glint, No Rain, No Pumpkin Blur,
+  Dark Inventories and Thunder menu sounds,
   optional shaders (LOW / MEDIUM / HIGH looks, glowing lava and torches, underwater rays, waving
   plants and leaves, reflective waves on water), an animated Thunder title screen (storm clouds,
   lightning, sparks and a blocky skyline that shift with the mouse, lightning that strikes where

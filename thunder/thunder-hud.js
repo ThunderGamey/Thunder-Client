@@ -126,7 +126,7 @@
   }
   // lay out and draw every enabled widget
   function hudWidgets(ctx){
-    var themed=!!S.hudTheme,content=hudContent(ctx),W0=ctx.w,H0=ctx.h,cur=[5,5],rects={};
+    var themed=!!S.hudTheme,content=hudContent(ctx),W0=ctx.w,H0=ctx.h,cur=[5+mmReserve(W0,1),5+mmReserve(W0,0)],rects={};
     hudScreen.w=W0;hudScreen.h=H0;
     for(var i=0;i<HUD_WIDGETS.length;i++){
       var wd=HUD_WIDGETS[i],c=content[wd.id];
@@ -207,6 +207,7 @@
     ov.addEventListener('mouseup',function(){hudEditDrop();});
     ov.addEventListener('mouseleave',function(){hudEditDrop();});
     (D.body||D.documentElement).appendChild(ov);
+    overlayOpening();
     hudEditing=true;
     try{if(D.exitPointerLock&&D.pointerLockElement)D.exitPointerLock();}catch(_){}
     hudEditTick();
@@ -216,7 +217,9 @@
     W.cancelAnimationFrame(HE.raf);
     if(HE.ov.parentNode)HE.ov.parentNode.removeChild(HE.ov);
     HE=null;hudEditing=false;hudSave();
+    overlayClosed();
   }
+  overlayChecks.push(function(){return hudEditing;});
   function hudEditBox(id){
     var b=el('div','the-box');b.appendChild(el('div','the-tag',''));
     b.addEventListener('mousedown',function(e){

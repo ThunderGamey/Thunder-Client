@@ -94,8 +94,8 @@ WebGL 2 only (GLSL ES 3.00). Every pass is one attribute-less full-screen triang
    are scaled down as a whole, so hue is kept (orange torch light stays orange instead of turning
    lemon-yellow from red clipping first); only very bright light turns toward white. A 1/255
    dither is added against banding, and the result is written back into the back buffer.
-5. **Motion blur** (only when on): the composite goes to an off-screen target, is blitted back,
-   and becomes the next frame's history.
+5. **Motion blur** was removed: blending in earlier frames left ghost trails at browser frame
+   rates. `shMotion` is switched off on every load, so this off-screen step never runs.
 6. **State restore.** Framebuffers, viewport, program, vertex array, texture units 0–4 and their
    samplers, the enable flags and the color mask are read before the pass and put back exactly.
    Eaglercraft caches GL state (`GlStateManager`, `EaglercraftGPU`), so leaving anything changed
@@ -124,7 +124,7 @@ rays and golden sunsets. Effects run in this order inside the composite:
 | Color Grading | on, 75 % | The Mellow grade: shadows and mid-tones opened up a little, vibrance (dull colors gain the most), warm light and cool shadows, deeper blue sky and water, slightly lifted blacks, and a soft highlight shoulder that keeps hue. Warmth is weighted by (1 − chroma), so saturated colors keep their hue. |
 | Contrast | on, 35 % | S-curve on luminance, applied by scaling the color, so hue and saturation are preserved and nothing clips. |
 | Vignette | on, 40 % | Slightly darker screen edges. |
-| Motion Blur | off, 35 % | Blends in the previous frame. The weight is scaled by frame time, so the trail looks the same at any FPS; at very low FPS it therefore almost disappears. The history resets after hitches over 0.5 s. |
+| Motion Blur | removed | Was frame blending. It left ghost trails at browser frame rates, so it is gone from the menu and always off. |
 
 Defaults: Shaders off, Intensity 80 %, Quality MEDIUM, Auto quality on, Target FPS 30.
 
@@ -167,7 +167,6 @@ LOW, MEDIUM and HIGH look clearly different, not only sharper or softer.
 | Color Grading | 0.6 | 1 | 1.15 |
 | Contrast | 0.4 | 1 | 3.4 |
 | Vignette | 0.4 | 1 | 2.2 |
-| Motion Blur | 1 | 1 | 1 |
 
 LOW is light and clean, MEDIUM is the Mellow look, HIGH is deep and cinematic: more contrast, a
 strong vignette, warmer light and lights that glow a lot. Sun rays, sun haze and underwater light
@@ -175,7 +174,7 @@ are only a little stronger than on MEDIUM (stacked at full HIGH strength they wa
 into a pale peach haze), and bloom is 40 % weaker in bright scenes on every preset (full at night,
 where torches and lava need it). CUSTOM uses the MEDIUM look
 with your own bloom settings. Blends that would overshoot are capped (Color Grading and Contrast
-at 1, Motion Blur at 0.9). Measured at noon on the test scene (1280×720, wall area): the screen
+at 1). Measured at noon on the test scene (1280×720, wall area): the screen
 corners are 182 / 165 / 141 bright on LOW / MEDIUM / HIGH, and color saturation 54 / 63 / 73.
 
 | Preset | Bloom resolution | Blur levels | Passes / frame | Work at 1280×720 |
@@ -190,7 +189,6 @@ Notes:
 
 - Sun Rays add one pass at bloom resolution, only on frames where the sun or moon is in or near
   the view (MEDIUM at 1280×720: +0.06 MPx, 28 texture reads per pixel).
-- Motion Blur adds one pass (+1 full frame of pixels).
 - The copy and the composite are always full resolution, so they are the fixed floor of
   ~1.84 MPx at 1280×720.
 - At 1440p and above, bloom runs one resolution step lower automatically.
@@ -276,7 +274,7 @@ over.
     and on, resumes them.
   - If it is not better, nothing is paused.
 - **Performance Mode** (switch): forces the lightest level (grading, time-of-day light, contrast
-  and vignette only: no bloom, glow, sun rays or motion blur) regardless of auto.
+  and vignette only: no bloom, glow or sun rays) regardless of auto.
 
 Every decision is logged with its reason in `ThunderClient.shaders.log`, and the last 12 FPS
 samples are in `ThunderClient.shaders.fpsLog`.
@@ -303,7 +301,8 @@ values that differ from the defaults are saved.
 | `shPreset` | 1 | 0 LOW, 1 MEDIUM, 2 HIGH, 3 CUSTOM |
 | `shBloomRes`, `shBloomLevels` | 2, 4 | CUSTOM: bloom at 1/2^n, blur levels |
 | `shAuto`, `shTargetFps`, `shPerf` | true, 30, false | auto quality, its target, Performance Mode |
-| `shBloom`/`shBloomStr`, `shAmbient`, `shRays`, `shAtmos`, `shGrade`, `shContrast`, `shVignette`, `shMotion` (each with `…Str`) | see Effects | per-effect switch and strength |
+| `shBloom`/`shBloomStr`, `shAmbient`, `shRays`, `shAtmos`, `shGrade`, `shContrast`, `shVignette` (each with `…Str`) | see Effects | per-effect switch and strength |
+| `shMotion` | false | Motion Blur (removed): switched off on every load |
 | `shGlowStr` | 70 | Bloom > Lights glow extra % |
 | `shUnder`/`shUnderStr` | true, 70 | Underwater Rays |
 | `shWave`/`shWaveStr`, `shWater`/`shWaterStr` | true, 60 / true, 70 | Waving Plants, Water (world shader) |
@@ -326,8 +325,6 @@ shaders off.
   effect could copy it with `blitFramebuffer(DEPTH_BUFFER_BIT)` into a matching depth texture, for
   fog or depth of field.
 - **WebGL 2 is required**, and the game falls back to WebGL 1 on some very old devices.
-- **Motion blur has no motion vectors.** It is frame blending. At low FPS it almost disappears,
-  by design.
 - **Menus.** Shaders only apply while a world is loaded; the main menu and loading screens are not
   processed.
 
