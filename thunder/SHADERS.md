@@ -222,7 +222,7 @@ They follow the Shaders switch and need WebGL 2.
 |---|---|---|
 | Waving Plants | on, 60 % | Grass, ferns, flowers, saplings, crops, mushrooms, tall plants, leaves and vines sway in the wind, more in rain. Plants move at the top and keep their base; tall plants bend as one piece; plants with little sky light (caves) stay still. Leaves and vines move as a whole, by position, so neighbouring blocks stay joined. |
 | Water | on, 70 % | The water surface moves in gentle waves (only the surface; sides follow it, the bottom stays). Flat water reflects the sky (the fog color the game already uses for the horizon) more at low angles (Fresnel) and less under cover, with fine moving ripples and a glint from the sun or moon. |
-| See-through Leaves (Visual tab) | on | Leaves stay transparent (their Fancy form) even on Fast graphics. Off: leaves follow the Graphics setting. Max FPS turns it off. |
+| See-through Leaves (Visual tab) | off (it costs FPS) | Leaves stay transparent (their Fancy form) even on Fast graphics. Off: leaves follow the Graphics setting. Max FPS turns it off. |
 
 How it works:
 
@@ -306,7 +306,7 @@ values that differ from the defaults are saved.
 | `shGlowStr` | 70 | Bloom > Lights glow extra % |
 | `shUnder`/`shUnderStr` | true, 70 | Underwater Rays |
 | `shWave`/`shWaveStr`, `shWater`/`shWaterStr` | true, 60 / true, 70 | Waving Plants, Water (world shader) |
-| `clearLeaves` | true | See-through Leaves (Visual tab) |
+| `clearLeaves` | false | See-through Leaves (Visual tab) |
 
 **Reset Shader Settings** (two clicks) restores every shader setting except the ON/OFF switch,
 and forgets the level auto quality learned. **Reset all** in the menu footer also switches

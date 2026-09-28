@@ -229,7 +229,7 @@
     shVignette:true,shVignetteStr:40,shAmbient:true,shAmbientStr:50,shMotion:false,shMotionStr:35,
     shRays:true,shRaysStr:65,shAtmos:true,shAtmosStr:60,shGlowStr:70,shUnder:true,shUnderStr:70,
     // World shader effects (thunder-world.js): waving plants, water; see-through leaves (Visual)
-    shWave:true,shWaveStr:60,shWater:true,shWaterStr:70,clearLeaves:true,
+    shWave:true,shWaveStr:60,shWater:true,shWaterStr:70,clearLeaves:false,   // see-through leaves cost FPS: off
     newItems:true,           // thunder-items.js: newer items on servers drawn with the 1.21.11 pack's models
     // thunder-hitfx.js: an effect on what you hit (Visual): 0 off, 1 thunder shock, 2 lightning, 3+ particles
     hitEffect:0,hitEffectAmt:1,hitEffectSound:true,
@@ -248,13 +248,15 @@
     toggleSneak:false,clearChat:false,hidePasswords:true,ownName:false,crystalOpt:true,xpClumps:true,
     fastXp:false,menuSfx:true,
     // thunder-minimap.js: minimap (size in px, zoom in px per block, 0 top right / 1 top left)
-    minimap:true,minimapSize:130,minimapZoom:2,minimapCorner:0,minimapRound:false,minimapCoords:true,worldMap:true,
+    // minimap off by default for the best FPS (it reads chunks every frame)
+    minimap:false,minimapSize:130,minimapZoom:2,minimapCorner:0,minimapRound:false,minimapCoords:true,worldMap:true,
     // thunder-extras.js
     shulkerPreview:true,boat360:true,
     // thunder-weapons.js
     spears:true,spearHud:true,crystalTap:false,
     thunderCursor:true,cursorTrail:true,     // thunder-cursor.js
-    zoomKey:'KeyC',worldMapKey:'KeyM'
+    zoomKey:'KeyC',worldMapKey:'KeyM',
+    waypoints:true,waypointKey:'KeyB',waypointsInWorld:true,deathPoints:true   // thunder-waypoints.js
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -543,6 +545,13 @@
     '.tcm-switch:active:after{width:18px}.tcm-switch.tcm-on:active:after{transform:translateX(12px)}',
     '.tcm-seg{display:flex;gap:3px;margin-top:7px;padding:3px;border-radius:9px;background:rgba(3,7,12,.6);border:1px solid rgba(110,140,160,.22)}',
     '.tcm-swatches{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}',
+    '.tcm-wpt{display:flex;flex-direction:column;gap:5px;margin-top:8px}',
+    '.tcm-wpt-row{display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:8px;background:rgba(3,7,12,.45);border:1px solid rgba(110,140,160,.18)}',
+    '.tcm-wpt-dot{flex:0 0 14px;width:14px;height:14px;padding:0;border:2px solid rgba(3,7,12,.85);transform:rotate(45deg);cursor:pointer}',
+    '.tcm-wpt-name{flex:1 1 auto;min-width:0;padding:3px 6px;border-radius:6px;border:1px solid rgba(110,140,160,.25);background:rgba(3,7,12,.5);color:#eaf6ff;font:600 12px inherit}',
+    '.tcm-wpt-info{flex:0 0 auto;color:#8aa1b3;font-size:11px;font-variant-numeric:tabular-nums}',
+    '.tcm-wpt-btn{flex:0 0 auto;padding:3px 8px;border-radius:6px;border:1px solid rgba(110,140,160,.3);background:rgba(3,7,12,.5);color:#cfe8f8;font:600 11px inherit;cursor:pointer}',
+    '.tcm-wpt-del{color:#ff8a8a}',
     '.tcm-key{margin-left:auto;min-width:84px;padding:4px 10px;border-radius:7px;border:1px solid rgba(110,140,160,.35);background:rgba(3,7,12,.6);color:#dff3ff;font:600 11px/1.3 inherit;cursor:pointer}',
     '.tcm-key:hover{border-color:rgba(79,209,255,.6)}.tcm-key.tcm-on{border-color:#4fd1ff;box-shadow:0 0 10px rgba(79,209,255,.45);color:#4fd1ff}',
     '.tcm-swatches button{width:19px;height:19px;padding:0;border-radius:6px;border:2px solid rgba(3,7,12,.8);cursor:pointer;',
@@ -1322,6 +1331,7 @@
     if(S.saturation&&itemHud)saturationHud(ctx);
     if(S.crossTarget)crossHud(ctx);
     spearHud(ctx);                              // spear charge meter (thunder-weapons.js)
+    waypointHud(ctx);                           // waypoints in the world (thunder-waypoints.js)
     // the font renderer leaves the GL color tinted; put it back so later GUI drawing is unaffected
     op(CFi,1.0,1.0,1.0,1.0);
   }
@@ -1344,7 +1354,7 @@
     if(st===0){
       origEwc(a,b);
       if($rt_suspending()){$rt_nativeThread().push(a,b,0,null,0);return;}
-      ops=[];opDepth=0;
+      ops=[];opDepth=0;hudPartial=b;
       try{buildHud(a);list=ops;}catch(e){report(e);list=null;}
       ops=null;i=0;
     }
@@ -1626,6 +1636,9 @@
 
   // Minimap and World Map (M)
   // @include thunder-minimap.js
+
+  // Waypoints: on the maps and in the world
+  // @include thunder-waypoints.js
 
   // Spears like 1.21.11 (jab and charge on newer servers), Crystal Tap
   // @include thunder-weapons.js

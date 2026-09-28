@@ -205,6 +205,7 @@
     mmPaint(ctx,wpx,wpx,p.b,p.c,scale);
     mmPlayers(ctx,wpx,wpx,p.b,p.c,scale,p,true);
     ctx.restore();
+    wptMapMarkers(ctx,wpx,wpx,p.b,p.c,scale,true,dpr);        // waypoints (thunder-waypoints.js)
     mmArrow(ctx,wpx/2,wpx/2,p.C,6*dpr,'#5fd7ff');
     // N marker
     ctx.fillStyle='#ffd84a';ctx.font='bold '+(10*dpr)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='top';
@@ -225,7 +226,11 @@
     ['mousedown','mouseup','click','dblclick','contextmenu','wheel','mousemove'].forEach(function(t){
       ov.addEventListener(t,function(e){e.stopPropagation();if(t!=='mousemove'&&t!=='wheel')e.preventDefault();},false);
     });
-    ov.addEventListener('mousedown',function(e){MM.drag={x:e.clientX,y:e.clientY,vx:MM.view.x,vz:MM.view.z};ov.className='drag';});
+    ov.addEventListener('mousedown',function(e){if(e.button!==0)return;MM.drag={x:e.clientX,y:e.clientY,vx:MM.view.x,vz:MM.view.z};ov.className='drag';});
+    // right-click: a waypoint at that spot (thunder-waypoints.js)
+    ov.addEventListener('contextmenu',function(e){
+      wptAddFromMap(MM.view.x+(e.clientX-W.innerWidth/2)/MM.view.scale,MM.view.z+(e.clientY-W.innerHeight/2)/MM.view.scale);
+    });
     ov.addEventListener('mousemove',function(e){
       if(!MM.drag)return;
       MM.view.x=MM.drag.vx-(e.clientX-MM.drag.x)/MM.view.scale;MM.view.z=MM.drag.vz-(e.clientY-MM.drag.y)/MM.view.scale;
@@ -247,7 +252,7 @@
     MM.open=true;MM.view.x=HEN.v.b;MM.view.z=HEN.v.c;
     B.ov.style.display='block';
     // the hint at the top, with the key in use; it fades away after a few seconds
-    B.bar.lastChild.textContent='Drag to move \u2022 scroll to zoom \u2022 '+keyLabel(S.worldMapKey||'KeyM')+' or Esc to close';
+    B.bar.lastChild.textContent='Drag to move \u2022 scroll to zoom \u2022 right-click: waypoint \u2022 '+keyLabel(S.worldMapKey||'KeyM')+' or Esc to close';
     B.bar.style.opacity='1';
     if(B.fade)W.clearTimeout(B.fade);
     B.fade=W.setTimeout(function(){B.bar.style.opacity='0';},3500);
@@ -271,6 +276,7 @@
     ctx.fillStyle='#05090f';ctx.fillRect(0,0,W2,H2);
     mmPaint(ctx,W2,H2,MM.view.x,MM.view.z,sc);
     mmPlayers(ctx,W2,H2,MM.view.x,MM.view.z,sc,p,false);
+    wptMapMarkers(ctx,W2,H2,MM.view.x,MM.view.z,sc,false,dpr);
     mmArrow(ctx,W2/2+(p.b-MM.view.x)*sc,H2/2+(p.c-MM.view.z)*sc,p.C,8*dpr,'#5fd7ff');
     ctx.fillStyle='#cfeeff';ctx.font=(12*dpr)+'px sans-serif';ctx.textAlign='left';ctx.textBaseline='bottom';
     ctx.fillText('You: '+Math.floor(p.b)+', '+Math.floor(p.f)+', '+Math.floor(p.c)+'   \u2022   '+MM.count+' chunks seen',12*dpr,H2-10*dpr);

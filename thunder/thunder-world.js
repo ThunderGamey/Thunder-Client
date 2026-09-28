@@ -324,7 +324,8 @@
     else n0=e?e.sX|0:0;
     var r=origDt2(a,b,c,d,e);
     if($rt_suspending()){$rt_nativeThread().push(n0);return r;}
-    if(r&&e&&(S.shWave||S.shWater)&&e.sX>n0){try{wvMark(b,c,e,n0);}catch(x){report(x);}}
+    // only with shaders on: without them the marks would do nothing but slow chunk building
+    if(r&&e&&S.shaders&&(S.shWave||S.shWater)&&e.sX>n0){try{wvMark(b,c,e,n0);}catch(x){report(x);}}
     return r;
   };
 
@@ -346,7 +347,7 @@
   }
   function wvToggled(){
     // turning a kind on needs its marks, which are only written while chunks are built
-    var want=!!(S.shWave||S.shWater);
+    var want=!!(S.shaders&&(S.shWave||S.shWater));
     if(want)wvReload();
   }
 

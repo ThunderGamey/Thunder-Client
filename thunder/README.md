@@ -73,7 +73,8 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   `LayerArmorBase.renderEnchantedGlint`), No Rain (`EntityRenderer.renderRainSnow` and
   `addRainParticles`: no rain, splashes or rain sounds) and No Pumpkin Blur
   (`GuiIngame.renderPumpkinOverlay`).
-- `thunder-zoom.js` - Zoom (Utility): hold C (or tap it with "Toggle"); the FOV of the world
+- `thunder-zoom.js` - Zoom (Utility): hold C, or the key you pick in its Zoom key control (any
+  key, or the middle or a side mouse button; it is saved), or tap it with "Toggle"; the FOV of the world
   (not the hand) is divided in the `getFOVModifier` wrapper, glides in and out, the mouse wheel
   zooms further while zoomed (the event never reaches the game, so the hotbar stays), and mouse
   sensitivity is lowered with the zoom and put back exactly when it ends or a screen opens.
@@ -83,14 +84,24 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   slot of `RenderLivingBase`, third person), Crystal Optimizer (an end crystal you hit is removed
   on your screen at once after `PlayerControllerMP.attackEntity`), XP Orb Clumping (only the first
   orb in each half-block cell is drawn per frame), Fast XP (no right-click delay with a bottle o'
-  enchanting in hand; off by default) and Menu Sounds (open / close sounds of the Right Shift menu).
+  enchanting in hand; off by default) and Menu Sounds (the Right Shift menu opens with a near
+  thunder strike and a short roll and closes with a soft distant roll: `ThunderAmbient.menuThunder`,
+  which also plays in a world).
 - `thunder-minimap.js` - Minimap (top corner, north up, players as dots, coordinates) and World
-  Map (M: full screen, drag and scroll). Both are drawn from the chunks the game has loaded:
+  Map (M or your own key: full screen, drag and scroll; the hint at the top fades away). Both are drawn from the chunks the game has loaded:
   the heightmap top block of every column in its map colour (`getMapColor`), shaded by the height
   of the block to its north; under a roof near the top of the world (the Nether) it looks down
   from your own height. A few chunks are read per frame, nearest first, again every 20 s; the map
   is kept for the session only. The HUD boxes on the minimap's side start below it, and in the top
-  right it moves down while the game shows toasts (advancements, recipes, tutorial hints).
+  right it moves down while the game shows toasts (advancements, recipes, tutorial hints). The
+  minimap is off by default (it reads chunks every frame); the World Map works either way.
+- `thunder-waypoints.js` - Waypoints (Utility, on): B (or your own key) adds one where you stand,
+  right-click on the World Map adds one there, and dying adds a "Death" point. They show on the
+  minimap (at its edge when further away), on the World Map, and in the world as a diamond with the
+  name and distance, projected with the camera of that frame (position and angles between ticks,
+  the field of view with zoom). Right Shift > Utility > Waypoints renames, recolours, hides and
+  deletes them. Kept in `localStorage["thunderWaypoints_v1"]` per server address (or singleplayer
+  world, told apart by its spawn point) and dimension.
 - `thunder-weapons.js` - Spears like 1.21.11 (Combat, on): on a 1.21.11 or newer server
   ViaBackwards turns spears into swords for a 1.12 client, and never sends the spear's own
   actions. A left click with a spear now sends the 1.21.11 "stab" player action

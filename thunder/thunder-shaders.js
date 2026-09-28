@@ -961,7 +961,8 @@
   MODULES.push(
     {cat:'shaders',id:'shaders',name:'Shaders',wide:true,always:true,special:'shaders',
       desc:'Post-processing for the 3D world. The HUD and menus stay sharp. Off means vanilla rendering.',
-      onChange:function(on){shFailed=null;shAuto.paused=false;shRestart();SHS.note='';if(!on){shRelease();SHS.state='off';}}},
+      onChange:function(on){shFailed=null;shAuto.paused=false;shRestart();SHS.note='';if(!on){shRelease();SHS.state='off';}
+        else wvToggled();}},                       // waving plants / water need their marks: chunks are rebuilt once
     {cat:'shaders',id:'shBloom',name:'Bloom',desc:'Soft glow around bright light: torches, lava, glowstone, the sun. Lights glow extra makes lava, fire, torches and glowstone glow on their own (a lot on HIGH).',
       opts:[{id:'shBloomStr',name:'Strength',min:0,max:100,step:1,fmt:shPct},
         {id:'shGlowStr',name:'Lights glow extra',min:0,max:100,step:1,fmt:shPct}]},
