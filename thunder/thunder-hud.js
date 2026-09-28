@@ -26,13 +26,18 @@
   var hudRects={},hudScreen={w:0,h:0},hudEditing=false;
   var HB_BG=0x6605070D|0,HB_EDGE=0x734FD1FF|0,HB_TEXT=0xCFEEFF,HB_LABEL=0x5FD7FF,
     HB_KEY=0x990A0E18|0,HB_KEY_ON=0xC04FD1FF|0,HB_GLOW=0x404FD1FF|0,HB_KEY_TEXT_ON=0x061019;
-  // default column: 0 left stack, 1 right stack, 2 bottom right
+  // default column: 0 left stack, 1 right stack, 2 bottom right, 3 beside the hotbar just above
+  // the held-item / off-hand slot there, 4 right side a little above the middle
   var HUD_WIDGETS=[
     {id:'fps',name:'FPS',col:0},{id:'ping',name:'Ping',col:0},{id:'cps',name:'CPS',col:0},{id:'coords',name:'Coordinates',col:0},
     {id:'direction',name:'Direction',col:0},{id:'speed',name:'Speed',col:0},{id:'hunger',name:'Food',col:0},
     {id:'sprintStatus',name:'Sprint',col:0},{id:'clock',name:'Clock',col:1},{id:'memory',name:'Memory',col:1},
     {id:'effects',name:'Potion Effects',col:1},{id:'keystrokes',name:'Keystrokes',col:2}
   ];
+  // widgets other modules add: {id (its setting), name, col, content(ctx) -> data or null,
+  // size(ctx,data,themed) -> {w,h}, draw(ctx,data,themed)}; see hudExtra
+  var HUD_EXTRA=[];
+  function hudExtra(e){HUD_EXTRA.push(e);HUD_WIDGETS.push({id:e.id,name:e.name,col:e.col});}
 
   function hudEdge(x,y,w,h,c){rect(x,y,x+w,y+1,c);rect(x,y+h-1,x+w,y+h,c);rect(x,y+1,x+1,y+h-1,c);rect(x+w-1,y+1,x+w,y+h-1,c);}
   function hudBox(x,y,w,h){rect(x,y,x+w,y+h,HB_BG);hudEdge(x,y,w,h,HB_EDGE);}
@@ -57,7 +62,10 @@
     }
     if(S.speed)one('speed','Speed',fmt1(speed)+' b/s');
     if(S.hunger){try{one('hunger','Food',String(ZP(FAU(player))),0xFFAA00);}catch(_){}}
-    if(S.sprintStatus){var sp=!!CBg(player);one('sprintStatus','Sprint',sp?'ON':'OFF',sp?0x55FF55:0xAAAAAA);}
+    if(S.sprintStatus){
+      var sp=!!CBg(player);one('sprintStatus','Sprint',sp?'ON':'OFF',sp?0x55FF55:0xAAAAAA);
+      if(sneakToggled())out.sprintStatus.lines.push(['Sneak','TOGGLED',0xFFE04A]);   // Toggle Sneak (thunder-qol.js)
+    }
     if(S.clock){var d=new Date();one('clock','',pad2(d.getHours())+':'+pad2(d.getMinutes())+':'+pad2(d.getSeconds()));}
     if(S.memory){
       try{var pm=W.performance&&W.performance.memory;if(pm&&pm.usedJSHeapSize)one('memory','Mem',Math.round(pm.usedJSHeapSize/1048576)+' MB');}catch(_){}
@@ -69,10 +77,16 @@
       if(lines.length)out.effects={lines:lines};
     }
     if(S.keystrokes)out.keystrokes={keys:true};
+    for(var x=0;x<HUD_EXTRA.length;x++){
+      var e=HUD_EXTRA[x];
+      if(!S[e.id])continue;
+      try{var c=e.content(ctx);if(c){c.custom=e;out[e.id]=c;}}catch(err){report(err);}
+    }
     return out;
   }
   function hudLineText(l){return l[0]?l[0]+' '+l[1]:l[1];}
   function hudSize(ctx,c,themed){
+    if(c.custom)return c.custom.size(ctx,c,themed);
     if(c.keys)return themed?{w:46,h:54}:{w:46,h:34};
     var w=0;
     for(var i=0;i<c.lines.length;i++)w=Math.max(w,textWidth(ctx.font,hudLineText(c.lines[i])));
@@ -121,10 +135,13 @@
       var w=sz.w*s,h=sz.h*s,x,y;
       if(L&&typeof L.ax==='number'){x=clamp(L.ax,0,1)*Math.max(0,W0-w);y=clamp(L.ay,0,1)*Math.max(0,H0-h);}
       else if(wd.col===2){x=W0-w-5;y=H0-h-26;}                 // above the hotbar row
+      else if(wd.col===3){x=clamp(ctx.cx+91+6,0,Math.max(0,W0-w));y=H0-h-25;}
+      else if(wd.col===4){x=W0-w-5;y=Math.max(5,Math.round(H0*0.42-h/2));}
       else{x=wd.col?W0-w-5:5;y=cur[wd.col];cur[wd.col]+=h+(themed?2:1);}
       rects[wd.id]={x:x,y:y,w:w,h:h,s:s,name:wd.name};
       opPush();op(DPm,x,y,0);if(s!==1)op(FWK,s,s,1);
       if(c.keys)hudDrawKeys(ctx,themed);
+      else if(c.custom)c.custom.draw(ctx,c,themed,sz);
       else{if(themed)hudBox(0,0,sz.w,sz.h);hudDrawLines(ctx,c,themed);}
       opPop();
     }

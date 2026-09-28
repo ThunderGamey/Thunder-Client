@@ -1,8 +1,16 @@
-/* Thunder Client Ambient Audio
-   Procedural ambient layer for the menus: wind + low air + occasional distant thunder, and a
-   close thunder crack when you click the storm on the title screen (ThunderAmbient.crack).
-   No external audio assets required. Controls are exposed on window.ThunderAmbient; Thunder
-   Client blocks it (setBlocked) while a world or server is open, so it never plays in game.
+/* Thunder Client page audio. Part of Thunder Client, created and owned by Jayvardhan Ginni
+   (ThunderGamey). Everything the page plays outside the game's own sounds, made in the browser
+   (Web Audio, no sound files), on window.ThunderAmbient:
+   - thunder(big, far): one lightning strike. A zap and a crackle at the flash, a distorted crack,
+     then a rolling rumble with sub-bass, through a compressor so every strike is loud and clear.
+     The loading screen and the title screen (automatic strikes and the ones you click) all use it.
+     big: a close, heavier strike; far: only a distant rumble (lightning inside the clouds).
+   - rain(on): the loading screen's rain.
+   - the menu ambience: wind, low air and now and then a distant rumble.
+   Browsers allow sound only after the first click or key press on the page. Until then nothing is
+   scheduled (sounds queued while the audio is locked would all play at once when it unlocks).
+   Thunder Client blocks all of it (setBlocked) while a world or server is open, and switches it
+   with the "Storm sounds (menus only)" setting.
 */
 (function(){
   "use strict";
@@ -16,6 +24,8 @@
     blocked: false,     // a world or server is open: stay silent
     unlocked: false     // the browser allows sound (after the first click or key)
   };
+  var BASE_VOLUME = 0.16;       // state.volume the thunder level below was tuned at
+  var THUNDER_VOLUME = 0.38;
 
   try {
     state.enabled = localStorage.getItem("thunder.ambient.enabled") !== "0";
@@ -33,8 +43,10 @@
   var airSource = null;
   var windFilter = null;
   var airFilter = null;
-  var startedAt = 0;
   var thunderTimer = 0;
+  var thunderBus = null, thunderMaster = null, distortion = {};
+  var rainSource = null, rainGain = null;
+  var unlockCallbacks = [];
 
   function clamp(v){ return Math.max(0, Math.min(1, v)); }
 
@@ -51,7 +63,17 @@
     var AC = window.AudioContext || window.webkitAudioContext;
     if(!AC) return null;
     try { ctx = new AC(); } catch(e){ return null; }
+    ctx.onstatechange = function(){ if(ctx.state === "running") unlocked(); };
     return ctx;
+  }
+  // true when sound can play right now
+  function running(){ return !!ctx && ctx.state === "running"; }
+  function unlocked(){
+    if(state.unlocked) return;
+    state.unlocked = true;
+    var cbs = unlockCallbacks; unlockCallbacks = [];
+    cbs.forEach(function(cb){ try{ cb(); }catch(e){} });
+    waitForStormToEnd();
   }
 
   function makeNoiseBuffer(seconds, color){
@@ -72,6 +94,7 @@
     return buffer;
   }
 
+  // ---- menu ambience ---------------------------------------------------------------------------
   function buildGraph(){
     if(!ctx || master) return;
 
@@ -113,13 +136,14 @@
     windSource.start();
     airSource.start();
 
-    startedAt = performance.now();
     updateGain(true);
   }
 
   function updateGain(snap){
-    if(!ctx || !master) return;
-    var target = state.enabled ? state.volume : 0;
+    if(!ctx) return;
+    if(thunderMaster) thunderMaster.gain.value = THUNDER_VOLUME * Math.min(1.5, state.volume / BASE_VOLUME);
+    if(!master) return;
+    var target = state.enabled && state.started ? state.volume : 0;
     target *= (0.55 + state.intensity * 0.65);
     if(snap){
       master.gain.setValueAtTime(Math.max(0.0001, target), ctx.currentTime);
@@ -130,7 +154,7 @@
   }
 
   function distantThunder(){
-    if(!ctx || !master || !state.enabled || document.hidden) return;
+    if(!running() || !master || !state.enabled || state.blocked || document.hidden) return;
     try{
       var now = ctx.currentTime;
       var duration = 1.8 + Math.random() * 2.8;
@@ -175,15 +199,12 @@
 
   function start(){
     if(state.started) return;
-    if(!state.enabled || state.blocked) return;
-
+    if(!state.enabled || state.blocked || !state.unlocked) return;
+    if(document.getElementById("stormCanvas")){ waitForStormToEnd(); return; }   // the loading screen is still up
     var c = getContext();
     if(!c) return;
-
     try{
-      if(c.state === "suspended"){
-        c.resume().catch(function(){});
-      }
+      if(c.state === "suspended") c.resume().catch(function(){});
       buildGraph();
       state.started = true;
       state.suspended = false;
@@ -202,67 +223,234 @@
     }
   }
 
+  var waitTimer = 0;
   function waitForStormToEnd(){
-    if(!state.enabled || state.blocked) return;
+    clearTimeout(waitTimer);
+    if(!state.enabled || state.blocked || state.started) return;
     if(document.getElementById("stormCanvas")){
-      setTimeout(waitForStormToEnd, 750);
+      waitTimer = setTimeout(waitForStormToEnd, 750);
       return;
     }
-    setTimeout(start, 800);
+    waitTimer = setTimeout(start, 800);
   }
 
-  // A close strike: a sharp crack, then a rolling rumble. Plays straight to the speakers (not
-  // through the ambient layer), so it works on the first click too.
-  function crack(){
-    if(!state.enabled || state.blocked || document.hidden) return;
+  // ---- thunder ---------------------------------------------------------------------------------
+  // a distortion curve for the gritty, electric edge of the crack
+  function distortionCurve(amount){
+    if(distortion[amount]) return distortion[amount];
+    var n = 44100, curve = new Float32Array(n);
+    for(var i = 0; i < n; i++){
+      var x = (i * 2) / n - 1;
+      curve[i] = ((3 + amount) * x * 20 * (Math.PI / 180)) / (Math.PI + amount * Math.abs(x));
+    }
+    return (distortion[amount] = curve);
+  }
+  // compressor and master level shared by every strike
+  function getThunderBus(c){
+    if(!thunderBus){
+      thunderBus = c.createDynamicsCompressor();
+      thunderBus.threshold.value = -18;
+      thunderBus.knee.value = 12;
+      thunderBus.ratio.value = 6;
+      thunderBus.attack.value = 0.003;
+      thunderBus.release.value = 0.25;
+      thunderMaster = c.createGain();
+      thunderBus.connect(thunderMaster);
+      thunderMaster.connect(c.destination);
+      updateGain(true);
+    }
+    return thunderBus;
+  }
+
+  function playThunder(big, far){
+    var c = ctx, now = c.currentTime, bus = getThunderBus(c);
+
+    if(!far){
+      // zap: a fast falling sawtooth sweep, the spark of the strike
+      var zap = c.createOscillator();
+      zap.type = "sawtooth";
+      zap.frequency.setValueAtTime(big ? 2600 : 1900, now);
+      zap.frequency.exponentialRampToValueAtTime(140, now + 0.045);
+      var zapGain = c.createGain();
+      zapGain.gain.setValueAtTime(big ? 0.5 : 0.35, now);
+      zapGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+      zap.connect(zapGain);
+      zapGain.connect(bus);
+      zap.start(now);
+      zap.stop(now + 0.06);
+
+      // crackle: tiny random noise clicks right at the strike, before the boom
+      var hits = 5 + Math.floor(Math.random() * 4);
+      for(var i = 0; i < hits; i++){
+        var t = now + Math.random() * 0.09, dur = 0.006 + Math.random() * 0.01;
+        var buf = c.createBuffer(1, Math.max(1, Math.floor(c.sampleRate * dur)), c.sampleRate);
+        var d = buf.getChannelData(0);
+        for(var j = 0; j < d.length; j++) d[j] = Math.random() * 2 - 1;
+        var src = c.createBufferSource();
+        src.buffer = buf;
+        var hp = c.createBiquadFilter();
+        hp.type = "highpass";
+        hp.frequency.value = 2500;
+        var g = c.createGain();
+        g.gain.value = (big ? 0.5 : 0.35) * (0.5 + Math.random() * 0.5);
+        src.connect(hp); hp.connect(g); g.connect(bus);
+        src.start(t);
+      }
+
+      // main crack: a distorted band of noise, the loudest single hit
+      var crackDur = 0.2;
+      var crackBuf = c.createBuffer(1, Math.floor(c.sampleRate * crackDur), c.sampleRate);
+      var cd = crackBuf.getChannelData(0);
+      for(var k = 0; k < cd.length; k++) cd[k] = (Math.random() * 2 - 1) * Math.pow(1 - k / cd.length, 0.28);
+      var crackSrc = c.createBufferSource();
+      crackSrc.buffer = crackBuf;
+      var crackHP = c.createBiquadFilter();
+      crackHP.type = "highpass";
+      crackHP.frequency.value = 700;
+      var crackPeak = c.createBiquadFilter();
+      crackPeak.type = "peaking";
+      crackPeak.frequency.value = 2200 + Math.random() * 900;
+      crackPeak.Q.value = 1.3;
+      crackPeak.gain.value = 9;
+      var shaper = c.createWaveShaper();
+      shaper.curve = distortionCurve(big ? 32 : 18);
+      shaper.oversample = "2x";
+      var crackGain = c.createGain();
+      crackGain.gain.setValueAtTime(big ? 1.1 : 0.8, now + 0.005);
+      crackGain.gain.exponentialRampToValueAtTime(0.001, now + crackDur);
+      crackSrc.connect(crackHP); crackHP.connect(crackPeak); crackPeak.connect(shaper);
+      shaper.connect(crackGain); crackGain.connect(bus);
+      crackSrc.start(now + 0.01);
+    }
+
+    // rolling low rumble (brown noise) with a slow tremolo
+    var rumbleDur = (big ? 3.8 : 2.1) + Math.random() * 0.9 + (far ? 0.6 : 0);
+    var rumbleBuf = c.createBuffer(1, Math.floor(c.sampleRate * rumbleDur), c.sampleRate);
+    var rd = rumbleBuf.getChannelData(0), last = 0;
+    for(var m = 0; m < rd.length; m++){
+      last = (last + 0.018 * (Math.random() * 2 - 1)) / 1.018;
+      rd[m] = last * Math.pow(1 - m / rd.length, 1.1);
+    }
+    var rumbleSrc = c.createBufferSource();
+    rumbleSrc.buffer = rumbleBuf;
+    var rumbleFilter = c.createBiquadFilter();
+    rumbleFilter.type = "lowpass";
+    rumbleFilter.frequency.setValueAtTime(far ? 120 : big ? 260 : 170, now);
+    rumbleFilter.frequency.exponentialRampToValueAtTime(50, now + rumbleDur);
+    rumbleFilter.Q.value = 0.9;
+    var tremolo = c.createOscillator();
+    tremolo.type = "sine";
+    tremolo.frequency.value = 3.5 + Math.random() * 2;
+    var tremoloDepth = c.createGain();
+    tremoloDepth.gain.value = big ? 0.35 : 0.25;
+    var rumbleGain = c.createGain(), peak = far ? 0.45 : big ? 1.1 : 0.7;
+    rumbleGain.gain.setValueAtTime(0.0001, now);
+    rumbleGain.gain.linearRampToValueAtTime(peak, now + (far ? 0.45 : 0.2));
+    rumbleGain.gain.exponentialRampToValueAtTime(0.001, now + rumbleDur);
+    tremolo.connect(tremoloDepth);
+    tremoloDepth.connect(rumbleGain.gain);
+    rumbleSrc.connect(rumbleFilter); rumbleFilter.connect(rumbleGain); rumbleGain.connect(bus);
+
+    // sub-bass weight underneath
+    var sub = c.createOscillator();
+    sub.type = "sine";
+    sub.frequency.setValueAtTime(big ? 62 : 48, now);
+    sub.frequency.exponentialRampToValueAtTime(24, now + rumbleDur * 0.85);
+    var subGain = c.createGain();
+    subGain.gain.setValueAtTime(0.0001, now);
+    subGain.gain.linearRampToValueAtTime(far ? 0.12 : big ? 0.4 : 0.22, now + 0.08);
+    subGain.gain.exponentialRampToValueAtTime(0.001, now + rumbleDur * 0.9);
+    sub.connect(subGain); subGain.connect(bus);
+
+    rumbleSrc.start(now);
+    tremolo.start(now); tremolo.stop(now + rumbleDur);
+    sub.start(now); sub.stop(now + rumbleDur * 0.9 + 0.05);
+  }
+
+  // One strike. Plays at once when sound is allowed; inside a click or key press that is the first
+  // one on the page, it plays as soon as the browser has switched the sound on (a moment later).
+  function thunder(big, far){
+    if(!state.enabled || state.blocked || document.hidden) return false;
     var c = getContext();
-    if(!c) return;
+    if(!c) return false;
     try{
-      if(c.state === "suspended") c.resume().catch(function(){});
-      var now = c.currentTime, loud = Math.min(0.6, state.volume * 3);
-      var hit = c.createBufferSource(), hitBuf = c.createBuffer(1, Math.floor(c.sampleRate * 0.35), c.sampleRate);
-      var hd = hitBuf.getChannelData(0);
-      for(var i = 0; i < hd.length; i++) hd[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / hd.length, 3);
-      hit.buffer = hitBuf;
-      var hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 900;
-      var hg = c.createGain(); hg.gain.setValueAtTime(loud, now); hg.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
-      hit.connect(hp); hp.connect(hg); hg.connect(c.destination);
-      hit.start(now); hit.stop(now + 0.4);
-      var dur = 2.2 + Math.random() * 1.5;
-      var rum = c.createBufferSource(), rumBuf = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate);
-      var rd = rumBuf.getChannelData(0), last = 0;
-      for(var j = 0; j < rd.length; j++){ last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; rd[j] = last * 3.5; }
-      rum.buffer = rumBuf;
-      var lp = c.createBiquadFilter(); lp.type = "lowpass";
-      lp.frequency.setValueAtTime(420, now); lp.frequency.exponentialRampToValueAtTime(60, now + dur);
-      var rg = c.createGain(); rg.gain.setValueAtTime(0.0001, now);
-      rg.gain.linearRampToValueAtTime(loud * 0.9, now + 0.08); rg.gain.exponentialRampToValueAtTime(0.0001, now + dur);
-      rum.connect(lp); lp.connect(rg); rg.connect(c.destination);
-      rum.start(now); rum.stop(now + dur + 0.05);
+      if(c.state === "running"){ playThunder(!!big, !!far); return true; }
+      var ua = navigator.userActivation;
+      if(ua && !ua.isActive) return false;             // no click or key press: stay silent
+      var asked = Date.now();
+      c.resume().then(function(){
+        if(c.state === "running" && Date.now() - asked < 400) playThunder(!!big, !!far);
+      }).catch(function(){});
+    }catch(e){}
+    return false;
+  }
+
+  // ---- rain (loading screen) -------------------------------------------------------------------
+  var rainWanted = false;
+  function rain(on){
+    rainWanted = !!on;
+    if(!on){
+      if(rainGain && ctx){
+        try{
+          rainGain.gain.cancelScheduledValues(ctx.currentTime);
+          rainGain.gain.setValueAtTime(Math.max(0.0001, rainGain.gain.value), ctx.currentTime);
+          rainGain.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 1);
+        }catch(e){}
+        var s = rainSource;
+        setTimeout(function(){ try{ s.stop(); }catch(e){} }, 1050);
+      }
+      rainSource = rainGain = null;
+      return;
+    }
+    if(rainSource || !state.enabled || state.blocked || !running()) return;
+    try{
+      var c = ctx, buffer = c.createBuffer(1, c.sampleRate * 4, c.sampleRate), data = buffer.getChannelData(0);
+      for(var i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+      var src = c.createBufferSource();
+      src.buffer = buffer;
+      src.loop = true;
+      var bandpass = c.createBiquadFilter();
+      bandpass.type = "bandpass";
+      bandpass.frequency.value = 3000;
+      bandpass.Q.value = 0.55;
+      var shelf = c.createBiquadFilter();
+      shelf.type = "highshelf";
+      shelf.frequency.value = 6500;
+      shelf.gain.value = -8;
+      var g = c.createGain();
+      g.gain.setValueAtTime(0.0001, c.currentTime);
+      g.gain.linearRampToValueAtTime(0.15, c.currentTime + 3.5);
+      src.connect(bandpass); bandpass.connect(shelf); shelf.connect(g); g.connect(c.destination);
+      src.start();
+      rainSource = src; rainGain = g;
     }catch(e){}
   }
+  unlockCallbacks.push(function(){ if(rainWanted) rain(true); });
 
   window.ThunderAmbient = {
     start: start,
     stop: stop,
-    crack: crack,
+    thunder: thunder,
+    crack: function(){ return thunder(true); },
+    rain: rain,
+    // true when the browser lets the page play sound right now
+    canPlay: function(){ getContext(); return running(); },
+    // cb runs once, when sound becomes available (at once if it already is)
+    onUnlock: function(cb){ if(state.unlocked) { try{ cb(); }catch(e){} } else unlockCallbacks.push(cb); },
     // true while a world or server is open: fades out and stays silent until set back to false
     setBlocked: function(v){
       v = !!v;
       if(v === state.blocked) return;
       state.blocked = v;
-      if(v) stop();
-      else if(state.unlocked) start();
+      if(v){ stop(); rain(false); }
+      else waitForStormToEnd();
     },
     getBlocked: function(){ return state.blocked; },
     setEnabled: function(v){
       state.enabled = !!v;
       save();
-      if(state.enabled){
-        start();
-      }else{
-        stop();
-      }
+      if(state.enabled) waitForStormToEnd();
+      else { stop(); rain(false); }
     },
     setVolume: function(v){
       state.volume = Math.max(0, Math.min(0.6, Number(v) || 0));
@@ -278,18 +466,19 @@
     },
     getEnabled: function(){ return state.enabled; },
     getVolume: function(){ return state.volume; },
-    getIntensity: function(){ return state.intensity; }
+    getIntensity: function(){ return state.intensity; },
+    getState: function(){ return { unlocked: state.unlocked, running: running(), started: state.started, blocked: state.blocked, enabled: state.enabled }; }
   };
 
-  function unlock(){
-    state.unlocked = true;
+  // the first click, tap or key press lets the page play sound
+  function onInput(){
     var c = getContext();
-    if(c && c.state === "suspended") c.resume().catch(function(){});
-    waitForStormToEnd();
+    if(!c) return;
+    if(c.state === "running") unlocked();
+    else c.resume().then(function(){ if(c.state === "running") unlocked(); }).catch(function(){});
   }
-
   ["pointerdown","keydown","touchstart"].forEach(function(evt){
-    window.addEventListener(evt, unlock, {passive:true});
+    window.addEventListener(evt, onInput, {passive:true, capture:true});
   });
 
   document.addEventListener("visibilitychange", function(){
@@ -299,11 +488,14 @@
         ctx.suspend().catch(function(){});
         state.suspended = true;
       }
-    }else if(state.started && state.suspended){
+    }else if(state.suspended){
       ctx.resume().catch(function(){});
       state.suspended = false;
     }
   });
 
-  waitForStormToEnd();
+  // browsers that already allow sound (the page was opened with a click, or sound is allowed for
+  // this site) are running from the start
+  var c0 = getContext();
+  if(c0 && c0.state === "running") unlocked();
 })();

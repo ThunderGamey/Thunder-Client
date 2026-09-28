@@ -388,6 +388,9 @@ console.log('wrote  ' + path.relative(ROOT, OUT) + '  ' + out.length + ' bytes  
 const launcher = path.resolve(ROOT, 'index-js.html');
 if (path.resolve(OUT) === path.resolve(ROOT, 'classes.js') && fs.existsSync(launcher)) {
   const html = fs.readFileSync(launcher, 'utf8');
-  const stamped = html.replace(/classes\.js\?v=[A-Za-z0-9._-]+/g, 'classes.js?v=t6-' + outMd5.slice(0, 10));
+  let stamped = html.replace(/classes\.js\?v=[A-Za-z0-9._-]+/g, 'classes.js?v=t6-' + outMd5.slice(0, 10));
+  // the page sounds script is versioned by its own content the same way
+  const ambient = path.resolve(ROOT, 'thunder_ambient.js');
+  if (fs.existsSync(ambient)) stamped = stamped.replace(/thunder_ambient\.js\?v=[A-Za-z0-9._-]+/g, 'thunder_ambient.js?v=' + md5(fs.readFileSync(ambient, 'utf8')).slice(0, 10));
   if (stamped !== html) { fs.writeFileSync(launcher, stamped); console.log('stamp  index-js.html -> classes.js?v=t6-' + outMd5.slice(0, 10)); }
 }

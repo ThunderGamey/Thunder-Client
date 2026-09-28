@@ -229,11 +229,22 @@
     // World shader effects (thunder-world.js): waving plants, water; see-through leaves (Visual)
     shWave:true,shWaveStr:60,shWater:true,shWaterStr:70,clearLeaves:true,
     newItems:true,           // thunder-items.js: newer items on servers drawn with the 1.21.11 pack's models
-    // thunder-hitfx.js: extra particles on what you hit (Visual)
-    hitParts:0,hitPartsAmt:1,
+    // thunder-hitfx.js: an effect on what you hit (Visual): 0 off, 1 thunder shock, 2 lightning, 3+ particles
+    hitEffect:0,hitEffectAmt:1,hitEffectSound:true,
     titleBg:true,titleLogo:true,titleSplash:true,titleLightning:true,titleParallax:60,titleQuality:0,
     titleClickBolt:true,menuSounds:true,   // click the title storm for lightning; storm sounds on menus only
-    menuTheme:true,menuStorm:true,menuButtons:true
+    menuTheme:true,menuStorm:true,menuButtons:true,
+    quickStart:true,         // thunder-boot.js: no Edit Profile screen at start
+    noGlint:false,noRain:false,noPumpkin:false,  // thunder-tweaks.js
+    // thunder-combat.js: totem counter and pickup notifier (HUD boxes), red crosshair on players,
+    // shield ready / disabled colours (indexes into its colour list: 0 green, 6 red)
+    totemCount:true,totemShowZero:false,pickups:true,crossTarget:true,crossMobs:false,
+    shieldStatus:true,shieldReadyColor:0,shieldDownColor:6,
+    // thunder-zoom.js: hold C to zoom (zoomLevel = times closer)
+    zoom:true,zoomLevel:4,zoomSmooth:true,zoomScroll:true,zoomSens:true,zoomToggle:false,
+    // thunder-qol.js
+    toggleSneak:false,clearChat:false,hidePasswords:true,ownName:false,crystalOpt:true,xpClumps:true,
+    fastXp:false,menuSfx:true
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -501,6 +512,12 @@
     '.tcm-btn:active,.tcm-seg button:active,.tcm-tab:active,.tcm-more:active{transform:translateY(1px)}',
     '.tcm-switch:active:after{width:18px}.tcm-switch.tcm-on:active:after{transform:translateX(12px)}',
     '.tcm-seg{display:flex;gap:3px;margin-top:7px;padding:3px;border-radius:9px;background:rgba(3,7,12,.6);border:1px solid rgba(110,140,160,.22)}',
+    '.tcm-swatches{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}',
+    '.tcm-swatches button{width:20px;height:20px;padding:0;border-radius:6px;border:2px solid rgba(3,7,12,.8);cursor:pointer;',
+      'box-shadow:0 0 0 1px rgba(110,140,160,.35);transition:transform .1s,box-shadow .1s}',
+    '.tcm-swatches button:hover{transform:scale(1.12)}',
+    '.tcm-swatches button.tcm-on{box-shadow:0 0 0 2px #eaf6ff,0 0 10px rgba(79,209,255,.6)}',
+    '.tcm-row .tcm-val{margin-left:auto;color:#8ea6b9;font-size:11px}',
     '.tcm-seg button{flex:1;min-width:0;border:0;border-radius:6px;padding:6px 0;background:transparent;color:#8ea6b9;font:inherit;font-size:10.5px;',
       'font-weight:700;letter-spacing:.07em;cursor:pointer;transition:background .12s,color .12s,box-shadow .12s}',
     '.tcm-seg button:hover{color:#e1f5ff;background:rgba(79,209,255,.09)}',
@@ -536,6 +553,7 @@
 
   function toggleMenu(){if(menuOpen)hideMenu();else showMenu();}
   function hideMenu(){
+    if(menuOpen)menuSound(false);
     menuOpen=false;
     if(liveTimer){W.clearInterval(liveTimer);liveTimer=0;}
     if(!backdrop)return;
@@ -544,6 +562,7 @@
   }
   function showMenu(){
     if(!backdrop)buildMenu();
+    if(!menuOpen)menuSound(true);
     menuOpen=true;
     resetArmed=0;
     render();
@@ -701,10 +720,33 @@
     }
     return c;
   }
-  // one settings row: choices -> segmented buttons, number -> slider, boolean -> switch
+  // one settings row: colors -> colour swatches, choices -> segmented buttons, number -> slider,
+  // boolean -> switch
   function optRow(o){
+    if(o.colors)return swatchRow(o);
     if(o.choices)return segRow(o);
     return typeof DEFAULTS[o.id]==='number'?sliderRow(o):switchRow(o);
+  }
+  // o.colors: [[name, 0xRRGGBB], ...]; the setting is the index
+  function swatchRow(o){
+    var wrap=el('div'),r=el('div','tcm-row'),val=el('span','tcm-val','');
+    r.appendChild(el('span',null,o.name));r.appendChild(val);
+    wrap.appendChild(r);
+    var box=el('div','tcm-swatches'),btns=[];
+    o.colors.forEach(function(c,i){
+      var b=el('button');b.type='button';b.title=c[0];
+      b.style.background='#'+('00000'+c[1].toString(16)).slice(-6);
+      b.addEventListener('click',function(){S[o.id]=i;save();paint();});
+      box.appendChild(b);btns.push(b);
+    });
+    function paint(){
+      var v=S[o.id]|0;
+      for(var i=0;i<btns.length;i++)btns[i].className=i===v?'tcm-on':'';
+      val.textContent=o.colors[v]?o.colors[v][0]:'';
+    }
+    paint();addPainter(o.id,paint);
+    wrap.appendChild(box);
+    return wrap;
   }
   function segRow(o){
     var wrap=el('div');
@@ -938,7 +980,15 @@
     widgetsBegin(ctx);
     blit(ctx,fx,fy,left?24:53,22,29,24);
     widgetsEnd(ctx);
-    if(blocking&&S.shieldGlow){
+    // Shield Status (thunder-combat.js): ready / disabled-by-an-axe colours instead of the cyan glow
+    var cd=S.shieldStatus?cbShieldCooldown(p,st):-1,sc2=0;
+    if(cd>=0){
+      sc2=cd>0?cbColor(S.shieldDownColor,0xFF4040):cbColor(S.shieldReadyColor,0x55FF55);
+      var pl=blocking?0.75+0.25*Math.sin(now()/120):cd>0?0.8+0.2*Math.sin(now()/90):1;
+      ring(bx-2,by-2,bx+24,by+24,(Math.round((blocking?0x66:0x33)*pl)<<24)|sc2);
+      ring(bx-1,by-1,bx+23,by+23,(Math.round((blocking?0xDD:0x99)*pl)<<24)|sc2);
+      ring(bx,by,bx+22,by+22,(Math.round(0xCC*pl)<<24)|sc2);
+    }else if(blocking&&S.shieldGlow){
       var pulse=0.75+0.25*Math.sin(now()/120);
       ring(bx-3,by-3,bx+25,by+25,(Math.round(0x22*pulse)<<24)|0x55E8FF);
       ring(bx-2,by-2,bx+24,by+24,(Math.round(0x55*pulse)<<24)|0x55E8FF);
@@ -948,6 +998,7 @@
     itemsBegin();
     itemIcon(ctx,st,left?fx+3:fx+10,fy+4);
     itemsEnd();
+    if(cd>0){var fh=Math.max(1,Math.round(20*cd));rect(bx+1,by+21-fh,bx+21,by+21,0x70000000|sc2);}
     opPop();
   }
 
@@ -1189,6 +1240,7 @@
     if(S.shield&&itemHud)shieldHud(ctx);
     if(S.heldItem&&itemHud)heldHud(ctx);
     if(S.saturation&&itemHud)saturationHud(ctx);
+    if(S.crossTarget)crossHud(ctx);
     // the font renderer leaves the GL color tinted; put it back so later GUI drawing is unaffected
     op(CFi,1.0,1.0,1.0,1.0);
   }
@@ -1403,7 +1455,7 @@
       if($rt_suspending())$rt_nativeThread().push(o1,o2,pinned);
       else if(pinned){a.US=o1;a.cQr=o2;}
     }
-    if(c&&typeof r==='number'&&r>1&&r<179)worldFov=r;
+    if(c&&typeof r==='number'&&r>1&&r<179){r=zoomFov(r);worldFov=r;}   // Zoom (thunder-zoom.js)
     return r;
   };
 
@@ -1436,15 +1488,31 @@
     if($rt_suspending())$rt_nativeThread().push(2);
   };
 
+  // Start-up: how far the game has got (for the loading screen), and Quick Start
+  // @include thunder-boot.js
+
   // HUD widgets (Thunder boxes) and the drag / scroll HUD editor
   // @include thunder-hud.js
+
+  // Combat HUD: totem counter, pickup notifier, target crosshair, shield status
+  // @include thunder-combat.js
 
   // Newer items on servers (maces, spears, wind charges, netherite gear) with their 1.21.11 models
   // @include thunder-items-data.js
   // @include thunder-items.js
 
-  // Hit effects: extra particles on the player or mob you hit
+  // Hit effects: a thunder shock, lightning or particles on the player or mob you hit
   // @include thunder-hitfx.js
+
+  // Visual tweaks: no enchant glint, no rain, no pumpkin blur
+  // @include thunder-tweaks.js
+
+  // Zoom: hold C, smooth, scroll to zoom further
+  // @include thunder-zoom.js
+
+  // Quality of life: toggle sneak, clear chat, password hider, own name tag, crystal optimizer,
+  // XP orb clumping, fast XP, menu sounds
+  // @include thunder-qol.js
 
   // Shaders: optional post-processing of the world image (off by default)
   // @include thunder-shaders.js

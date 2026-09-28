@@ -955,6 +955,9 @@
   };
   ICONS.shaders='<circle cx="12" cy="12" r="3.5"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/>';
   CATEGORIES.splice(4,0,{id:'shaders',name:'Shaders'});
+  // Motion Blur (blending in earlier frames) is gone from the menu: at browser frame rates it
+  // left ghost trails. Off for everyone, including players who had switched it on.
+  S.shMotion=false;
   MODULES.push(
     {cat:'shaders',id:'shaders',name:'Shaders',wide:true,always:true,special:'shaders',
       desc:'Post-processing for the 3D world. The HUD and menus stay sharp. Off means vanilla rendering.',
@@ -976,8 +979,6 @@
       opts:[{id:'shVignetteStr',name:'Strength',min:0,max:100,step:1,fmt:shPct}]},
     {cat:'shaders',id:'shAmbient',name:'Ambient Glow',desc:'Light spills softly from bright areas; very dark scenes get a small lift.',
       opts:[{id:'shAmbientStr',name:'Strength',min:0,max:100,step:1,fmt:shPct}]},
-    {cat:'shaders',id:'shMotion',name:'Motion Blur',desc:'Blends in the previous frames for smoother motion. Same look at any FPS.',
-      opts:[{id:'shMotionStr',name:'Strength',min:0,max:100,step:1,fmt:shPct}]},
     {cat:'shaders',id:null,name:'Performance',wide:true,special:'shperf',
       desc:'How much work shaders may do, and what happens when FPS drops.'}
   );

@@ -24,7 +24,7 @@
      Game functions and classes it uses:
      @use DeG net.lax1dude.eaglercraft.sp.internal.ClientPlatformSingleplayer$WorkerBinaryPacketHandlerImpl.onMessage$exported$0
      @use BGl net.minecraft.client.gui.GuiScreen.<init>
-     @use GGs net.minecraft.client.Minecraft.displayGuiScreen
+     (Minecraft.displayGuiScreen GGs is declared as a hook in thunder-boot.js.)
      @use EE6 net.lax1dude.eaglercraft.profile.EaglerProfile.getName
      @class BoL net.lax1dude.eaglercraft.sp.gui.GuiScreenSingleplayerConnecting
      @class CO net.minecraft.client.gui.GuiScreen

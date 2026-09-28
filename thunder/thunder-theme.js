@@ -254,12 +254,23 @@
     return origCk1(a,b,c,d,e,f);
   };
   // text boxes: remember which one is drawing and whether it is focused (see D49)
+  // Password Hider (thunder-qol.js): the box draws stars in place of the password; its own text
+  // is put back as soon as the drawing is done
+  var thPw={field:null,text:null};
   var origDpy=Dpy;
   Dpy=function(a){
-    if(!$rt_resuming()){thTf++;thTfFocus=!!a.JJ;}
+    if(!$rt_resuming()){
+      thTf++;thTfFocus=!!a.JJ;
+      try{var pw=passwordMask(a);if(pw!==null){thPw.field=a;thPw.text=a.cA;a.cA=pw;}}catch(e){report(e);}
+    }
     var ok=false,r;
     try{r=origDpy(a);ok=true;}
-    finally{if(!ok||!$rt_suspending())thTf=Math.max(0,thTf-1);}
+    finally{
+      if(!ok||!$rt_suspending()){
+        thTf=Math.max(0,thTf-1);
+        if(thPw.field===a){a.cA=thPw.text;thPw.field=null;thPw.text=null;}
+      }
+    }
     return r;
   };
   // Edit Profile: its own grey-on-black boxes (skin preview, skin list) get the same colours
@@ -296,6 +307,7 @@
   };
   var origD49=D49;
   D49=function(a,b,c,d,e){
+    if(clearChatSkips(e)&&!$rt_resuming())return;              // Clear Chat (thunder-qol.js)
     if(thCredits>0&&!$rt_resuming()&&thButtonsOn()){
       if(e===855638048)e=0x33FFFFFF;else if(e===1711276032)e=0xCC40B8F0|0;   // scrollbar track, thumb
     }

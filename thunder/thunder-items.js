@@ -6,7 +6,8 @@
      A newer server (through ViaVersion / ViaBackwards) sends a 1.12 client every item 1.12 does not
      have as an old item. It tells which one in two ways, and either is enough:
      - the name "<version> <Name>", for example "1.21.11 Netherite Spear" or "1.21 Mace" (only when
-       the server did not give the item a name of its own; "vb.item.<id>" is read too);
+       the server did not give the item a name of its own; "vb.item.<id>" is read too, and so is a
+       plain "Netherite Spear" when a server names its kit items after the real item);
      - the tag "VB|Protocol<newer>To<older>|id" with the item's number in the newer version, which
        thunder-items-data.js (made by thunder/packs/item_ids.py) turns back into the item.
      When the resource packs have the model item/thunder/<English name in lower_case_words> (the
@@ -42,14 +43,20 @@
      ------------------------------------------------------------------------------------------- */
   var NI={reg:null,cache:{},armor:null,res:{},seen:(typeof WeakMap==='function'?new WeakMap():null),jtags:null,last:null};
   var NI_ARMOR={netherite:'netherite',copper:'copper'};
+  // model names of every newer item (for names without a version in front)
+  var NI_KNOWN={};
+  (function(){for(var k in NI_KEYS)NI_KNOWN[NI_KEYS[k]]=1;})();
   // "1.21.11 Netherite Spear" -> "netherite_spear" (the same rule as build_packs.py model_key);
-  // "vb.item.netherite_spear" -> its model name; null for any other name
+  // "vb.item.netherite_spear" -> its model name; a plain "Netherite Spear" (a server that names
+  // its kit items itself) -> the same, when it is exactly the name of an item added since 1.12;
+  // null for any other name
   function niKey(name){
-    var t=String(name).replace(/\u00a7./g,'').replace(/^\s+|\s+$/g,''),m;
+    var t=String(name).replace(/\u00a7./g,'').replace(/^\s+|\s+$/g,''),m,k;
     if((m=/^vb\.item\.([a-z0-9_]+)$/.exec(t)))return NI_KEYS[m[1]]||m[1];
     m=/^\d+\.\d+(?:\.\d+)?\s+(.+)$/.exec(t);
-    if(!m)return null;
-    return m[1].toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||null;
+    k=(m?m[1]:t).toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+    if(!k)return null;
+    return m||NI_KNOWN[k]?k:null;
   }
   // the model name from ViaBackwards' id tag, or null
   function niTagKey(tag){

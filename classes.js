@@ -48956,11 +48956,22 @@ c.PK;})();
     // World shader effects (thunder-world.js): waving plants, water; see-through leaves (Visual)
     shWave:true,shWaveStr:60,shWater:true,shWaterStr:70,clearLeaves:true,
     newItems:true,           // thunder-items.js: newer items on servers drawn with the 1.21.11 pack's models
-    // thunder-hitfx.js: extra particles on what you hit (Visual)
-    hitParts:0,hitPartsAmt:1,
+    // thunder-hitfx.js: an effect on what you hit (Visual): 0 off, 1 thunder shock, 2 lightning, 3+ particles
+    hitEffect:0,hitEffectAmt:1,hitEffectSound:true,
     titleBg:true,titleLogo:true,titleSplash:true,titleLightning:true,titleParallax:60,titleQuality:0,
     titleClickBolt:true,menuSounds:true,   // click the title storm for lightning; storm sounds on menus only
-    menuTheme:true,menuStorm:true,menuButtons:true
+    menuTheme:true,menuStorm:true,menuButtons:true,
+    quickStart:true,         // thunder-boot.js: no Edit Profile screen at start
+    noGlint:false,noRain:false,noPumpkin:false,  // thunder-tweaks.js
+    // thunder-combat.js: totem counter and pickup notifier (HUD boxes), red crosshair on players,
+    // shield ready / disabled colours (indexes into its colour list: 0 green, 6 red)
+    totemCount:true,totemShowZero:false,pickups:true,crossTarget:true,crossMobs:false,
+    shieldStatus:true,shieldReadyColor:0,shieldDownColor:6,
+    // thunder-zoom.js: hold C to zoom (zoomLevel = times closer)
+    zoom:true,zoomLevel:4,zoomSmooth:true,zoomScroll:true,zoomSens:true,zoomToggle:false,
+    // thunder-qol.js
+    toggleSneak:false,clearChat:false,hidePasswords:true,ownName:false,crystalOpt:true,xpClumps:true,
+    fastXp:false,menuSfx:true
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -49228,6 +49239,12 @@ c.PK;})();
     '.tcm-btn:active,.tcm-seg button:active,.tcm-tab:active,.tcm-more:active{transform:translateY(1px)}',
     '.tcm-switch:active:after{width:18px}.tcm-switch.tcm-on:active:after{transform:translateX(12px)}',
     '.tcm-seg{display:flex;gap:3px;margin-top:7px;padding:3px;border-radius:9px;background:rgba(3,7,12,.6);border:1px solid rgba(110,140,160,.22)}',
+    '.tcm-swatches{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}',
+    '.tcm-swatches button{width:20px;height:20px;padding:0;border-radius:6px;border:2px solid rgba(3,7,12,.8);cursor:pointer;',
+      'box-shadow:0 0 0 1px rgba(110,140,160,.35);transition:transform .1s,box-shadow .1s}',
+    '.tcm-swatches button:hover{transform:scale(1.12)}',
+    '.tcm-swatches button.tcm-on{box-shadow:0 0 0 2px #eaf6ff,0 0 10px rgba(79,209,255,.6)}',
+    '.tcm-row .tcm-val{margin-left:auto;color:#8ea6b9;font-size:11px}',
     '.tcm-seg button{flex:1;min-width:0;border:0;border-radius:6px;padding:6px 0;background:transparent;color:#8ea6b9;font:inherit;font-size:10.5px;',
       'font-weight:700;letter-spacing:.07em;cursor:pointer;transition:background .12s,color .12s,box-shadow .12s}',
     '.tcm-seg button:hover{color:#e1f5ff;background:rgba(79,209,255,.09)}',
@@ -49263,6 +49280,7 @@ c.PK;})();
 
   function toggleMenu(){if(menuOpen)hideMenu();else showMenu();}
   function hideMenu(){
+    if(menuOpen)menuSound(false);
     menuOpen=false;
     if(liveTimer){W.clearInterval(liveTimer);liveTimer=0;}
     if(!backdrop)return;
@@ -49271,6 +49289,7 @@ c.PK;})();
   }
   function showMenu(){
     if(!backdrop)buildMenu();
+    if(!menuOpen)menuSound(true);
     menuOpen=true;
     resetArmed=0;
     render();
@@ -49428,10 +49447,33 @@ c.PK;})();
     }
     return c;
   }
-  // one settings row: choices -> segmented buttons, number -> slider, boolean -> switch
+  // one settings row: colors -> colour swatches, choices -> segmented buttons, number -> slider,
+  // boolean -> switch
   function optRow(o){
+    if(o.colors)return swatchRow(o);
     if(o.choices)return segRow(o);
     return typeof DEFAULTS[o.id]==='number'?sliderRow(o):switchRow(o);
+  }
+  // o.colors: [[name, 0xRRGGBB], ...]; the setting is the index
+  function swatchRow(o){
+    var wrap=el('div'),r=el('div','tcm-row'),val=el('span','tcm-val','');
+    r.appendChild(el('span',null,o.name));r.appendChild(val);
+    wrap.appendChild(r);
+    var box=el('div','tcm-swatches'),btns=[];
+    o.colors.forEach(function(c,i){
+      var b=el('button');b.type='button';b.title=c[0];
+      b.style.background='#'+('00000'+c[1].toString(16)).slice(-6);
+      b.addEventListener('click',function(){S[o.id]=i;save();paint();});
+      box.appendChild(b);btns.push(b);
+    });
+    function paint(){
+      var v=S[o.id]|0;
+      for(var i=0;i<btns.length;i++)btns[i].className=i===v?'tcm-on':'';
+      val.textContent=o.colors[v]?o.colors[v][0]:'';
+    }
+    paint();addPainter(o.id,paint);
+    wrap.appendChild(box);
+    return wrap;
   }
   function segRow(o){
     var wrap=el('div');
@@ -49665,7 +49707,15 @@ c.PK;})();
     widgetsBegin(ctx);
     blit(ctx,fx,fy,left?24:53,22,29,24);
     widgetsEnd(ctx);
-    if(blocking&&S.shieldGlow){
+    // Shield Status (thunder-combat.js): ready / disabled-by-an-axe colours instead of the cyan glow
+    var cd=S.shieldStatus?cbShieldCooldown(p,st):-1,sc2=0;
+    if(cd>=0){
+      sc2=cd>0?cbColor(S.shieldDownColor,0xFF4040):cbColor(S.shieldReadyColor,0x55FF55);
+      var pl=blocking?0.75+0.25*Math.sin(now()/120):cd>0?0.8+0.2*Math.sin(now()/90):1;
+      ring(bx-2,by-2,bx+24,by+24,(Math.round((blocking?0x66:0x33)*pl)<<24)|sc2);
+      ring(bx-1,by-1,bx+23,by+23,(Math.round((blocking?0xDD:0x99)*pl)<<24)|sc2);
+      ring(bx,by,bx+22,by+22,(Math.round(0xCC*pl)<<24)|sc2);
+    }else if(blocking&&S.shieldGlow){
       var pulse=0.75+0.25*Math.sin(now()/120);
       ring(bx-3,by-3,bx+25,by+25,(Math.round(0x22*pulse)<<24)|0x55E8FF);
       ring(bx-2,by-2,bx+24,by+24,(Math.round(0x55*pulse)<<24)|0x55E8FF);
@@ -49675,6 +49725,7 @@ c.PK;})();
     itemsBegin();
     itemIcon(ctx,st,left?fx+3:fx+10,fy+4);
     itemsEnd();
+    if(cd>0){var fh=Math.max(1,Math.round(20*cd));rect(bx+1,by+21-fh,bx+21,by+21,0x70000000|sc2);}
     opPop();
   }
 
@@ -49916,6 +49967,7 @@ c.PK;})();
     if(S.shield&&itemHud)shieldHud(ctx);
     if(S.heldItem&&itemHud)heldHud(ctx);
     if(S.saturation&&itemHud)saturationHud(ctx);
+    if(S.crossTarget)crossHud(ctx);
     // the font renderer leaves the GL color tinted; put it back so later GUI drawing is unaffected
     op(CFi,1.0,1.0,1.0,1.0);
   }
@@ -50130,7 +50182,7 @@ c.PK;})();
       if($rt_suspending())$rt_nativeThread().push(o1,o2,pinned);
       else if(pinned){a.US=o1;a.cQr=o2;}
     }
-    if(c&&typeof r==='number'&&r>1&&r<179)worldFov=r;
+    if(c&&typeof r==='number'&&r>1&&r<179){r=zoomFov(r);worldFov=r;}   // Zoom (thunder-zoom.js)
     return r;
   };
 
@@ -50163,6 +50215,47 @@ c.PK;})();
     if($rt_suspending())$rt_nativeThread().push(2);
   };
 
+  // Start-up: how far the game has got (for the loading screen), and Quick Start
+  /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
+     Start-up. Included into the client scope of thunder-client.js by build.js.
+     - TC.boot() tells the loading screen of index-js.html how far the game has got: the game
+       object exists, a menu has been on screen for a few frames, the built-in packs are busy.
+     - Quick Start (Right Shift > Utility, on by default): the game opens the Eaglercraft Edit
+       Profile screen every time it starts; with Quick Start it goes straight to the title screen
+       (Edit Profile is a button there), and the "default username" reminder after Edit Profile
+       is left out.
+
+     Game function this module replaces (the wrapper only picks which screen is opened):
+     @hook GGs net.minecraft.client.Minecraft.displayGuiScreen
+
+     Classes and fields it uses:
+     @class BV5 net.lax1dude.eaglercraft.profile.GuiScreenDefaultUsernameNote
+     @field cal net.lax1dude.eaglercraft.profile.GuiScreenEditProfile.actionPerformed GuiScreenEditProfile.parent (the screen after it)
+     @field cIw net.lax1dude.eaglercraft.profile.GuiScreenEditProfile.actionPerformed GuiScreenDefaultUsernameNote.cont (the screen after it)
+     @field cm net.minecraft.client.Minecraft.displayGuiScreen Minecraft.currentScreen
+     (GuiScreenEditProfile Zj is declared in thunder-theme.js.)
+     ------------------------------------------------------------------------------------------- */
+  var BOOT={frames:0,skipped:[]};
+  // Minecraft.displayGuiScreen(screen). Before the first menu frame the game is still starting:
+  // an Edit Profile screen then is the start-up one and its parent (the title screen) is opened
+  // instead. The username reminder is replaced by the screen it would continue to.
+  var origGGs=GGs;
+  GGs=function(a,b){
+    if(!$rt_resuming()&&S.quickStart&&b!==null){
+      if(BOOT.frames===0&&b instanceof Zj&&b.cal!==null){b=b.cal;BOOT.skipped.push('Edit Profile');}
+      else if(b instanceof BV5&&b.cIw!==null){b=b.cIw;BOOT.skipped.push('username reminder');}
+    }
+    return origGGs(a,b);
+  };
+  frameTasks.push(function(){if(BOOT.frames<100&&HEN&&HEN.cm!==null)BOOT.frames++;});
+  TC.boot=function(){
+    return {game:!!HEN,menu:BOOT.frames>=3,frames:BOOT.frames,
+      packsBusy:!!(TC.packs&&TC.packs.busy&&TC.packs.busy()),skipped:BOOT.skipped.slice()};
+  };
+  MODULES.push({cat:'utility',id:'quickStart',name:'Quick Start',
+    desc:'Starts straight on the title screen: no Eaglercraft Edit Profile screen every time the game opens (Edit Profile is still a button on the title screen) and no default-username reminder.'});
+
   // HUD widgets (Thunder boxes) and the drag / scroll HUD editor
   /* -------------------------------------------------------------------------------------------
      Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
@@ -50192,13 +50285,18 @@ c.PK;})();
   var hudRects={},hudScreen={w:0,h:0},hudEditing=false;
   var HB_BG=0x6605070D|0,HB_EDGE=0x734FD1FF|0,HB_TEXT=0xCFEEFF,HB_LABEL=0x5FD7FF,
     HB_KEY=0x990A0E18|0,HB_KEY_ON=0xC04FD1FF|0,HB_GLOW=0x404FD1FF|0,HB_KEY_TEXT_ON=0x061019;
-  // default column: 0 left stack, 1 right stack, 2 bottom right
+  // default column: 0 left stack, 1 right stack, 2 bottom right, 3 beside the hotbar just above
+  // the held-item / off-hand slot there, 4 right side a little above the middle
   var HUD_WIDGETS=[
     {id:'fps',name:'FPS',col:0},{id:'ping',name:'Ping',col:0},{id:'cps',name:'CPS',col:0},{id:'coords',name:'Coordinates',col:0},
     {id:'direction',name:'Direction',col:0},{id:'speed',name:'Speed',col:0},{id:'hunger',name:'Food',col:0},
     {id:'sprintStatus',name:'Sprint',col:0},{id:'clock',name:'Clock',col:1},{id:'memory',name:'Memory',col:1},
     {id:'effects',name:'Potion Effects',col:1},{id:'keystrokes',name:'Keystrokes',col:2}
   ];
+  // widgets other modules add: {id (its setting), name, col, content(ctx) -> data or null,
+  // size(ctx,data,themed) -> {w,h}, draw(ctx,data,themed)}; see hudExtra
+  var HUD_EXTRA=[];
+  function hudExtra(e){HUD_EXTRA.push(e);HUD_WIDGETS.push({id:e.id,name:e.name,col:e.col});}
 
   function hudEdge(x,y,w,h,c){rect(x,y,x+w,y+1,c);rect(x,y+h-1,x+w,y+h,c);rect(x,y+1,x+1,y+h-1,c);rect(x+w-1,y+1,x+w,y+h-1,c);}
   function hudBox(x,y,w,h){rect(x,y,x+w,y+h,HB_BG);hudEdge(x,y,w,h,HB_EDGE);}
@@ -50223,7 +50321,10 @@ c.PK;})();
     }
     if(S.speed)one('speed','Speed',fmt1(speed)+' b/s');
     if(S.hunger){try{one('hunger','Food',String(ZP(FAU(player))),0xFFAA00);}catch(_){}}
-    if(S.sprintStatus){var sp=!!CBg(player);one('sprintStatus','Sprint',sp?'ON':'OFF',sp?0x55FF55:0xAAAAAA);}
+    if(S.sprintStatus){
+      var sp=!!CBg(player);one('sprintStatus','Sprint',sp?'ON':'OFF',sp?0x55FF55:0xAAAAAA);
+      if(sneakToggled())out.sprintStatus.lines.push(['Sneak','TOGGLED',0xFFE04A]);   // Toggle Sneak (thunder-qol.js)
+    }
     if(S.clock){var d=new Date();one('clock','',pad2(d.getHours())+':'+pad2(d.getMinutes())+':'+pad2(d.getSeconds()));}
     if(S.memory){
       try{var pm=W.performance&&W.performance.memory;if(pm&&pm.usedJSHeapSize)one('memory','Mem',Math.round(pm.usedJSHeapSize/1048576)+' MB');}catch(_){}
@@ -50235,10 +50336,16 @@ c.PK;})();
       if(lines.length)out.effects={lines:lines};
     }
     if(S.keystrokes)out.keystrokes={keys:true};
+    for(var x=0;x<HUD_EXTRA.length;x++){
+      var e=HUD_EXTRA[x];
+      if(!S[e.id])continue;
+      try{var c=e.content(ctx);if(c){c.custom=e;out[e.id]=c;}}catch(err){report(err);}
+    }
     return out;
   }
   function hudLineText(l){return l[0]?l[0]+' '+l[1]:l[1];}
   function hudSize(ctx,c,themed){
+    if(c.custom)return c.custom.size(ctx,c,themed);
     if(c.keys)return themed?{w:46,h:54}:{w:46,h:34};
     var w=0;
     for(var i=0;i<c.lines.length;i++)w=Math.max(w,textWidth(ctx.font,hudLineText(c.lines[i])));
@@ -50287,10 +50394,13 @@ c.PK;})();
       var w=sz.w*s,h=sz.h*s,x,y;
       if(L&&typeof L.ax==='number'){x=clamp(L.ax,0,1)*Math.max(0,W0-w);y=clamp(L.ay,0,1)*Math.max(0,H0-h);}
       else if(wd.col===2){x=W0-w-5;y=H0-h-26;}                 // above the hotbar row
+      else if(wd.col===3){x=clamp(ctx.cx+91+6,0,Math.max(0,W0-w));y=H0-h-25;}
+      else if(wd.col===4){x=W0-w-5;y=Math.max(5,Math.round(H0*0.42-h/2));}
       else{x=wd.col?W0-w-5:5;y=cur[wd.col];cur[wd.col]+=h+(themed?2:1);}
       rects[wd.id]={x:x,y:y,w:w,h:h,s:s,name:wd.name};
       opPush();op(DPm,x,y,0);if(s!==1)op(FWK,s,s,1);
       if(c.keys)hudDrawKeys(ctx,themed);
+      else if(c.custom)c.custom.draw(ctx,c,themed,sz);
       else{if(themed)hudBox(0,0,sz.w,sz.h);hudDrawLines(ctx,c,themed);}
       opPop();
     }
@@ -50457,6 +50567,214 @@ c.PK;})();
   MODULES.unshift({cat:'hud',id:'hudTheme',name:'HUD Style & Layout',special:'hudedit',wide:true,always:true,
     desc:'On: every HUD module in a Thunder box (dark glass, cyan edge; keys light up while held). Off: plain text. Edit HUD Layout: drag boxes to move them, scroll over a box to resize it, right-click to reset it.'});
 
+  // Combat HUD: totem counter, pickup notifier, target crosshair, shield status
+  /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
+     Combat HUD. Included into the client scope of thunder-client.js by build.js.
+     - Totem Counter (HUD): how many totems of undying you carry (inventory, hotbar and off hand):
+       a totem and the number, beside the hotbar. Yellow on your last one, red with none. A
+       movable HUD box like the other widgets.
+     - Pickup Notifier (HUD): "+3 Iron Ingot" for a few seconds for everything you pick up, XP
+       too. It reads the game's own "item collected" message, so only real pickups show (not items
+       moved around the inventory or crafted). A movable HUD box.
+     - Target Crosshair (Combat): aiming at a player within reach turns the crosshair red and puts
+       a small lock-on frame around it (mobs too, if you want). First person only, like the
+       crosshair itself; the attack cooldown indicator under it is left as it is.
+     - Shield Status (Combat): the off-hand shield slot of the Shield HUD glows green while your
+       shield is ready and red while an axe has disabled it, filling back up as the cooldown runs
+       out. Both colours can be changed.
+
+     Game method this module wraps (the wrapper only reads the message, then calls the original).
+     It is virtual, so the class's prototype slot is wrapped:
+     @virtual ce net.minecraft.network.play.server.SPacketCollectItem processPacket
+     @class AXi net.minecraft.network.play.server.SPacketCollectItem
+
+     Game functions, classes, statics and fields it uses:
+     @use EwF net.minecraft.entity.player.InventoryPlayer.getStackInSlot
+     @use AGx net.minecraft.entity.player.InventoryPlayer.getSizeInventory
+     @use C51 net.minecraft.item.ItemStack.getItem
+     @use A6j net.minecraft.world.World.getEntityByID
+     @use CwV net.minecraft.entity.item.EntityItem.getEntityItem
+     @use EHn net.minecraft.util.CooldownTracker.getCooldown
+     @use Cqz net.minecraft.util.CooldownTracker.setCooldown
+     @class GC net.minecraft.entity.item.EntityItem
+     @class Jn net.minecraft.entity.item.EntityXPOrb
+     @class Cb net.minecraft.entity.player.EntityPlayer
+     @static HHQ net.minecraft.init.Items TOTEM_OF_UNDYING
+     @static HIU net.minecraft.init.Items SHIELD
+     @static H3o net.minecraft.client.gui.Gui ICONS (textures/gui/icons.png)
+     @field bNf net.minecraft.network.play.server.SPacketCollectItem.processPacket SPacketCollectItem.collectedItemEntityId
+     @field b5D net.minecraft.network.play.server.SPacketCollectItem.processPacket SPacketCollectItem.entityId (who picked it up)
+     @field cnP net.minecraft.network.play.server.SPacketCollectItem.processPacket SPacketCollectItem.collectedQuantity
+     @field bk net.minecraft.network.play.server.SPacketCollectItem.processPacket NetHandlerPlayClient.world
+     @field cu net.minecraft.entity.Entity.getEntityId Entity.entityId
+     @field TA net.minecraft.entity.item.EntityXPOrb.<init> EntityXPOrb.xpValue
+     @field bw net.minecraft.entity.player.EntityPlayer.getItemStackFromSlot EntityPlayer.inventory
+     @field w0 net.minecraft.entity.player.EntityPlayer.getCooldownTracker EntityPlayer.cooldownTracker
+     @field Ph net.minecraft.client.gui.GuiIngame.renderAttackIndicator GameSettings.showDebugInfo
+     (EntityLivingBase Co, ItemStack getCount CRD / isEmpty CCI / getDisplayName EJu, the draw-list helpers and the HUD
+     widget list are declared in thunder-client.js and thunder-hud.js.)
+     ------------------------------------------------------------------------------------------- */
+  // colour choices for Shield Status (names shown in the menu)
+  var CB_COLORS=[['Green',0x55FF55],['Lime',0xA8FF3E],['Cyan',0x55E8FF],['Blue',0x4F8BFF],['Purple',0xB06BFF],
+    ['Pink',0xFF6BD5],['Red',0xFF4040],['Orange',0xFF9A2E],['Yellow',0xFFE04A],['White',0xFFFFFF]];
+  function cbColor(i,def){var c=CB_COLORS[i|0];return c?c[1]:def;}
+
+  // ---- Totem Counter ---------------------------------------------------------------------------
+  // every totem in the player's inventory (main, armor and off-hand slots)
+  function cbTotems(player){
+    var inv=player.bw,n=0,first=null,i,st,size;
+    if(!inv||!HHQ)return {n:0,stack:null};
+    size=AGx(inv);
+    for(i=0;i<size;i++){
+      st=EwF(inv,i);
+      if(st===null||CCI(st)||C51(st)!==HHQ)continue;
+      n+=CRD(st);
+      if(!first)first=st;
+    }
+    return {n:n,stack:first};
+  }
+  hudExtra({id:'totemCount',name:'Totem Counter',col:3,
+    content:function(ctx){
+      var t=cbTotems(ctx.player);
+      if(!t.n&&!hudEditing&&!S.totemShowZero)return null;
+      return {n:t.n,stack:t.stack};
+    },
+    size:function(ctx,c,themed){
+      var tw=textWidth(ctx.font,c.stack?String(c.n):'Totems '+c.n);
+      return themed?{w:(c.stack?20:4)+tw+4,h:18}:{w:(c.stack?18:0)+tw,h:16};
+    },
+    draw:function(ctx,c,themed,sz){
+      if(themed)hudBox(0,0,sz.w,sz.h);
+      var o=themed?1:0,col=c.n>1?0xFFFFFF:c.n===1?0xFFE04A:0xFF5555;
+      if(c.stack){itemsBegin();op(FkK,ctx.ri,ctx.player,c.stack,o+1,o);itemsEnd();}
+      text(ctx.font,c.stack?String(c.n):'Totems '+c.n,(c.stack?18:0)+(themed?2+o:0),themed?5:4,col);
+    }});
+
+  // ---- Pickup Notifier -------------------------------------------------------------------------
+  var CB_PICK={rows:[],seen:0};
+  var CB_PICK_MS=3500,CB_PICK_MAX=5;
+  // SPacketCollectItem.processPacket(handler): read who picked up what before the game removes it
+  // (the fields below are read in its compiled body, D$u)
+  function cbCollect(pk,h){
+    var p=HEN&&HEN.v,w=h&&h.bk;
+    if(!p||!w||pk.b5D!==p.cu)return;
+    var e=A6j(w,pk.bNf),t=now(),row=null,last=CB_PICK.rows[CB_PICK.rows.length-1];
+    if(e instanceof GC){
+      var st=CwV(e);
+      if(st===null||CCI(st))return;
+      var name=$rt_ustr(EJu(st)),n=pk.cnP|0;
+      if(n<=0)n=CRD(st);
+      if(last&&last.name===name&&last.xp===false&&t-last.t<1500){last.n+=n;last.t=t;return;}
+      row={stack:st,name:name,n:n,xp:false,t:t};
+    }else if(e instanceof Jn){
+      var v=e.TA|0;
+      if(v<=0)return;
+      if(last&&last.xp&&t-last.t<1500){last.n+=v;last.t=t;return;}
+      row={stack:null,name:'XP',n:v,xp:true,t:t};
+    }
+    if(!row)return;
+    CB_PICK.seen++;
+    CB_PICK.rows.push(row);
+    if(CB_PICK.rows.length>CB_PICK_MAX)CB_PICK.rows.shift();
+  }
+  var cbCollectProto=AXi.prototype,cbOrigProcess=cbCollectProto.ce;
+  cbCollectProto.ce=function(b){
+    if(S.pickups&&!$rt_resuming()){try{cbCollect(this,b);}catch(e){report(e);}}
+    return cbOrigProcess.call(this,b);
+  };
+  function cbPickLine(r){return '+'+r.n+' '+(r.xp?'XP':r.name);}
+  hudExtra({id:'pickups',name:'Pickup Notifier',col:4,
+    content:function(ctx){
+      var t=now(),rows=[],i,r;
+      CB_PICK.rows=CB_PICK.rows.filter(function(x){return t-x.t<CB_PICK_MS;});
+      for(i=0;i<CB_PICK.rows.length;i++){
+        r=CB_PICK.rows[i];
+        var left=CB_PICK_MS-(t-r.t),a=left<700?Math.max(0.1,left/700):1;
+        rows.push({stack:r.stack,text:cbPickLine(r),color:r.xp?0x7FFF3E:0xFFFFFF,a:a});
+      }
+      if(!rows.length&&hudEditing)rows.push({stack:null,text:'+3 Iron Ingot',color:0xFFFFFF,a:1});
+      return rows.length?{rows:rows}:null;
+    },
+    size:function(ctx,c,themed){
+      var w=0,i;
+      for(i=0;i<c.rows.length;i++)w=Math.max(w,18+textWidth(ctx.font,c.rows[i].text));
+      return {w:w+(themed?6:0),h:c.rows.length*17+(themed?3:0)};
+    },
+    draw:function(ctx,c,themed,sz){
+      if(themed)hudBox(0,0,sz.w,sz.h);
+      var o=themed?2:0,i,r,any=false;
+      for(i=0;i<c.rows.length;i++)if(c.rows[i].stack)any=true;
+      if(any){
+        itemsBegin();
+        for(i=0;i<c.rows.length;i++){r=c.rows[i];if(r.stack)op(FkK,ctx.ri,ctx.player,r.stack,o+1,o+1+i*17);}
+        itemsEnd();
+      }
+      for(i=0;i<c.rows.length;i++){
+        r=c.rows[i];
+        var al=Math.max(8,Math.round(255*r.a));
+        text(ctx.font,r.text,o+19,o+5+i*17,(al<<24)|(r.color&0xFFFFFF));
+      }
+    }});
+  TC.pickups={rows:function(){return CB_PICK.rows.map(function(r){return cbPickLine(r);});},count:function(){return CB_PICK.seen;}};
+
+  // ---- Target Crosshair ------------------------------------------------------------------------
+  // what the crosshair is on: a player (or, with the option, any mob) within reach
+  function cbTarget(mc){
+    var r=mc.h3,e=r&&r.kD&&r.kD.d===2?r.kr:null;
+    if(!e)return null;
+    if(e instanceof Cb)return e;
+    return S.crossMobs&&e instanceof Co?e:null;
+  }
+  var CB_CROSS={shown:0};
+  function crossHud(ctx){
+    var mc=ctx.mc,gs=mc.G;
+    if(!gs||gs.lu!==0||gs.Ph||YZ(mc.dw))return;                 // where the game draws no crosshair either
+    if(!cbTarget(mc))return;
+    CB_CROSS.shown++;
+    var cx=ctx.cx,cy=(ctx.h/2)|0,red=0xFF3B3B;
+    // the crosshair itself, from the same texture and spot the game uses, drawn over it in red
+    op(D17,ctx.tm,H3o);
+    op(CyN);op(B$o,770,771,1,0);
+    op(CFi,1.0,0.23,0.23,1.0);
+    blit(ctx,cx-7,cy-7,0,0,16,16);
+    blit(ctx,cx-7,cy-7,0,0,16,16);                     // twice: soft texture edges cover fully
+    op(CFi,1.0,1.0,1.0,1.0);
+    // lock-on frame: four corners 11 px out from the centre
+    var d=11,l=4,c=0xE0000000|red,i,sx,sy;
+    for(i=0;i<4;i++){
+      sx=i&1?1:-1;sy=i&2?1:-1;
+      var x=cx+sx*d,y=cy+sy*d;
+      rect(Math.min(x,x-sx*l),y,Math.max(x,x-sx*l)+1,y+1,c);
+      rect(x,Math.min(y,y-sy*l),x+1,Math.max(y,y-sy*l)+1,c);
+    }
+  }
+
+  // ---- Shield Status ---------------------------------------------------------------------------
+  // 0..1 of the axe cooldown still to go on the shield in the off hand, or -1 when it is not a shield
+  function cbShieldCooldown(p,st){
+    if(!HIU||C51(st)!==HIU)return -1;
+    var tr=p.w0;
+    return tr?EHn(tr,HIU,0.0):0;
+  }
+  TC.combat={totems:function(){var p=HEN&&HEN.v;return p?cbTotems(p).n:-1;},crosshair:function(){return CB_CROSS.shown;},
+    // for checking Shield Status: the shield cooldown an axe would give (ticks, 100 = 5 s)
+    shieldCooldown:function(ticks){var p=HEN&&HEN.v;if(!p||!p.w0||!HIU)return false;runOnGame([function(){Cqz(p.w0,HIU,ticks|0);}]);return true;}};
+
+  MODULES.push(
+    {cat:'hud',id:'totemCount',name:'Totem Counter',
+      desc:'How many totems of undying you carry, beside the hotbar. Yellow on your last totem, red with none. Move it in Edit HUD Layout.',
+      opts:[{id:'totemShowZero',name:'Show with no totems'}]},
+    {cat:'hud',id:'pickups',name:'Pickup Notifier',
+      desc:'Shows "+3 Iron Ingot" for a few seconds for everything you pick up, and the XP you collect. Only real pickups count. Move it in Edit HUD Layout.'},
+    {cat:'combat',id:'crossTarget',name:'Target Crosshair',
+      desc:'Aiming at a player within reach turns your crosshair red and puts a small lock-on frame around it.',
+      opts:[{id:'crossMobs',name:'Mobs too'}]},
+    {cat:'combat',id:'shieldStatus',name:'Shield Status',
+      desc:'The off-hand shield slot glows while your shield is ready and turns the other colour while an axe has disabled it, filling back up as the cooldown runs out. Needs the Shield HUD.',
+      opts:[{id:'shieldReadyColor',name:'Ready colour',colors:CB_COLORS},
+        {id:'shieldDownColor',name:'Disabled colour',colors:CB_COLORS}]});
+
   // Newer items on servers (maces, spears, wind charges, netherite gear) with their 1.21.11 models
   /* Generated by thunder/packs/item_ids.py - do not edit. Part of Thunder Client, created and
      owned by Jayvardhan Ginni (ThunderGamey). NI_TAGS: ViaBackwards item tag (newest step first)
@@ -50472,7 +50790,8 @@ c.PK;})();
      A newer server (through ViaVersion / ViaBackwards) sends a 1.12 client every item 1.12 does not
      have as an old item. It tells which one in two ways, and either is enough:
      - the name "<version> <Name>", for example "1.21.11 Netherite Spear" or "1.21 Mace" (only when
-       the server did not give the item a name of its own; "vb.item.<id>" is read too);
+       the server did not give the item a name of its own; "vb.item.<id>" is read too, and so is a
+       plain "Netherite Spear" when a server names its kit items after the real item);
      - the tag "VB|Protocol<newer>To<older>|id" with the item's number in the newer version, which
        thunder-items-data.js (made by thunder/packs/item_ids.py) turns back into the item.
      When the resource packs have the model item/thunder/<English name in lower_case_words> (the
@@ -50508,14 +50827,20 @@ c.PK;})();
      ------------------------------------------------------------------------------------------- */
   var NI={reg:null,cache:{},armor:null,res:{},seen:(typeof WeakMap==='function'?new WeakMap():null),jtags:null,last:null};
   var NI_ARMOR={netherite:'netherite',copper:'copper'};
+  // model names of every newer item (for names without a version in front)
+  var NI_KNOWN={};
+  (function(){for(var k in NI_KEYS)NI_KNOWN[NI_KEYS[k]]=1;})();
   // "1.21.11 Netherite Spear" -> "netherite_spear" (the same rule as build_packs.py model_key);
-  // "vb.item.netherite_spear" -> its model name; null for any other name
+  // "vb.item.netherite_spear" -> its model name; a plain "Netherite Spear" (a server that names
+  // its kit items itself) -> the same, when it is exactly the name of an item added since 1.12;
+  // null for any other name
   function niKey(name){
-    var t=String(name).replace(/\u00a7./g,'').replace(/^\s+|\s+$/g,''),m;
+    var t=String(name).replace(/\u00a7./g,'').replace(/^\s+|\s+$/g,''),m,k;
     if((m=/^vb\.item\.([a-z0-9_]+)$/.exec(t)))return NI_KEYS[m[1]]||m[1];
     m=/^\d+\.\d+(?:\.\d+)?\s+(.+)$/.exec(t);
-    if(!m)return null;
-    return m[1].toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||null;
+    k=(m?m[1]:t).toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+    if(!k)return null;
+    return m||NI_KNOWN[k]?k:null;
   }
   // the model name from ViaBackwards' id tag, or null
   function niTagKey(tag){
@@ -50630,23 +50955,35 @@ c.PK;})();
     row.appendChild(b);box.appendChild(row);
   };
 
-  // Hit effects: extra particles on the player or mob you hit
+  // Hit effects: a thunder shock, lightning or particles on the player or mob you hit
   /* -------------------------------------------------------------------------------------------
      Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
-     Hit Particles (Right Shift > Visual): extra particles on the mob or player you hit. Included
-     into the client scope of thunder-client.js by build.js. (Lightning where you click lives on
-     the title screen now: see thunder-title.js.)
+     Hit Effects (Right Shift > Visual): an effect on the mob or player you hit. Included into the
+     client scope of thunder-client.js by build.js.
+     - Thunder shock: a small electric bolt comes down onto them and crackles around their body,
+       with a zap sound.
+     - Lightning strike: a real lightning bolt hits them (the game's own lightning, "effect only").
+     - Crit, Magic, Flame, Hearts, End rod, Totem: a burst of those particles.
 
-     Everything happens only in your own game, so nobody else sees it. What you hit is read when
-     Minecraft.clickMouse runs; the particles are made between frames through runOnGame, with the
-     game's own emitter (the one it uses for critical hits).
+     Everything happens only in your own game, so nobody else sees or hears it, and it cannot burn
+     or hurt anything (the server never hears of it). What you hit is read when
+     Minecraft.clickMouse runs; the effect is made between frames through runOnGame, one game call
+     per step.
 
      Game function this module replaces (the wrapper only reads, then calls the original):
      @hook Cfp net.minecraft.client.Minecraft.clickMouse
 
-     Game functions and fields it uses:
+     Game functions, classes and fields it uses:
      @use D$s net.minecraft.client.particle.ParticleManager.emitParticleAtEntity
+     @use GlU net.minecraft.client.particle.ParticleManager.spawnEffectParticle
      @use D2a net.minecraft.util.EnumParticleTypes.getParticleFromId
+     @use GCA net.minecraft.entity.effect.EntityLightningBolt.<init>
+     @use Bkv net.minecraft.world.World.addWeatherEffect
+     @use D2I net.minecraft.client.multiplayer.WorldClient.playSound
+     @class Ya net.minecraft.entity.effect.EntityLightningBolt
+     @static LeN net.minecraft.init.SoundEvents ENTITY_LIGHTNING_THUNDER
+     @static LeM net.minecraft.init.SoundEvents ENTITY_LIGHTNING_IMPACT
+     @static LnM net.minecraft.util.SoundCategory WEATHER
      @field wL net.minecraft.client.Minecraft.clickMouse Minecraft.leftClickCounter
      @field h3 net.minecraft.client.Minecraft.clickMouse Minecraft.objectMouseOver
      @field kD net.minecraft.client.Minecraft.clickMouse RayTraceResult.typeOfHit
@@ -50654,25 +50991,39 @@ c.PK;})();
      @field X net.minecraft.client.Minecraft.clickMouse Minecraft.world
      @field kr net.minecraft.util.math.RayTraceResult.<init> RayTraceResult.entityHit
      @field it net.minecraft.client.entity.EntityPlayerSP.onCriticalHit Minecraft.effectRenderer
-     (Minecraft.player v and the Minecraft instance HEN are declared in thunder-client.js and
-     thunder-lan.js.)
+     @runtime $rt_createIntArray x
+     @field bgi net.minecraft.entity.effect.EntityLightningBolt.<init> EntityLightningBolt.boltLivingTime
+     (Entity.posX/posY/posZ b/f/c, Minecraft.player v and the Minecraft instance HEN are declared
+     in thunder-client.js and thunder-lan.js.)
      ------------------------------------------------------------------------------------------- */
-  // particle choices: Off, then EnumParticleTypes ids
-  var HF_PARTS=[-1,9,10,26,34,21,43,47],HF={types:{},clicks:0,parts:0,kind:-1};
+  // choices: Off, Thunder shock, Lightning strike, then particle bursts (EnumParticleTypes ids)
+  var HF_CHOICES=['Off','Thunder shock','Lightning strike','Crit','Magic','Flame','Hearts','End rod','Totem'];
+  var HF_PARTS=[-1,-1,-1,9,10,26,34,43,47];
+  var HF_CRIT_MAGIC=10,HF_END_ROD=43;             // particle ids for the shock
+  var HF={types:{},clicks:0,parts:0,shocks:0,bolts:0,kind:-1,last:0};
 
   function hfClick(mc){
     if(mc.wL>0||!mc.h3||!mc.X||!mc.v)return;               // the game ignores this click too
-    var r=mc.h3,kind=r.kD?r.kD.d:0,ent=kind===2?r.kr:null;
+    var r=mc.h3,kind=r.kD?r.kD.d:0,ent=kind===2?r.kr:null,fx=S.hitEffect|0;
     HF.clicks++;HF.kind=kind;
-    if(ent&&S.hitParts>0&&HF_PARTS[S.hitParts]>=0)hfParticles(ent,HF_PARTS[S.hitParts],S.hitPartsAmt|0);
+    if(!ent||fx<=0)return;
+    var t=Date.now();
+    if(fx===1){if(t-HF.last<120)return;HF.last=t;hfShock(mc.X,ent);}
+    else if(fx===2){if(t-HF.last<400)return;HF.last=t;hfBolt(mc.X,ent.b,ent.f,ent.c);}
+    else if(HF_PARTS[fx]>=0)hfParticles(ent,HF_PARTS[fx],S.hitEffectAmt|0);
   }
 
-  function hfParticles(ent,id,times){
-    var steps=[function(){
+  // particle types are looked up once (EnumParticleTypes.getParticleFromId)
+  function hfType(id){
+    return function(){
       if(HF.types[id])return;
       var t=D2a(id);
       if(!$rt_suspending()&&t)HF.types[id]=t;
-    }];
+    };
+  }
+
+  function hfParticles(ent,id,times){
+    var steps=[hfType(id)];
     for(var i=0;i<Math.max(1,Math.min(3,times));i++)steps.push(function(){
       var pm=HEN&&HEN.it,t=HF.types[id];
       if($rt_resuming()||(pm&&t&&HEN.X)){D$s(pm,ent,t);HF.parts++;}
@@ -50680,18 +51031,390 @@ c.PK;})();
     runOnGame(steps);
   }
 
-  TC.hitfx={counts:function(){return {clicks:HF.clicks,particles:HF.parts,lastKind:HF.kind};}};
+  // Thunder shock: a jagged little bolt from above the head down into the body, made of the blue
+  // enchanted-hit particles (they only live a few ticks, so it flickers like a spark), a crackle
+  // of sparks around the body, and a zap.
+  function hfShock(w,ent){
+    var x=ent.b,y=ent.f,z=ent.c,pts=[],i,j,n=7;
+    var top=[x+(Math.random()-0.5)*0.6,y+3.0,z+(Math.random()-0.5)*0.6],bot=[x,y+1.0,z];
+    for(i=0;i<=n;i++){
+      var k=i/n,jit=i===0||i===n?0:0.28;
+      pts.push([top[0]+(bot[0]-top[0])*k+(Math.random()-0.5)*jit,top[1]+(bot[1]-top[1])*k,
+        top[2]+(bot[2]-top[2])*k+(Math.random()-0.5)*jit]);
+    }
+    var spawns=[];
+    for(i=0;i<n;i++){
+      var a=pts[i],b=pts[i+1],len=Math.sqrt((b[0]-a[0])*(b[0]-a[0])+(b[1]-a[1])*(b[1]-a[1])+(b[2]-a[2])*(b[2]-a[2]));
+      var m=Math.max(2,Math.ceil(len/0.11));
+      for(j=0;j<m;j++){var q=j/m;spawns.push([HF_CRIT_MAGIC,a[0]+(b[0]-a[0])*q,a[1]+(b[1]-a[1])*q,a[2]+(b[2]-a[2])*q,0,0,0]);}
+    }
+    for(i=0;i<10;i++){                                  // sparks jumping off the body
+      var an=Math.random()*6.283,up=Math.random()*1.6;
+      spawns.push([i<3?HF_END_ROD:HF_CRIT_MAGIC,x+Math.cos(an)*0.35,y+0.3+up,z+Math.sin(an)*0.35,
+        Math.cos(an)*0.25,0.05+Math.random()*0.1,Math.sin(an)*0.25]);
+    }
+    var steps=[],none=null;
+    spawns.forEach(function(s){
+      steps.push(function(){
+        var pm=HEN&&HEN.it;
+        if(!$rt_resuming()&&(!pm||HEN.X!==w))return;
+        if(!none)none=$rt_createIntArray(0);
+        GlU(pm,s[0],s[1],s[2],s[3],s[4],s[5],s[6],none);
+      });
+    });
+    steps.push(function(){HF.shocks++;});
+    runOnGame(steps);
+    hfZap();
+  }
+
+  // the game's lightning, effect only, in this client's world, on the one you hit; plus a quieter
+  // crack and rumble. It flickers a few times, like a real strike.
+  function hfBolt(w,x,y,z){
+    var bolt=null,loud=LeM!==null&&LnM!==null;
+    runOnGame([
+      function(){
+        if(!$rt_resuming()){if(!HEN||HEN.X!==w)return;bolt=new Ya();}
+        if($rt_resuming()||bolt)GCA(bolt,w,x,y,z,1);
+      },
+      function(){
+        if(!bolt)return;
+        bolt.bgi=Math.max(bolt.bgi,2);
+        Bkv(w,bolt);HF.bolts++;
+      },
+      function(){if($rt_resuming()||(bolt&&loud))D2I(w,x,y,z,LeM,LnM,0.8,0.9+Math.random()*0.2,0);},
+      function(){if($rt_resuming()||(bolt&&loud&&LeN!==null))D2I(w,x,y,z,LeN,LnM,0.25,1.2,0);}
+    ]);
+  }
+
+  // zap: a short electric buzz made in the browser (Web Audio), only you hear it
+  var hfAudio=null;
+  function hfZap(){
+    if(!S.hitEffectSound)return;
+    try{
+      var AC=W.AudioContext||W.webkitAudioContext;if(!AC)return;
+      if(!hfAudio)hfAudio=new AC();
+      var c=hfAudio;if(c.state==='suspended')c.resume();
+      var t=c.currentTime,len=Math.floor(c.sampleRate*0.18),buf=c.createBuffer(1,len,c.sampleRate),d=buf.getChannelData(0),i;
+      for(i=0;i<len;i++){var k=i/len;d[i]=(Math.random()*2-1)*(Math.random()<0.35?1:0.25)*Math.pow(1-k,2);}
+      var src=c.createBufferSource();src.buffer=buf;
+      var bp=c.createBiquadFilter();bp.type='bandpass';bp.frequency.setValueAtTime(2600,t);bp.frequency.exponentialRampToValueAtTime(900,t+0.18);bp.Q.value=0.8;
+      var g=c.createGain();g.gain.setValueAtTime(0.22,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.2);
+      src.connect(bp);bp.connect(g);g.connect(c.destination);src.start(t);src.stop(t+0.21);
+      var o=c.createOscillator();o.type='sawtooth';o.frequency.setValueAtTime(180,t);o.frequency.exponentialRampToValueAtTime(60,t+0.15);
+      var og=c.createGain();og.gain.setValueAtTime(0.06,t);og.gain.exponentialRampToValueAtTime(0.001,t+0.15);
+      o.connect(og);og.connect(c.destination);o.start(t);o.stop(t+0.16);
+    }catch(_){}
+  }
+
+  TC.hitfx={counts:function(){return {clicks:HF.clicks,particles:HF.parts,shocks:HF.shocks,bolts:HF.bolts,lastKind:HF.kind};},
+    // the effect on whatever is under the crosshair (for checking it without clicking)
+    test:function(){var mc=HEN,r=mc&&mc.h3;if(!r||!r.kr||!mc.X)return false;var f=S.hitEffect|0;
+      if(f===1)hfShock(mc.X,r.kr);else if(f===2)hfBolt(mc.X,r.kr.b,r.kr.f,r.kr.c);else if(HF_PARTS[f]>=0)hfParticles(r.kr,HF_PARTS[f],3);return true;}};
 
   var origCfp=Cfp;
   Cfp=function(a){
-    if(!$rt_resuming()&&S.hitParts>0){try{hfClick(a);}catch(e){report(e);}}
+    if(!$rt_resuming()&&S.hitEffect>0){try{hfClick(a);}catch(e){report(e);}}
     return origCfp(a);
   };
 
-  MODULES.push({cat:'visual',id:null,name:'Hit Particles',
-    desc:'Extra particles on every player or mob you hit. Only you see them.',
-    opts:[{id:'hitParts',name:'Particles',choices:['Off','Crit','Magic','Flame','Hearts','Sparkles','End rod','Totem']},
-      {id:'hitPartsAmt',name:'Amount',min:1,max:3,step:1,fmt:function(v){return 'x'+v;}}]});
+  MODULES.push({cat:'visual',id:null,name:'Hit Effects',
+    desc:'An effect on every player or mob you hit. Thunder shock: a small electric bolt zaps them. Lightning strike: real lightning hits them. Or a burst of particles. Only you see and hear it.',
+    opts:[{id:'hitEffect',name:'Effect',choices:HF_CHOICES},
+      {id:'hitEffectSound',name:'Zap sound (Thunder shock)'},
+      {id:'hitEffectAmt',name:'Particle amount',min:1,max:3,step:1,fmt:function(v){return 'x'+v;}}]});
+
+  // Visual tweaks: no enchant glint, no rain, no pumpkin blur
+  /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
+     Visual tweaks (Right Shift > Visual). Included into the client scope of thunder-client.js by
+     build.js. Each one only skips something the game would draw, in your own game:
+     - No Enchant Glint: no shimmer on enchanted items and armor (ItemStack.hasEffect answers no;
+       the game uses it only to decide whether to draw the glint on items; worn armor and elytra
+       draw theirs with LayerArmorBase.renderEnchantedGlint, which is skipped).
+     - No Rain: no rain or snow falling on the screen, no splashes and no rain sounds. The sky
+       still darkens in a storm, and the weather itself (on a server) is unchanged.
+     - No Pumpkin Blur: wearing a carved pumpkin no longer covers the screen.
+
+     Game functions this module replaces (each wrapper either skips the call or calls the original):
+     @hook EZy net.minecraft.item.ItemStack.hasEffect
+     @hook Fzr net.minecraft.client.renderer.entity.layers.LayerArmorBase.renderEnchantedGlint
+     @hook DKJ net.minecraft.client.renderer.EntityRenderer.renderRainSnow
+     @hook DtJ net.minecraft.client.renderer.EntityRenderer.addRainParticles
+     @hook DEG net.minecraft.client.gui.GuiIngame.renderPumpkinOverlay
+     ------------------------------------------------------------------------------------------- */
+  var TW={glintSkips:0,rainSkips:0,pumpkinSkips:0};
+  var origEZy=EZy;
+  EZy=function(a){
+    if(S.noGlint&&!$rt_resuming()){TW.glintSkips++;return 0;}
+    return origEZy(a);
+  };
+  var origFzr=Fzr;
+  Fzr=function(b,c,d,e,f,g,h,i,j,k){
+    if(S.noGlint&&!$rt_resuming()){TW.glintSkips++;return;}
+    return origFzr(b,c,d,e,f,g,h,i,j,k);
+  };
+  var origDKJ=DKJ;
+  DKJ=function(a,b){
+    if(S.noRain&&!$rt_resuming()){TW.rainSkips++;return;}
+    return origDKJ(a,b);
+  };
+  var origDtJ=DtJ;
+  DtJ=function(a){
+    if(S.noRain&&!$rt_resuming())return;
+    return origDtJ(a);
+  };
+  var origDEG=DEG;
+  DEG=function(a,b){
+    if(S.noPumpkin&&!$rt_resuming()){TW.pumpkinSkips++;return;}
+    return origDEG(a,b);
+  };
+  TC.tweaks={counts:function(){return {glint:TW.glintSkips,rain:TW.rainSkips,pumpkin:TW.pumpkinSkips};}};
+  MODULES.push(
+    {cat:'visual',id:'noGlint',name:'No Enchant Glint',
+      desc:'Removes the purple shimmer from enchanted items and armor, so textures stay clean and easy to read.'},
+    {cat:'visual',id:'noRain',name:'No Rain',
+      desc:'No rain or snow on your screen, no splashes and no rain sounds. The sky still gets dark in a storm.'},
+    {cat:'visual',id:'noPumpkin',name:'No Pumpkin Blur',
+      desc:'Wearing a carved pumpkin no longer covers your screen with the pumpkin overlay.'});
+
+  // Zoom: hold C, smooth, scroll to zoom further
+  /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
+     Zoom (Right Shift > Utility), in the style of Zoomify. Included into the client scope of
+     thunder-client.js by build.js.
+     Hold C (or tap it, with "Toggle") in a world to zoom in. The view glides in and out instead of
+     jumping, the mouse wheel zooms further in or out while zoomed (the hotbar does not scroll
+     then), and mouse sensitivity drops with the zoom so aiming stays steady.
+     The zoom divides the field of view the game asks for (EntityRenderer.getFOVModifier, wrapped
+     in thunder-client.js) for the world only, so the hand keeps its normal size. Sensitivity is
+     the game's own setting, lowered while zoomed and put back as soon as the zoom ends or any
+     screen opens, so the value in Options is never changed.
+
+     Game fields it uses:
+     @field bdY net.minecraft.client.renderer.EntityRenderer.updateCameraAndRender GameSettings.mouseSensitivity
+     (Minecraft.world X, Minecraft.currentScreen cm and GameSettings G are declared elsewhere.)
+     ------------------------------------------------------------------------------------------- */
+  var ZM={f:1,target:1,level:0,last:0,sens:null,toggled:false,keyWas:false};
+  function zoomLevelDefault(){return clamp(Number(S.zoomLevel)||4,1.5,20);}
+  // zoom wanted this frame: in a world, no screen or Thunder menu open, not typing
+  function zoomWanted(){
+    if(!S.zoom||!HEN||!HEN.X||HEN.cm!==null||menuOpen||hudEditing){ZM.toggled=false;return false;}
+    var down=!!keyState.KeyC;
+    if(S.zoomToggle){
+      if(down&&!ZM.keyWas)ZM.toggled=!ZM.toggled;
+      ZM.keyWas=down;
+      return ZM.toggled;
+    }
+    return down;
+  }
+  // the game's turn speed goes with (sensitivity * 0.6 + 0.2)^3: scale it by 1 / zoom
+  function zoomSens(){
+    var gs=HEN&&HEN.G;
+    if(!gs)return;
+    if(ZM.f>1.001&&S.zoomSens&&HEN.cm===null){
+      if(ZM.sens===null)ZM.sens=gs.bdY;
+      var base=ZM.sens*0.6+0.2;
+      gs.bdY=Math.max(-0.33,(base*Math.pow(1/ZM.f,1/3)-0.2)/0.6);
+    }else if(ZM.sens!==null){gs.bdY=ZM.sens;ZM.sens=null;}
+  }
+  frameTasks.push(function(){
+    var t=now(),dt=ZM.last?Math.min(100,t-ZM.last):16;
+    ZM.last=t;
+    var want=zoomWanted();
+    if(!want)ZM.level=0;                                   // next zoom starts at the set level again
+    else if(!ZM.level)ZM.level=zoomLevelDefault();
+    ZM.target=want?ZM.level:1;
+    var k=S.zoomSmooth?1-Math.exp(-dt/75):1;
+    ZM.f+=(ZM.target-ZM.f)*k;
+    if(Math.abs(ZM.f-ZM.target)<0.002)ZM.f=ZM.target;
+    zoomSens();
+  });
+  // the world's field of view, zoomed (called from the getFOVModifier wrapper)
+  function zoomFov(fov){return ZM.f>1.0001?fov/ZM.f:fov;}
+  // mouse wheel while zoomed: zoom further in or out; the game never sees it (no hotbar scroll)
+  if(W.addEventListener)W.addEventListener('wheel',function(e){
+    if(!S.zoom||!S.zoomScroll||ZM.target<=1||!ZM.level)return;
+    ZM.level=clamp(ZM.level*(e.deltaY<0?1.25:0.8),1.2,50);
+    e.stopImmediatePropagation();
+    if(e.cancelable)e.preventDefault();
+  },{capture:true,passive:false});
+  TC.zoom={state:function(){return {f:Math.round(ZM.f*100)/100,target:ZM.target,level:ZM.level,sens:ZM.sens};}};
+  MODULES.push({cat:'utility',id:'zoom',name:'Zoom',
+    desc:'Hold C in a world to zoom in. The view glides in and out, the mouse wheel zooms further while zoomed, and aiming stays steady.',
+    opts:[{id:'zoomLevel',name:'Zoom',min:2,max:10,step:0.5,fmt:function(v){return v+'x';}},
+      {id:'zoomSmooth',name:'Smooth zoom'},
+      {id:'zoomScroll',name:'Scroll to zoom'},
+      {id:'zoomSens',name:'Lower sensitivity while zoomed'},
+      {id:'zoomToggle',name:'Tap C to toggle (instead of hold)'}]});
+
+  // Quality of life: toggle sneak, clear chat, password hider, own name tag, crystal optimizer,
+  // XP orb clumping, fast XP, menu sounds
+  /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
+     Quality of life. Included into the client scope of thunder-client.js by build.js.
+     - Toggle Sneak (Movement): press sneak once to keep sneaking, press it again to stop.
+     - Clear Chat (Visual): chat without the black box behind the lines (the text keeps its
+       shadow, so it stays readable).
+     - Password Hider (Utility): while you type /login, /register and the like in chat, the
+       password shows as stars (only on your screen; what is sent is unchanged).
+     - Show Own Name Tag (Visual): your own name above your head in third person.
+     - Crystal Optimizer (Combat): an end crystal you hit disappears on your screen at once instead
+       of when the server answers, so the next one can go down sooner.
+     - XP Orb Clumping (Visual): orbs lying in the same spot are drawn once, so piles of XP do
+       not slow the game down (like the Clumps mod, but only for drawing; nothing is merged).
+     - Fast XP (Combat): bottles o' enchanting thrown every tick while you hold use.
+     - Menu Sounds (Utility): a short electric sound when the Thunder menu opens and closes.
+
+     Game functions this module replaces:
+     @hook D8g net.minecraft.util.MovementInputFromOptions.updatePlayerMoveState
+     @hook DYN net.minecraft.client.gui.GuiNewChat.drawChat
+     @hook DzX net.minecraft.client.multiplayer.PlayerControllerMP.attackEntity
+     @hook FoC net.minecraft.client.renderer.entity.RenderXPOrb.doRender
+     @virtual dfg net.minecraft.client.renderer.entity.RenderLivingBase canRenderName
+
+     Game functions, classes, statics and fields it uses:
+     @use DPF net.minecraft.entity.Entity.setDead
+     @use Gm9 net.minecraft.entity.player.InventoryPlayer.getCurrentItem
+     @class Y4 net.minecraft.client.renderer.entity.RenderLivingBase
+     @class Iz net.minecraft.entity.item.EntityEnderCrystal
+     @static HUf net.minecraft.init.Items EXPERIENCE_BOTTLE
+     @field dfw net.minecraft.util.MovementInputFromOptions.updatePlayerMoveState MovementInputFromOptions.gameSettings
+     @field b23 net.minecraft.util.MovementInputFromOptions.updatePlayerMoveState GameSettings.keyBindSneak
+     @field my net.minecraft.util.MovementInputFromOptions.updatePlayerMoveState KeyBinding.pressed
+     @field U4 net.minecraft.util.MovementInputFromOptions.updatePlayerMoveState MovementInput.sneak
+     @field Ps net.minecraft.util.MovementInputFromOptions.updatePlayerMoveState MovementInput.moveStrafe
+     @field s_ net.minecraft.util.MovementInputFromOptions.updatePlayerMoveState MovementInput.moveForward
+     @field bS8 net.minecraft.client.Minecraft.rightClickMouse Minecraft.rightClickDelayTimer
+     @field cA net.minecraft.client.gui.GuiTextField.getText GuiTextField.text
+     (EntityPlayer.inventory bw, ItemStack.getItem C51, getHeldItemOffhand EjD and Minecraft.player v
+     are declared in thunder-client.js and thunder-combat.js.)
+     ------------------------------------------------------------------------------------------- */
+  // ---- Toggle Sneak ------------------------------------------------------------------------------
+  var QL={sneak:false,sneakWas:false,world:null,chat:0,xpFrame:-1,xpCells:{},xpSkipped:0,crystals:0,masked:0};
+  var origD8g=D8g;
+  D8g=function(a){
+    origD8g(a);
+    if($rt_suspending())return;
+    if(!S.toggleSneak){QL.sneak=false;return;}
+    var gs=a.dfw,down=!!(gs&&gs.b23&&gs.b23.my);
+    if(down&&!QL.sneakWas)QL.sneak=!QL.sneak;          // each press of the sneak key flips it
+    QL.sneakWas=down;
+    if(QL.sneak&&!a.U4){a.U4=1;a.Ps*=0.3;a.s_*=0.3;}
+  };
+  frameTasks.push(function(){
+    var w=HEN&&HEN.X;
+    if(w!==QL.world){QL.world=w;QL.sneak=false;}      // a new world or server starts standing
+  });
+  function sneakToggled(){return !!(S.toggleSneak&&QL.sneak);}
+
+  // ---- Clear Chat: GuiNewChat.drawChat draws a black box behind every line with Gui.drawRect;
+  // while it runs, the drawRect wrapper in thunder-theme.js leaves out pure black boxes ----------
+  var origDYN=DYN;
+  DYN=function(a,b){
+    if(!$rt_resuming())QL.chat=S.clearChat?1:0;
+    var ok=false,r;
+    try{r=origDYN(a,b);ok=true;}
+    finally{if(!ok||!$rt_suspending())QL.chat=0;}
+    return r;
+  };
+  function clearChatSkips(color){return QL.chat===1&&(color&0xFFFFFF)===0;}
+
+  // ---- Password Hider: the chat box draws "/login ******" while you type a password ----------
+  var QL_PASS=/^(\/(?:login|l|log|register|reg|changepassword|changepass|cp|changepw|unregister|premium|2fa|email)\s)([\s\S]*)$/i;
+  // the text a GuiTextField should show, or null to show its own (thunder-theme.js Dpy wrapper)
+  function passwordMask(tf){
+    if(!S.hidePasswords)return null;
+    var t=tf.cA;
+    if(t===null)return null;
+    var s=$rt_ustr(t),m=QL_PASS.exec(s);
+    if(!m||!m[2])return null;
+    QL.masked++;
+    return $rt_str(m[1]+m[2].replace(/\S/g,'*'));
+  }
+
+  // ---- Show Own Name Tag: RenderLivingBase.canRenderName says no for yourself when the camera is
+  // your own eyes' entity (third person too); it is a virtual method, so its prototype slot is wrapped
+  var qlNameProto=Y4.prototype,qlOrigCanRender=qlNameProto.dfg;
+  qlNameProto.dfg=function(b){
+    if(!$rt_resuming()&&S.ownName&&HEN&&b===HEN.v&&HEN.G&&HEN.G.lu!==0&&HEN.cm===null)return 1;
+    return qlOrigCanRender.call(this,b);
+  };
+
+  // ---- Crystal Optimizer: PlayerControllerMP.attackEntity(player, target) sends the hit; an end
+  // crystal is then removed on this screen straight away ------------------------------------------
+  var origDzX=DzX;
+  DzX=function(a,b,c){
+    var r=origDzX(a,b,c);
+    if(!$rt_suspending()&&S.crystalOpt&&c instanceof Iz){
+      try{DPF(c);QL.crystals++;}catch(e){report(e);}
+    }
+    return r;
+  };
+
+  // ---- XP Orb Clumping: RenderXPOrb.doRender(renderer, orb, x, y, z, yaw, partialTicks) draws
+  // only the first orb in each half-block cell per frame --------------------------------------------
+  var qlFrame=0;
+  frameTasks.push(function(){qlFrame++;});
+  var origFoC=FoC;
+  FoC=function(a,b,c,d,e,f,g){
+    if(S.xpClumps&&!$rt_resuming()&&b){
+      if(QL.xpFrame!==qlFrame){QL.xpFrame=qlFrame;QL.xpCells={};}
+      var key=Math.floor(b.b*2)+','+Math.floor(b.f*2)+','+Math.floor(b.c*2);
+      if(QL.xpCells[key]){QL.xpSkipped++;return;}
+      QL.xpCells[key]=1;
+    }
+    return origFoC(a,b,c,d,e,f,g);
+  };
+
+  // ---- Fast XP: no right-click delay while a bottle o' enchanting is in either hand -------------
+  frameTasks.push(function(){
+    if(!S.fastXp||!HEN||!HEN.v||HEN.cm!==null||!HUf||HEN.bS8<=0)return;
+    var p=HEN.v,main=p.bw?Gm9(p.bw):null,off=origEjD(p);
+    if((main&&!CCI(main)&&C51(main)===HUf)||(off&&!CCI(off)&&C51(off)===HUf))HEN.bS8=0;
+  });
+
+  // ---- Menu Sounds: a short rising (open) or falling (close) electric sound -------------------
+  var qlAudio=null;
+  function menuSound(open){
+    if(!S.menuSfx)return;
+    try{
+      var AC=W.AudioContext||W.webkitAudioContext;if(!AC)return;
+      if(!qlAudio)qlAudio=new AC();
+      var c=qlAudio;
+      if(c.state!=='running'){c.resume().catch(function(){});if(c.state!=='running')return;}
+      var t=c.currentTime,o=c.createOscillator(),g=c.createGain(),bp=c.createBiquadFilter();
+      o.type='sawtooth';
+      o.frequency.setValueAtTime(open?320:760,t);o.frequency.exponentialRampToValueAtTime(open?900:260,t+0.12);
+      bp.type='bandpass';bp.frequency.value=open?1400:900;bp.Q.value=1.2;
+      g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.09,t+0.015);g.gain.exponentialRampToValueAtTime(0.0001,t+0.16);
+      o.connect(bp);bp.connect(g);g.connect(c.destination);o.start(t);o.stop(t+0.17);
+      // a crackle of noise on top, like a small spark
+      var len=Math.floor(c.sampleRate*0.07),buf=c.createBuffer(1,len,c.sampleRate),d=buf.getChannelData(0);
+      for(var i=0;i<len;i++)d[i]=(Math.random()*2-1)*(Math.random()<0.3?1:0.2)*(1-i/len);
+      var n=c.createBufferSource(),hp=c.createBiquadFilter(),ng=c.createGain();
+      n.buffer=buf;hp.type='highpass';hp.frequency.value=3000;ng.gain.value=0.05;
+      n.connect(hp);hp.connect(ng);ng.connect(c.destination);n.start(t+(open?0.08:0));
+    }catch(_){}
+  }
+
+  TC.qol={state:function(){return {sneak:QL.sneak,xpSkipped:QL.xpSkipped,crystals:QL.crystals,masked:QL.masked};}};
+  MODULES.push(
+    {cat:'movement',id:'toggleSneak',name:'Toggle Sneak',
+      desc:'Press sneak once to keep sneaking, press it again to stop. The Sprint box shows when it is on.'},
+    {cat:'visual',id:'clearChat',name:'Clear Chat',
+      desc:'Removes the black box behind chat, so it sits right on the game. The text keeps its shadow and stays readable.'},
+    {cat:'utility',id:'hidePasswords',name:'Password Hider',
+      desc:'While you type /login, /register or /changepassword in chat, your password shows as stars on your screen. What you send is not changed.'},
+    {cat:'visual',id:'ownName',name:'Show Own Name Tag',
+      desc:'Your own name above your head in third person (F5), the way other players see it.'},
+    {cat:'combat',id:'crystalOpt',name:'Crystal Optimizer',
+      desc:'An end crystal you hit disappears on your screen straight away instead of waiting for the server, so you can place the next one sooner.'},
+    {cat:'visual',id:'xpClumps',name:'XP Orb Clumping',
+      desc:'XP orbs lying in the same spot are drawn once, so big piles of XP do not lower your FPS. Only the drawing changes; you still get all the XP.'},
+    {cat:'combat',id:'fastXp',name:'Fast XP',
+      desc:'Holding use with a bottle o\u2019 enchanting throws one every tick instead of every 4 ticks. Some servers may not like it.'},
+    {cat:'utility',id:'menuSfx',name:'Menu Sounds',
+      desc:'A short electric sound when the Thunder menu opens and closes.'});
 
   // Shaders: optional post-processing of the world image (off by default)
   /* -------------------------------------------------------------------------------------------
@@ -51651,6 +52374,9 @@ c.PK;})();
   };
   ICONS.shaders='<circle cx="12" cy="12" r="3.5"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/>';
   CATEGORIES.splice(4,0,{id:'shaders',name:'Shaders'});
+  // Motion Blur (blending in earlier frames) is gone from the menu: at browser frame rates it
+  // left ghost trails. Off for everyone, including players who had switched it on.
+  S.shMotion=false;
   MODULES.push(
     {cat:'shaders',id:'shaders',name:'Shaders',wide:true,always:true,special:'shaders',
       desc:'Post-processing for the 3D world. The HUD and menus stay sharp. Off means vanilla rendering.',
@@ -51672,8 +52398,6 @@ c.PK;})();
       opts:[{id:'shVignetteStr',name:'Strength',min:0,max:100,step:1,fmt:shPct}]},
     {cat:'shaders',id:'shAmbient',name:'Ambient Glow',desc:'Light spills softly from bright areas; very dark scenes get a small lift.',
       opts:[{id:'shAmbientStr',name:'Strength',min:0,max:100,step:1,fmt:shPct}]},
-    {cat:'shaders',id:'shMotion',name:'Motion Blur',desc:'Blends in the previous frames for smoother motion. Same look at any FPS.',
-      opts:[{id:'shMotionStr',name:'Strength',min:0,max:100,step:1,fmt:shPct}]},
     {cat:'shaders',id:null,name:'Performance',wide:true,special:'shperf',
       desc:'How much work shaders may do, and what happens when FPS drops.'}
   );
@@ -52074,7 +52798,7 @@ c.PK;})();
      Game functions and classes it uses:
      @use DeG net.lax1dude.eaglercraft.sp.internal.ClientPlatformSingleplayer$WorkerBinaryPacketHandlerImpl.onMessage$exported$0
      @use BGl net.minecraft.client.gui.GuiScreen.<init>
-     @use GGs net.minecraft.client.Minecraft.displayGuiScreen
+     (Minecraft.displayGuiScreen GGs is declared as a hook in thunder-boot.js.)
      @use EE6 net.lax1dude.eaglercraft.profile.EaglerProfile.getName
      @class BoL net.lax1dude.eaglercraft.sp.gui.GuiScreenSingleplayerConnecting
      @class CO net.minecraft.client.gui.GuiScreen
@@ -53235,17 +53959,26 @@ c.PK;})();
     B.box=[mnx-0.12,mny-0.12,mxx+0.12,mxy+0.12];
     B.cx=B.sheet?(Math.random()*1.4-0.7)*half:at?x1:x0*0.8;B.cy=B.sheet?0.12+Math.random()*0.3:at?Math.min(0.3,y1+0.15):0.30;
     B.rad=B.sheet?0.75:0.55;
+    tbThunder(!!at,B.sheet);
+  }
+  // Every strike has its thunder, the same as the loading screen's (thunder_ambient.js): heavier
+  // for the ones you click, only a far rumble for lightning inside the clouds. Menus only, and
+  // not while the loading screen is still up (it plays its own).
+  var tbSounds=0;
+  function tbThunder(big,far){
+    var A=W.ThunderAmbient;
+    if(!S.menuSounds||!A||!A.thunder||(HEN&&HEN.X)||W.document.getElementById('stormCanvas'))return;
+    try{if(A.thunder(big,far))tbSounds++;}catch(_){}
   }
   // Left-click on a screen showing the storm (title screen, and the menus behind which Thunder
-  // Menus draws it): a bolt lands where you clicked, with a thunder crack (thunder_ambient.js).
-  // Clicks on the Right Shift menu or other page elements do not count.
+  // Menus draws it): a bolt lands where you clicked, with its thunder. Clicks on the Right Shift
+  // menu or other page elements do not count.
   W.addEventListener('mousedown',function(e){
     if(e.button!==0||!S.titleBg||!S.titleClickBolt||!TB||!(now()-tbShownAt<300))return;
     if(!e.target||e.target.tagName!=='CANVAS'||(HEN&&HEN.X))return;
     var w=W.innerWidth||1,h=W.innerHeight||1,aspect=TB.fw&&TB.fh?TB.fw/TB.fh:w/h;
     tbStrike((now()-TB.t0)/1000,aspect,[(e.clientX/w-0.5)*aspect,0.5-e.clientY/h]);
     tbClicks++;
-    if(S.menuSounds&&W.ThunderAmbient&&W.ThunderAmbient.crack){try{W.ThunderAmbient.crack();}catch(_){}}
   },{capture:true,passive:true});
   var tbClicks=0;
 
@@ -53526,7 +54259,7 @@ c.PK;})();
     quality:TB?tbQuality(TB):0,auto:TB?TB.auto:0,frameMs:TB?Math.round(TB.dtAvg*10)/10:0,
     cloudRes:TB&&TB.tc?TB.tc.w+'x'+TB.tc.h:'-',stormRes:TB&&TB.ts?TB.ts.w+'x'+TB.ts.h:'-',
     frames:tbFrames,parallax:[Math.round(tbMouse.x*100)/100,Math.round(tbMouse.y*100)/100],bolt:tbBolt.sheet?'sheet':tbBolt.n,
-    clicks:tbClicks,boltEnd:tbBolt.n?[tbBolt.pts[32],tbBolt.pts[33]]:null,
+    clicks:tbClicks,thunders:tbSounds,boltEnd:tbBolt.n?[tbBolt.pts[32],tbBolt.pts[33]]:null,
     sound:W.ThunderAmbient?{enabled:W.ThunderAmbient.getEnabled(),blocked:W.ThunderAmbient.getBlocked()}:null};}};
 
   // Menus: storm backgrounds, glass lists, Thunder buttons, sliders and text boxes everywhere
@@ -53786,12 +54519,23 @@ c.PK;})();
     return origCk1(a,b,c,d,e,f);
   };
   // text boxes: remember which one is drawing and whether it is focused (see D49)
+  // Password Hider (thunder-qol.js): the box draws stars in place of the password; its own text
+  // is put back as soon as the drawing is done
+  var thPw={field:null,text:null};
   var origDpy=Dpy;
   Dpy=function(a){
-    if(!$rt_resuming()){thTf++;thTfFocus=!!a.JJ;}
+    if(!$rt_resuming()){
+      thTf++;thTfFocus=!!a.JJ;
+      try{var pw=passwordMask(a);if(pw!==null){thPw.field=a;thPw.text=a.cA;a.cA=pw;}}catch(e){report(e);}
+    }
     var ok=false,r;
     try{r=origDpy(a);ok=true;}
-    finally{if(!ok||!$rt_suspending())thTf=Math.max(0,thTf-1);}
+    finally{
+      if(!ok||!$rt_suspending()){
+        thTf=Math.max(0,thTf-1);
+        if(thPw.field===a){a.cA=thPw.text;thPw.field=null;thPw.text=null;}
+      }
+    }
     return r;
   };
   // Edit Profile: its own grey-on-black boxes (skin preview, skin list) get the same colours
@@ -53828,6 +54572,7 @@ c.PK;})();
   };
   var origD49=D49;
   D49=function(a,b,c,d,e){
+    if(clearChatSkips(e)&&!$rt_resuming())return;              // Clear Chat (thunder-qol.js)
     if(thCredits>0&&!$rt_resuming()&&thButtonsOn()){
       if(e===855638048)e=0x33FFFFFF;else if(e===1711276032)e=0xCC40B8F0|0;   // scrollbar track, thumb
     }
@@ -53888,6 +54633,9 @@ c.PK;})();
     var PACKS=[{folder:'Thunder-1_21_11',name:'Thunder 1.21.11'},{folder:'Thunder-PvP',name:'Thunder PvP'}];
     var state={status:'waiting',installed:[],skipped:[],error:null,tries:0,enabled:''};
     var AUTO='thunderPack121On',MAIN='Thunder-1_21_11';
+    var enabling=false;          // the switch-on / reload steps are queued or running
+    // true while the packs are being checked, written or switched on (the loading screen waits)
+    function busy(){return enabling||state.status==='waiting'||state.status==='opening'||state.status==='installing';}
     var IDB=W.indexedDB;
 
     function readMark(){try{return JSON.parse(W.localStorage.getItem(MARK)||'{}')||{};}catch(_){return {};}}
@@ -54048,6 +54796,7 @@ c.PK;})();
       var want=false;
       try{want=!W.localStorage.getItem(AUTO);}catch(_){}
       if(!want&&!updated.length)return;
+      enabling=true;
       var repo=null,gs=null,list=null,apply=false,reload=false;
       function folder(x){return x&&x.Tj&&x.Tj.UL?$rt_ustr(x.Tj.UL):null;}
       runOnGame([
@@ -54079,13 +54828,14 @@ c.PK;})();
         },
         function(){if($rt_resuming()||apply)DuB(gs);},       // options.txt
         function(){if($rt_resuming()||reload)E1W(HEN);},      // reload textures and models
-        function(){state.enabled=apply?'switched on':reload?'reloaded after an update':'already on';}
+        function(){state.enabled=apply?'switched on':reload?'reloaded after an update':'already on';enabling=false;}
       ]);
     }
 
     function reinstall(){state.installed=[];state.skipped=[];state.error=null;state.tries=0;return run(true);}
     TC.packs={
-      state:function(){return JSON.parse(JSON.stringify(state));},
+      state:function(){var o=JSON.parse(JSON.stringify(state));o.busy=busy();return o;},
+      busy:busy,
       list:function(){return JSON.parse(JSON.stringify(PACKS));},
       reinstall:reinstall
     };

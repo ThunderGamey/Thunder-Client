@@ -37,6 +37,9 @@
     var PACKS=[{folder:'Thunder-1_21_11',name:'Thunder 1.21.11'},{folder:'Thunder-PvP',name:'Thunder PvP'}];
     var state={status:'waiting',installed:[],skipped:[],error:null,tries:0,enabled:''};
     var AUTO='thunderPack121On',MAIN='Thunder-1_21_11';
+    var enabling=false;          // the switch-on / reload steps are queued or running
+    // true while the packs are being checked, written or switched on (the loading screen waits)
+    function busy(){return enabling||state.status==='waiting'||state.status==='opening'||state.status==='installing';}
     var IDB=W.indexedDB;
 
     function readMark(){try{return JSON.parse(W.localStorage.getItem(MARK)||'{}')||{};}catch(_){return {};}}
@@ -197,6 +200,7 @@
       var want=false;
       try{want=!W.localStorage.getItem(AUTO);}catch(_){}
       if(!want&&!updated.length)return;
+      enabling=true;
       var repo=null,gs=null,list=null,apply=false,reload=false;
       function folder(x){return x&&x.Tj&&x.Tj.UL?$rt_ustr(x.Tj.UL):null;}
       runOnGame([
@@ -228,13 +232,14 @@
         },
         function(){if($rt_resuming()||apply)DuB(gs);},       // options.txt
         function(){if($rt_resuming()||reload)E1W(HEN);},      // reload textures and models
-        function(){state.enabled=apply?'switched on':reload?'reloaded after an update':'already on';}
+        function(){state.enabled=apply?'switched on':reload?'reloaded after an update':'already on';enabling=false;}
       ]);
     }
 
     function reinstall(){state.installed=[];state.skipped=[];state.error=null;state.tries=0;return run(true);}
     TC.packs={
-      state:function(){return JSON.parse(JSON.stringify(state));},
+      state:function(){var o=JSON.parse(JSON.stringify(state));o.busy=busy();return o;},
+      busy:busy,
       list:function(){return JSON.parse(JSON.stringify(PACKS));},
       reinstall:reinstall
     };

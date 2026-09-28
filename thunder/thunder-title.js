@@ -250,17 +250,26 @@
     B.box=[mnx-0.12,mny-0.12,mxx+0.12,mxy+0.12];
     B.cx=B.sheet?(Math.random()*1.4-0.7)*half:at?x1:x0*0.8;B.cy=B.sheet?0.12+Math.random()*0.3:at?Math.min(0.3,y1+0.15):0.30;
     B.rad=B.sheet?0.75:0.55;
+    tbThunder(!!at,B.sheet);
+  }
+  // Every strike has its thunder, the same as the loading screen's (thunder_ambient.js): heavier
+  // for the ones you click, only a far rumble for lightning inside the clouds. Menus only, and
+  // not while the loading screen is still up (it plays its own).
+  var tbSounds=0;
+  function tbThunder(big,far){
+    var A=W.ThunderAmbient;
+    if(!S.menuSounds||!A||!A.thunder||(HEN&&HEN.X)||W.document.getElementById('stormCanvas'))return;
+    try{if(A.thunder(big,far))tbSounds++;}catch(_){}
   }
   // Left-click on a screen showing the storm (title screen, and the menus behind which Thunder
-  // Menus draws it): a bolt lands where you clicked, with a thunder crack (thunder_ambient.js).
-  // Clicks on the Right Shift menu or other page elements do not count.
+  // Menus draws it): a bolt lands where you clicked, with its thunder. Clicks on the Right Shift
+  // menu or other page elements do not count.
   W.addEventListener('mousedown',function(e){
     if(e.button!==0||!S.titleBg||!S.titleClickBolt||!TB||!(now()-tbShownAt<300))return;
     if(!e.target||e.target.tagName!=='CANVAS'||(HEN&&HEN.X))return;
     var w=W.innerWidth||1,h=W.innerHeight||1,aspect=TB.fw&&TB.fh?TB.fw/TB.fh:w/h;
     tbStrike((now()-TB.t0)/1000,aspect,[(e.clientX/w-0.5)*aspect,0.5-e.clientY/h]);
     tbClicks++;
-    if(S.menuSounds&&W.ThunderAmbient&&W.ThunderAmbient.crack){try{W.ThunderAmbient.crack();}catch(_){}}
   },{capture:true,passive:true});
   var tbClicks=0;
 
@@ -541,5 +550,5 @@
     quality:TB?tbQuality(TB):0,auto:TB?TB.auto:0,frameMs:TB?Math.round(TB.dtAvg*10)/10:0,
     cloudRes:TB&&TB.tc?TB.tc.w+'x'+TB.tc.h:'-',stormRes:TB&&TB.ts?TB.ts.w+'x'+TB.ts.h:'-',
     frames:tbFrames,parallax:[Math.round(tbMouse.x*100)/100,Math.round(tbMouse.y*100)/100],bolt:tbBolt.sheet?'sheet':tbBolt.n,
-    clicks:tbClicks,boltEnd:tbBolt.n?[tbBolt.pts[32],tbBolt.pts[33]]:null,
+    clicks:tbClicks,thunders:tbSounds,boltEnd:tbBolt.n?[tbBolt.pts[32],tbBolt.pts[33]]:null,
     sound:W.ThunderAmbient?{enabled:W.ThunderAmbient.getEnabled(),blocked:W.ThunderAmbient.getBlocked()}:null};}};
