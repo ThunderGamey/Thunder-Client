@@ -5,6 +5,8 @@
      then a rolling rumble with sub-bass, through a compressor so every strike is loud and clear.
      The loading screen and the title screen (automatic strikes and the ones you click) all use it.
      big: a close, heavier strike; far: only a distant rumble (lightning inside the clouds).
+   - menuThunder(open): the Right Shift menu's sound: a near strike with a short roll when it
+     opens, a soft distant roll when it closes. Plays in a world too (a menu sound).
    - rain(on): the loading screen's rain.
    - the menu ambience: wind, low air and now and then a distant rumble.
    Browsers allow sound only after the first click or key press on the page. Until then nothing is
@@ -262,7 +264,7 @@
     return thunderBus;
   }
 
-  function playThunder(big, far){
+  function playThunder(big, far, short){
     var c = ctx, now = c.currentTime, bus = getThunderBus(c);
 
     if(!far){
@@ -324,7 +326,7 @@
     }
 
     // rolling low rumble (brown noise) with a slow tremolo
-    var rumbleDur = (big ? 3.8 : 2.1) + Math.random() * 0.9 + (far ? 0.6 : 0);
+    var rumbleDur = short ? 1.0 + Math.random() * 0.35 : (big ? 3.8 : 2.1) + Math.random() * 0.9 + (far ? 0.6 : 0);
     var rumbleBuf = c.createBuffer(1, Math.floor(c.sampleRate * rumbleDur), c.sampleRate);
     var rd = rumbleBuf.getChannelData(0), last = 0;
     for(var m = 0; m < rd.length; m++){
@@ -385,6 +387,24 @@
     return false;
   }
 
+  // The Right Shift menu: a near strike with a short roll when it opens, a soft distant roll when it
+  // closes (about a second each). A menu sound, so it also plays in a world, where the storm is off.
+  function menuThunder(open){
+    if(document.hidden) return false;
+    var c = getContext();
+    if(!c) return false;
+    try{
+      if(c.state === "running"){ playThunder(!!open, !open, true); return true; }
+      var ua = navigator.userActivation;
+      if(ua && !ua.isActive) return false;
+      var asked = Date.now();
+      c.resume().then(function(){
+        if(c.state === "running" && Date.now() - asked < 400) playThunder(!!open, !open, true);
+      }).catch(function(){});
+    }catch(e){}
+    return false;
+  }
+
   // ---- rain (loading screen) -------------------------------------------------------------------
   var rainWanted = false;
   function rain(on){
@@ -431,6 +451,7 @@
     start: start,
     stop: stop,
     thunder: thunder,
+    menuThunder: menuThunder,
     crack: function(){ return thunder(true); },
     rain: rain,
     // true when the browser lets the page play sound right now

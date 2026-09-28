@@ -126,6 +126,8 @@
   var qlAudio=null;
   function menuSound(open){
     if(!S.menuSfx)return;
+    var A=W.ThunderAmbient;
+    if(A&&A.menuThunder){try{A.menuThunder(!!open);}catch(_){}return;}   // thunder, like the loading screen
     try{
       var AC=W.AudioContext||W.webkitAudioContext;if(!AC)return;
       if(!qlAudio)qlAudio=new AC();
@@ -163,4 +165,4 @@
     {cat:'combat',id:'fastXp',name:'Fast XP',
       desc:'Holding use with a bottle o\u2019 enchanting throws one every tick instead of every 4 ticks. Some servers may not like it.'},
     {cat:'utility',id:'menuSfx',name:'Menu Sounds',
-      desc:'A short electric sound when the Thunder menu opens and closes.'});
+      desc:'Thunder when the Right Shift menu opens (a near strike with a short roll) and a soft distant roll when it closes.'});

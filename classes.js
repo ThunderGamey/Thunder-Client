@@ -48980,7 +48980,8 @@ c.PK;})();
     shulkerPreview:true,boat360:true,
     // thunder-weapons.js
     spears:true,spearHud:true,crystalTap:false,
-    thunderCursor:true,cursorTrail:true      // thunder-cursor.js
+    thunderCursor:true,cursorTrail:true,     // thunder-cursor.js
+    zoomKey:'KeyC',worldMapKey:'KeyM'
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -48992,6 +48993,7 @@ c.PK;})();
         var nv=Number(saved[id]);
         if(isFinite(nv))S[id]=nv;
       }else if(typeof DEFAULTS[id]==='boolean')S[id]=!!saved[id];
+      else if(typeof DEFAULTS[id]==='string'&&typeof saved[id]==='string'&&/^[A-Za-z0-9]{1,24}$/.test(saved[id]))S[id]=saved[id];   // key bindings
     }
   }
   try{
@@ -49096,11 +49098,30 @@ c.PK;})();
 
   function now(){return W.performance?W.performance.now():Date.now();}
   function locked(){return !seenLock||!!D.pointerLockElement;}
+  // key bindings (zoom, world map, waypoints): a key code, or "Mouse3".."Mouse5"
+  var keyCapture=null;
+  function bindDown(code){
+    if(!code)return false;
+    if(code.indexOf('Mouse')===0)return !!mouseState[(parseInt(code.slice(5),10)||0)-1];
+    return !!keyState[code];
+  }
+  function keyLabel(code){
+    if(!code)return 'None';
+    var m;
+    if((m=/^Key([A-Z])$/.exec(code)))return m[1];
+    if((m=/^Digit(\d)$/.exec(code)))return m[1];
+    if((m=/^Numpad(\d)$/.exec(code)))return 'Num '+m[1];
+    if((m=/^Mouse(\d)$/.exec(code)))return m[1]==='3'?'Middle mouse':'Mouse '+m[1];
+    if((m=/^(Shift|Control|Alt|Meta)(Left|Right)$/.exec(code)))return m[2]+' '+(m[1]==='Control'?'Ctrl':m[1]);
+    if((m=/^Arrow(\w+)$/.exec(code)))return m[1]+' arrow';
+    return code.replace(/([a-z])([A-Z])/g,'$1 $2');
+  }
   function kill(e){e.preventDefault();e.stopImmediatePropagation();}
 
   function onKeyDown(e){
     try{
       var code=e&&e.code;
+      if(keyCapture){kill(e);keyCapture(e);return;}      // a key control in the menu is waiting for a key
       if(code)keyState[code]=true;
       if(hudEditKey(e,code))return;
       if(S.blockF3&&(code==='F3'||e.key==='F3')){kill(e);return;}
@@ -49249,6 +49270,8 @@ c.PK;})();
     '.tcm-switch:active:after{width:18px}.tcm-switch.tcm-on:active:after{transform:translateX(12px)}',
     '.tcm-seg{display:flex;gap:3px;margin-top:7px;padding:3px;border-radius:9px;background:rgba(3,7,12,.6);border:1px solid rgba(110,140,160,.22)}',
     '.tcm-swatches{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}',
+    '.tcm-key{margin-left:auto;min-width:84px;padding:4px 10px;border-radius:7px;border:1px solid rgba(110,140,160,.35);background:rgba(3,7,12,.6);color:#dff3ff;font:600 11px/1.3 inherit;cursor:pointer}',
+    '.tcm-key:hover{border-color:rgba(79,209,255,.6)}.tcm-key.tcm-on{border-color:#4fd1ff;box-shadow:0 0 10px rgba(79,209,255,.45);color:#4fd1ff}',
     '.tcm-swatches button{width:19px;height:19px;padding:0;border-radius:6px;border:2px solid rgba(3,7,12,.8);cursor:pointer;',
       'box-shadow:0 0 0 1px rgba(110,140,160,.35);transition:transform .1s,box-shadow .1s}',
     '.tcm-swatches button:hover{transform:scale(1.12)}',
@@ -49479,9 +49502,36 @@ c.PK;})();
   // one settings row: colors -> colour swatches, choices -> segmented buttons, number -> slider,
   // boolean -> switch
   function optRow(o){
+    if(o.key)return keyRow(o);
     if(o.colors)return swatchRow(o);
     if(o.choices)return segRow(o);
     return typeof DEFAULTS[o.id]==='number'?sliderRow(o):switchRow(o);
+  }
+  // o.key: a key binding. Click it, then press a key (or a middle / side mouse button); Esc keeps
+  // the old one, right-click puts the default back. The setting is the key's code ("KeyC") or
+  // "Mouse3" / "Mouse4" / "Mouse5".
+  function keyRow(o){
+    var r=el('div','tcm-row'),b=el('button','tcm-key');b.type='button';
+    r.appendChild(el('span',null,o.name));
+    function paint(){b.textContent=keyCapture===take?'Press a key\u2026':keyLabel(S[o.id]);b.className='tcm-key'+(keyCapture===take?' tcm-on':'');}
+    function done(){if(keyCapture===take)keyCapture=null;W.removeEventListener('mousedown',mouse,true);paint();}
+    function take(e){
+      if(e.code&&e.code!=='Escape'&&e.code!=='ShiftRight'){S[o.id]=e.code;save();}
+      done();
+    }
+    function mouse(e){
+      if(o.mouse===false||e.button===0||e.button===2)return;
+      e.preventDefault();e.stopImmediatePropagation();
+      S[o.id]='Mouse'+(e.button+1);save();done();
+    }
+    b.addEventListener('click',function(){
+      if(keyCapture===take){done();return;}
+      keyCapture=take;W.addEventListener('mousedown',mouse,true);paint();
+    });
+    b.addEventListener('contextmenu',function(e){e.preventDefault();S[o.id]=DEFAULTS[o.id];save();done();});
+    paint();addPainter(o.id,paint);
+    r.appendChild(b);
+    return r;
   }
   // o.colors: [[name, 0xRRGGBB], ...]; the setting is the index
   function swatchRow(o){
@@ -51253,7 +51303,7 @@ c.PK;})();
   // zoom wanted this frame: in a world, no screen or Thunder menu open, not typing
   function zoomWanted(){
     if(!S.zoom||!HEN||!HEN.X||HEN.cm!==null||menuOpen||hudEditing){ZM.toggled=false;return false;}
-    var down=!!keyState.KeyC;
+    var down=bindDown(S.zoomKey||'KeyC');
     if(S.zoomToggle){
       if(down&&!ZM.keyWas)ZM.toggled=!ZM.toggled;
       ZM.keyWas=down;
@@ -51294,12 +51344,13 @@ c.PK;})();
   },{capture:true,passive:false});
   TC.zoom={state:function(){return {f:Math.round(ZM.f*100)/100,target:ZM.target,level:ZM.level,sens:ZM.sens};}};
   MODULES.push({cat:'utility',id:'zoom',name:'Zoom',
-    desc:'Hold C in a world to zoom in. The view glides in and out, the mouse wheel zooms further while zoomed, and aiming stays steady.',
-    opts:[{id:'zoomLevel',name:'Zoom',min:2,max:10,step:0.5,fmt:function(v){return v+'x';}},
+    desc:'Hold the zoom key (C, or pick your own key or a side mouse button) in a world to zoom in. The view glides in and out, the mouse wheel zooms further while zoomed, and aiming stays steady.',
+    opts:[{id:'zoomKey',name:'Zoom key',key:true},
+      {id:'zoomLevel',name:'Zoom',min:2,max:10,step:0.5,fmt:function(v){return v+'x';}},
       {id:'zoomSmooth',name:'Smooth zoom'},
       {id:'zoomScroll',name:'Scroll to zoom'},
       {id:'zoomSens',name:'Lower sensitivity while zoomed'},
-      {id:'zoomToggle',name:'Tap C to toggle (instead of hold)'}]});
+      {id:'zoomToggle',name:'Tap the key to toggle (instead of hold)'}]});
 
   // Quality of life: toggle sneak, clear chat, password hider, own name tag, crystal optimizer,
   // XP orb clumping, fast XP, menu sounds
@@ -51431,6 +51482,8 @@ c.PK;})();
   var qlAudio=null;
   function menuSound(open){
     if(!S.menuSfx)return;
+    var A=W.ThunderAmbient;
+    if(A&&A.menuThunder){try{A.menuThunder(!!open);}catch(_){}return;}   // thunder, like the loading screen
     try{
       var AC=W.AudioContext||W.webkitAudioContext;if(!AC)return;
       if(!qlAudio)qlAudio=new AC();
@@ -51468,7 +51521,7 @@ c.PK;})();
     {cat:'combat',id:'fastXp',name:'Fast XP',
       desc:'Holding use with a bottle o\u2019 enchanting throws one every tick instead of every 4 ticks. Some servers may not like it.'},
     {cat:'utility',id:'menuSfx',name:'Menu Sounds',
-      desc:'A short electric sound when the Thunder menu opens and closes.'});
+      desc:'Thunder when the Right Shift menu opens (a near strike with a short roll) and a soft distant roll when it closes.'});
 
   // Minimap and World Map (M)
   /* -------------------------------------------------------------------------------------------
@@ -51478,7 +51531,8 @@ c.PK;})();
      - Minimap: a small map in the corner of the screen, north up, with an arrow for you, dots
        for other players, and your coordinates under it.
      - World Map: press M in a world for a full-screen map of everywhere you have been this
-       session. Drag to move it, scroll to zoom, M or Esc to close.
+       session. Drag to move it, scroll to zoom, M (or your own key) or Esc to close. The hint at
+       the top fades away after a few seconds.
      The map is drawn from the chunks the game already has loaded: for every column the highest
      block that stops light (the game's own heightmap) in that block's map colour, the same
      colours vanilla maps use, shaded lighter or darker by the height of the block to its north
@@ -51621,7 +51675,7 @@ c.PK;})();
     '#thunder-worldmap{position:fixed;inset:0;z-index:2147483500;background:#05090f;display:none;cursor:grab;user-select:none}',
     '#thunder-worldmap.drag{cursor:grabbing}',
     '#thunder-worldmap canvas{position:absolute;inset:0}',
-    '#thunder-worldmap .tw-bar{position:absolute;left:50%;top:14px;transform:translateX(-50%);padding:8px 14px;border-radius:10px;',
+    '#thunder-worldmap .tw-bar{position:absolute;left:50%;top:14px;transform:translateX(-50%);padding:8px 14px;border-radius:10px;transition:opacity .8s;',
       'background:rgba(7,12,19,.92);border:1px solid rgba(79,209,255,.35);color:#cfeeff;font:12px "Segoe UI",system-ui,sans-serif;pointer-events:none}',
     '#thunder-worldmap .tw-bar b{color:#f1faff;letter-spacing:.08em;margin-right:10px}'
   ].join('');
@@ -51692,7 +51746,7 @@ c.PK;})();
     var ov=D.createElement('div');ov.id='thunder-worldmap';
     var cv=D.createElement('canvas');ov.appendChild(cv);
     var bar=D.createElement('div');bar.className='tw-bar';
-    bar.innerHTML='<b>WORLD MAP</b>Drag to move \u2022 scroll to zoom \u2022 M or Esc to close';
+    bar.innerHTML='<b>WORLD MAP</b><span></span>';
     ov.appendChild(bar);
     ['mousedown','mouseup','click','dblclick','contextmenu','wheel','mousemove'].forEach(function(t){
       ov.addEventListener(t,function(e){e.stopPropagation();if(t!=='mousemove'&&t!=='wheel')e.preventDefault();},false);
@@ -51709,7 +51763,7 @@ c.PK;})();
       MM.view.scale=clamp(MM.view.scale*(e.deltaY<0?1.25:0.8),0.25,12);
     },{passive:false});
     (D.body||D.documentElement).appendChild(ov);
-    MM.big={ov:ov,cv:cv,ctx:cv.getContext('2d')};
+    MM.big={ov:ov,cv:cv,ctx:cv.getContext('2d'),bar:bar,fade:0};
     return MM.big;
   }
   function wmOpen(){
@@ -51718,6 +51772,11 @@ c.PK;})();
     overlayOpening();
     MM.open=true;MM.view.x=HEN.v.b;MM.view.z=HEN.v.c;
     B.ov.style.display='block';
+    // the hint at the top, with the key in use; it fades away after a few seconds
+    B.bar.lastChild.textContent='Drag to move \u2022 scroll to zoom \u2022 '+keyLabel(S.worldMapKey||'KeyM')+' or Esc to close';
+    B.bar.style.opacity='1';
+    if(B.fade)W.clearTimeout(B.fade);
+    B.fade=W.setTimeout(function(){B.bar.style.opacity='0';},3500);
     try{if(D.exitPointerLock&&D.pointerLockElement)D.exitPointerLock();}catch(_){}
   }
   function wmClose(){
@@ -51747,11 +51806,11 @@ c.PK;})();
     try{
       var code=e&&e.code;
       if(MM.open){
-        if((code==='KeyM'||code==='Escape')&&!e.repeat)wmClose();
+        if((code===(S.worldMapKey||'KeyM')||code==='Escape')&&!e.repeat)wmClose();
         if(code!=='F11')kill(e);
         return;
       }
-      if(code==='KeyM'&&!e.repeat&&S.worldMap&&HEN&&HEN.X&&HEN.cm===null&&!menuOpen&&!hudEditing){kill(e);wmOpen();}
+      if(code===(S.worldMapKey||'KeyM')&&!e.repeat&&S.worldMap&&HEN&&HEN.X&&HEN.cm===null&&!menuOpen&&!hudEditing){kill(e);wmOpen();}
     }catch(_){}
   },true);
 
@@ -51771,7 +51830,8 @@ c.PK;})();
         {id:'minimapRound',name:'Round'},
         {id:'minimapCoords',name:'Coordinates under it'}]},
     {cat:'utility',id:'worldMap',name:'World Map',
-      desc:'Press M in a world for a full-screen map of everywhere you have been this session. Drag to move, scroll to zoom, M or Esc to close.'});
+      desc:'Press the map key (M) in a world for a full-screen map of everywhere you have been this session. Drag to move, scroll to zoom, the map key or Esc to close.',
+      opts:[{id:'worldMapKey',name:'Map key',key:true,mouse:false}]});
 
   // Spears like 1.21.11 (jab and charge on newer servers), Crystal Tap
   /* -------------------------------------------------------------------------------------------

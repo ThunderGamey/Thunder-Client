@@ -5,7 +5,8 @@
      - Minimap: a small map in the corner of the screen, north up, with an arrow for you, dots
        for other players, and your coordinates under it.
      - World Map: press M in a world for a full-screen map of everywhere you have been this
-       session. Drag to move it, scroll to zoom, M or Esc to close.
+       session. Drag to move it, scroll to zoom, M (or your own key) or Esc to close. The hint at
+       the top fades away after a few seconds.
      The map is drawn from the chunks the game already has loaded: for every column the highest
      block that stops light (the game's own heightmap) in that block's map colour, the same
      colours vanilla maps use, shaded lighter or darker by the height of the block to its north
@@ -148,7 +149,7 @@
     '#thunder-worldmap{position:fixed;inset:0;z-index:2147483500;background:#05090f;display:none;cursor:grab;user-select:none}',
     '#thunder-worldmap.drag{cursor:grabbing}',
     '#thunder-worldmap canvas{position:absolute;inset:0}',
-    '#thunder-worldmap .tw-bar{position:absolute;left:50%;top:14px;transform:translateX(-50%);padding:8px 14px;border-radius:10px;',
+    '#thunder-worldmap .tw-bar{position:absolute;left:50%;top:14px;transform:translateX(-50%);padding:8px 14px;border-radius:10px;transition:opacity .8s;',
       'background:rgba(7,12,19,.92);border:1px solid rgba(79,209,255,.35);color:#cfeeff;font:12px "Segoe UI",system-ui,sans-serif;pointer-events:none}',
     '#thunder-worldmap .tw-bar b{color:#f1faff;letter-spacing:.08em;margin-right:10px}'
   ].join('');
@@ -219,7 +220,7 @@
     var ov=D.createElement('div');ov.id='thunder-worldmap';
     var cv=D.createElement('canvas');ov.appendChild(cv);
     var bar=D.createElement('div');bar.className='tw-bar';
-    bar.innerHTML='<b>WORLD MAP</b>Drag to move \u2022 scroll to zoom \u2022 M or Esc to close';
+    bar.innerHTML='<b>WORLD MAP</b><span></span>';
     ov.appendChild(bar);
     ['mousedown','mouseup','click','dblclick','contextmenu','wheel','mousemove'].forEach(function(t){
       ov.addEventListener(t,function(e){e.stopPropagation();if(t!=='mousemove'&&t!=='wheel')e.preventDefault();},false);
@@ -236,7 +237,7 @@
       MM.view.scale=clamp(MM.view.scale*(e.deltaY<0?1.25:0.8),0.25,12);
     },{passive:false});
     (D.body||D.documentElement).appendChild(ov);
-    MM.big={ov:ov,cv:cv,ctx:cv.getContext('2d')};
+    MM.big={ov:ov,cv:cv,ctx:cv.getContext('2d'),bar:bar,fade:0};
     return MM.big;
   }
   function wmOpen(){
@@ -245,6 +246,11 @@
     overlayOpening();
     MM.open=true;MM.view.x=HEN.v.b;MM.view.z=HEN.v.c;
     B.ov.style.display='block';
+    // the hint at the top, with the key in use; it fades away after a few seconds
+    B.bar.lastChild.textContent='Drag to move \u2022 scroll to zoom \u2022 '+keyLabel(S.worldMapKey||'KeyM')+' or Esc to close';
+    B.bar.style.opacity='1';
+    if(B.fade)W.clearTimeout(B.fade);
+    B.fade=W.setTimeout(function(){B.bar.style.opacity='0';},3500);
     try{if(D.exitPointerLock&&D.pointerLockElement)D.exitPointerLock();}catch(_){}
   }
   function wmClose(){
@@ -274,11 +280,11 @@
     try{
       var code=e&&e.code;
       if(MM.open){
-        if((code==='KeyM'||code==='Escape')&&!e.repeat)wmClose();
+        if((code===(S.worldMapKey||'KeyM')||code==='Escape')&&!e.repeat)wmClose();
         if(code!=='F11')kill(e);
         return;
       }
-      if(code==='KeyM'&&!e.repeat&&S.worldMap&&HEN&&HEN.X&&HEN.cm===null&&!menuOpen&&!hudEditing){kill(e);wmOpen();}
+      if(code===(S.worldMapKey||'KeyM')&&!e.repeat&&S.worldMap&&HEN&&HEN.X&&HEN.cm===null&&!menuOpen&&!hudEditing){kill(e);wmOpen();}
     }catch(_){}
   },true);
 
@@ -298,4 +304,5 @@
         {id:'minimapRound',name:'Round'},
         {id:'minimapCoords',name:'Coordinates under it'}]},
     {cat:'utility',id:'worldMap',name:'World Map',
-      desc:'Press M in a world for a full-screen map of everywhere you have been this session. Drag to move, scroll to zoom, M or Esc to close.'});
+      desc:'Press the map key (M) in a world for a full-screen map of everywhere you have been this session. Drag to move, scroll to zoom, the map key or Esc to close.',
+      opts:[{id:'worldMapKey',name:'Map key',key:true,mouse:false}]});

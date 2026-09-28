@@ -19,7 +19,7 @@
   // zoom wanted this frame: in a world, no screen or Thunder menu open, not typing
   function zoomWanted(){
     if(!S.zoom||!HEN||!HEN.X||HEN.cm!==null||menuOpen||hudEditing){ZM.toggled=false;return false;}
-    var down=!!keyState.KeyC;
+    var down=bindDown(S.zoomKey||'KeyC');
     if(S.zoomToggle){
       if(down&&!ZM.keyWas)ZM.toggled=!ZM.toggled;
       ZM.keyWas=down;
@@ -60,9 +60,10 @@
   },{capture:true,passive:false});
   TC.zoom={state:function(){return {f:Math.round(ZM.f*100)/100,target:ZM.target,level:ZM.level,sens:ZM.sens};}};
   MODULES.push({cat:'utility',id:'zoom',name:'Zoom',
-    desc:'Hold C in a world to zoom in. The view glides in and out, the mouse wheel zooms further while zoomed, and aiming stays steady.',
-    opts:[{id:'zoomLevel',name:'Zoom',min:2,max:10,step:0.5,fmt:function(v){return v+'x';}},
+    desc:'Hold the zoom key (C, or pick your own key or a side mouse button) in a world to zoom in. The view glides in and out, the mouse wheel zooms further while zoomed, and aiming stays steady.',
+    opts:[{id:'zoomKey',name:'Zoom key',key:true},
+      {id:'zoomLevel',name:'Zoom',min:2,max:10,step:0.5,fmt:function(v){return v+'x';}},
       {id:'zoomSmooth',name:'Smooth zoom'},
       {id:'zoomScroll',name:'Scroll to zoom'},
       {id:'zoomSens',name:'Lower sensitivity while zoomed'},
-      {id:'zoomToggle',name:'Tap C to toggle (instead of hold)'}]});
+      {id:'zoomToggle',name:'Tap the key to toggle (instead of hold)'}]});
