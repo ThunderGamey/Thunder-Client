@@ -26,6 +26,12 @@
        places a crystal (what a right click does), and a left click on a crystal breaks it, as
        always. One click, one action. Right-click, eating and everything else are unchanged, and
        holding left-click on obsidian does not start mining it.
+     - Offhand Swap (the 1.16+ inventory move). With your inventory (or any container) open, point
+       at an item, for example a totem, and press F (or your own key): it goes straight to your off
+       hand, and what was there takes its place. A 1.12 client cannot do this, 1.21 clients do it
+       all the time: it sends the same "swap with the off hand" click (SWAP, button 40). In
+       singleplayer (a 1.12 server) the same move is made with three normal clicks. Only with the
+       inventory open, only the slot you point at: nothing happens on its own.
 
      Game functions this module replaces (each wrapper calls the original for everything else):
      @hook Cfp net.minecraft.client.Minecraft.clickMouse
@@ -62,6 +68,17 @@
      @field gP net.minecraft.client.multiplayer.PlayerControllerMP.syncCurrentPlayItem InventoryPlayer.currentItem
      @field bC8 net.minecraft.entity.player.EntityPlayer.resetCooldown EntityLivingBase.ticksSinceLastSwing
      @field bBM net.minecraft.client.Minecraft.clickMouse EntityPlayerSP.rowingBoat
+     @virtual cCM net.minecraft.client.gui.inventory.GuiContainer handleMouseClick
+     @use C7K net.minecraft.inventory.Slot.getHasStack
+     @field a$3 net.minecraft.client.gui.inventory.GuiContainer.checkHotbarKeys GuiContainer.hoveredSlot
+     @field pO net.minecraft.client.gui.inventory.GuiContainer.checkHotbarKeys Slot.slotNumber
+     @field fF net.minecraft.client.gui.inventory.GuiContainer.checkHotbarKeys InventoryPlayer.itemStack (held on the cursor)
+     @field h1 net.minecraft.client.gui.inventory.GuiContainer.handleMouseClick GuiContainer.inventorySlots
+     @field iu net.minecraft.client.gui.inventory.GuiContainer.handleMouseClick Container.windowId
+     @static LyD net.minecraft.inventory.ClickType SWAP
+     @static Lyy net.minecraft.inventory.ClickType PICKUP
+     @clinit MH net.minecraft.inventory.ClickType
+     @class ABl net.minecraft.client.gui.inventory.GuiContainerCreative
      (Minecraft fields h3 objectMouseOver, wL leftClickCounter, X world, G gameSettings, dw
      playerController, v player, cm currentScreen; KeyBinding.pressed my; RayTraceResult kD / kr;
      Enum ordinal d; InventoryPlayer bw; getItem C51; getHeldItemMainhand EZ6; EnumHand.MAIN_HAND
@@ -272,16 +289,49 @@
   // no sword arc during a jab (the thrust above replaces it)
   function wpNoArc(){return !!(S.spears&&WP.stabT&&WP.stabDur&&now()-WP.stabT<WP.stabDur);}
 
+  // ---- Offhand Swap: F (or your key) over an inventory slot sends that item to the off hand ----
+  var OH={swaps:0};
+  function ohSteps(){
+    var g=HEN&&HEN.cm,p=HEN&&HEN.v;
+    if(!(g instanceof ID)||g instanceof ABl||!p)return null;        // not the creative inventory
+    var slot=g.a$3;
+    if(!slot||!C7K(slot)||!CCI(p.bw.fF))return null;               // point at an item, nothing on the cursor
+    var id=slot.pO;
+    if(DdD(HEN)){
+      // singleplayer is a 1.12 server: the same move as three normal clicks, player inventory only
+      if(!g.h1||g.h1.iu!==0||id===45||id===0)return null;
+      MH();
+      return [function(){g.cCM(slot,id,0,Lyy);},function(){g.cCM(null,45,0,Lyy);},function(){g.cCM(slot,id,0,Lyy);},
+        function(){if(!CCI(p.bw.fF))g.cCM(slot,id,0,Lyy);}];       // (put back anything left on the cursor)
+    }
+    MH();
+    return [function(){g.cCM(slot,id,40,LyD);}];                     // the 1.16+ swap-with-off-hand click
+  }
+  if(W.addEventListener)W.addEventListener('keydown',function(e){
+    try{
+      if(!S.offhandSwap||e.repeat||e.code!==(S.offhandKey||'KeyF')||menuOpen||keyCapture)return;
+      var steps=ohSteps();
+      if(!steps)return;
+      kill(e);                                                       // the game does not also get this key
+      OH.swaps++;
+      runOnGame(steps);
+    }catch(x){report(x);}
+  },true);
+
   TC.weapons={state:function(){return {using:WP.using,stage:WP.using?(wpStage()||{}).name:null,stabs:WP.stabs,releases:WP.releases,taps:WP.taps,
       spear:!!wpSpear()};},
     // test hook: pretend the main hand holds this spear ('netherite_spear'), or null to stop
     test:function(k){WP.test=k&&SPEARS[k]||null;return !!WP.test;},
     lastPacket:function(){return WP.lastPacket;},
     poseTest:function(p){WP.poseTest=p||null;},
+    offhandSwaps:function(){return OH.swaps;},
     stabFreeze:function(k){WP.stabFreeze=(k==null?null:+k);if(k!=null&&!WP.stabT){WP.stabT=now();WP.stabDur=1150;}}};
   MODULES.push(
     {cat:'combat',id:'spears',name:'Spears like 1.21.11',
       desc:'On 1.21.11 servers: left click jabs with the full spear reach (up to 4.5 blocks, no exact aim needed, every mob or player in line), right-click charges and lets go properly, and spears never mine blocks. Waits for a full charge like 1.21.11.',
       opts:[{id:'spearHud',name:'Charge meter under the crosshair'}]},
+    {cat:'combat',id:'offhandSwap',name:'Offhand Swap',
+      desc:'Like 1.16+: with your inventory open, point at a totem (or anything) and press F to put it straight in your off hand. Great for crystal PvP. Only works with the inventory open.',
+      opts:[{id:'offhandKey',name:'Swap key',key:true,mouse:false}]},
     {cat:'combat',id:'crystalTap',name:'Crystal Tap',
       desc:'With end crystals in your hand, left click on obsidian or bedrock places a crystal and left click on a crystal breaks it. One click, one action. Right-click and eating stay the same.'});

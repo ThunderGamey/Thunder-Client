@@ -114,7 +114,10 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   stage and your speed, and the spear points forward while charging. Only items ViaBackwards
   marked as spears count, and never in singleplayer or a friend's world (1.12 servers). Crystal
   Tap (Combat, off): with end crystals in the main hand, a left click on obsidian or bedrock
-  places a crystal; holding the button does not mine it. Hooks `Minecraft.clickMouse`,
+  places a crystal; holding the button does not mine it. Offhand Swap (Combat, on): the 1.16+
+  inventory move, with the inventory open, F (or your own key) over a slot sends that item to the off
+  hand (`handleMouseClick` with SWAP and button 40, what 1.21 clients send; in singleplayer, a 1.12
+  server, three normal clicks). Only with the inventory open and the slot you point at. Hooks `Minecraft.clickMouse`,
   `rightClickMouse`, `sendClickBlockToController` and `EntityPlayer.getCooledAttackStrength`.
 - `thunder-cursor.js` - Thunder Cursor (Visual, on): the pointer is a small filled light-blue
   diamond with a black rim (a CSS cursor image, so it never lags), and a bigger outlined diamond

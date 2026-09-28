@@ -253,7 +253,7 @@
     // thunder-extras.js
     shulkerPreview:true,boat360:true,
     // thunder-weapons.js
-    spears:true,spearHud:true,crystalTap:false,
+    spears:true,spearHud:true,crystalTap:false,offhandSwap:true,offhandKey:'KeyF',
     thunderCursor:true,cursorTrail:true,     // thunder-cursor.js
     zoomKey:'KeyC',worldMapKey:'KeyM',
     waypoints:true,waypointKey:'KeyB',waypointsInWorld:true,deathPoints:true   // thunder-waypoints.js
