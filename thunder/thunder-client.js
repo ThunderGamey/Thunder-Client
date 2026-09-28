@@ -252,7 +252,8 @@
     // thunder-extras.js
     shulkerPreview:true,boat360:true,
     // thunder-weapons.js
-    spears:true,spearHud:true,crystalTap:false
+    spears:true,spearHud:true,crystalTap:false,
+    thunderCursor:true,cursorTrail:true      // thunder-cursor.js
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -1578,6 +1579,9 @@
 
   // Spears like 1.21.11 (jab and charge on newer servers), Crystal Tap
   // @include thunder-weapons.js
+
+  // Thunder Cursor: diamond pointer with a lightning trail in menus
+  // @include thunder-cursor.js
 
   // Shulker preview, boat view 360
   // @include thunder-extras.js

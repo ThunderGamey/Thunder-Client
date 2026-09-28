@@ -31,7 +31,8 @@ in Right Shift > Utility > Readme.
   (M), Shulker Preview, Toggle Sneak, Clear Chat, Password Hider, Show Own Name Tag, Crystal
   Optimizer, Crystal Tap, Spears like 1.21.11 (the jab with its full reach and the charge work on
   1.21.11 servers), XP Orb Clumping, Fast XP, Boat View 360, No Enchant Glint, No Rain, No Pumpkin Blur,
-  Dark Inventories and Thunder menu sounds,
+  Dark Inventories, the Thunder Cursor (a light-blue diamond with a lightning trail) and Thunder
+  menu sounds,
   optional shaders (LOW / MEDIUM / HIGH looks, glowing lava and torches, underwater rays, waving
   plants and leaves, reflective waves on water), an animated Thunder title screen (storm clouds,
   lightning, sparks and a blocky skyline that shift with the mouse, lightning that strikes where

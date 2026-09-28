@@ -105,6 +105,12 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   Tap (Combat, off): with end crystals in the main hand, a left click on obsidian or bedrock
   places a crystal; holding the button does not mine it. Hooks `Minecraft.clickMouse`,
   `rightClickMouse`, `sendClickBlockToController` and `EntityPlayer.getCooledAttackStrength`.
+- `thunder-cursor.js` - Thunder Cursor (Visual, on): the pointer is a small filled light-blue
+  diamond with a black rim (a CSS cursor image, so it never lags), and a bigger outlined diamond
+  follows it on a spring with a light-blue and black lightning arc between them; the faster you
+  move, the further it trails, and it settles around the pointer when you stop. The follower is a
+  240 x 240 canvas that moves with the mouse and only animates while catching up; nothing is drawn
+  while the mouse is locked in game.
 - `thunder-extras.js` - Shulker Preview (a 9 x 3 panel with the box's items and counts under its
   tooltip, read with the game's own `ItemStackHelper`; `GuiScreen.renderToolTip` is wrapped and
   its prototype slot pointed at the wrapper, since the creative inventory calls it by name) and
