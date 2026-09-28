@@ -256,11 +256,19 @@
     if(!S.spears)return null;
     if(WP.using&&WP.sp)return WP.poseTest||{rx:-60,ry:40,ty:-0.05,tz:0.05};
     if(WP.stabT&&WP.stabDur){
-      var k=(now()-WP.stabT)/WP.stabDur;
-      if(k>=0&&k<1){var s=Math.sin(Math.PI*Math.min(1,k*1.6));return {rx:-24*s,ty:0,tz:-0.42*s};}
+      // the 1.21.11 jab: the spear turns to point at the crosshair, thrusts forward fast, and eases
+      // back over the rest of the cooldown
+      var k=WP.stabFreeze!=null?WP.stabFreeze:(now()-WP.stabT)/WP.stabDur;
+      if(k>=0&&k<1){
+        var aim=k<0.1?1-Math.pow(1-k/0.1,2):k<0.45?1:Math.pow(1-(k-0.45)/0.55,2);
+        var push=k<0.16?1-Math.pow(1-k/0.16,3):k<0.5?0.5+0.5*Math.cos(Math.PI*(k-0.16)/0.34):0;
+        return {rx:-60*aim,ry:40*aim,ty:-0.05*aim,tz:0.05*aim-0.55*push};
+      }
     }
     return null;
   }
+  // the hand stays up during a jab or a charge (no dip while the long spear cooldown recovers)
+  function wpSteady(){return !!(S.spears&&((WP.using&&WP.sp)||(WP.stabT&&WP.stabDur&&now()-WP.stabT<WP.stabDur)));}
   // no sword arc during a jab (the thrust above replaces it)
   function wpNoArc(){return !!(S.spears&&WP.stabT&&WP.stabDur&&now()-WP.stabT<WP.stabDur);}
 
@@ -269,7 +277,8 @@
     // test hook: pretend the main hand holds this spear ('netherite_spear'), or null to stop
     test:function(k){WP.test=k&&SPEARS[k]||null;return !!WP.test;},
     lastPacket:function(){return WP.lastPacket;},
-    poseTest:function(p){WP.poseTest=p||null;}};
+    poseTest:function(p){WP.poseTest=p||null;},
+    stabFreeze:function(k){WP.stabFreeze=(k==null?null:+k);if(k!=null&&!WP.stabT){WP.stabT=now();WP.stabDur=1150;}}};
   MODULES.push(
     {cat:'combat',id:'spears',name:'Spears like 1.21.11',
       desc:'On 1.21.11 servers: left click jabs with the full spear reach (up to 4.5 blocks, no exact aim needed, every mob or player in line), right-click charges and lets go properly, and spears never mine blocks. Waits for a full charge like 1.21.11.',

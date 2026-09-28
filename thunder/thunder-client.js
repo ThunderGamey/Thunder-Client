@@ -1473,6 +1473,7 @@
     else{
       mine=e===HFj?1:2;
       if(mine===1&&wpNoArc())f=0.0;          // a spear jab: the thrust in renderItemSide replaces the sword arc
+      if(mine===1&&wpSteady())h=0.0;         // and the spear stays up (no cooldown dip) while it jabs or charges
     }
     fpHand=mine;
     try{origDkZ(a,b,c,d,e,f,g,h);}
