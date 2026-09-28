@@ -7,20 +7,28 @@ This project is a version of eaglercraftX based on Minecraft 1.12, specifically 
 * **Version 1.12:** Built upon the core features of Minecraft version 1.12.
 * **Performance Focused:** Engineered for enhanced performance and efficiency.
 
-## Thunder Client
+## Owner
 
-Thunder Client is created and owned by **Jayvardhan Ginni (ThunderGamey)**. His name is shown on
-the title screen, in the Right Shift menu and in Utility > About Thunder Client.
+Thunder Client is created and owned by **Jayvardhan Ginni (ThunderGamey)**. All Thunder Client
+code, textures and designs in this repository (everything under `thunder/`, the Thunder packs in
+`packs/` and the Thunder parts of `classes.js`) are by ThunderGamey. Eaglercraft is by lax1dude and
+Minecraft and its assets are by Mojang; those parts are not ThunderGamey's.
+
+In the client, the title screen and the Right Shift menu say "ThunderGamey"; the full credit is
+in Right Shift > Utility > Readme.
+
+## Thunder Client
 
 - **`index-js.html`** - Thunder Client on the Eaglercraft 1.12 JavaScript runtime: a Thunder-style
   HUD you can rearrange (drag boxes to move them, scroll to resize them), Right Shift menu (HUD,
-  combat, movement, visual options including Hand Item Size, Hitboxes, See-through Leaves,
-  Thunder Hits (a lightning bolt where you left-click, only you see it) and Hit Particles,
-  and a one-click Max FPS that also tests whether VSync on or off is faster on your device),
+  combat, movement, visual options including Hand Item Size, Hitboxes, See-through Leaves and
+  Hit Particles, and a one-click Max FPS that also tests whether VSync on or off is faster on your
+  device),
   optional shaders (LOW / MEDIUM / HIGH looks, glowing lava and torches, underwater rays, waving
   plants and leaves, reflective waves on water), an animated Thunder title screen (storm clouds,
-  lightning, sparks and a blocky skyline that shift with the mouse, the THUNDER CLIENT logo and
-  ThunderGamey splash texts), Thunder menus
+  lightning, sparks and a blocky skyline that shift with the mouse, lightning that strikes where
+  you click, wind and thunder sounds on the menus only, the THUNDER CLIENT logo and ThunderGamey
+  splash texts), Thunder menus
   everywhere (storm backgrounds, glass lists, Thunder buttons, sliders and text boxes), and **Friends**:
   open your singleplayer world to friends with a join code (Esc > Open to Friends) and join a
   friend's world from Right Shift > Friends.

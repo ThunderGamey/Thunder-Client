@@ -63,8 +63,8 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   pack whose folder name starts the same way (deleting "New World" wiped "New World-" and
   "New World 2"). Folder listings now end at the folder's "/"
   (`Filesystem$FilesystemHandleWrapper.eaglerIterate`, in the page and in the world Worker).
-- `thunder-title.js` - the title screen: the owner line "Thunder Client by Jayvardhan Ginni
-  (ThunderGamey)" above the version text, Thunder splash texts (most of the time; Visual >
+- `thunder-title.js` - the title screen: the owner line "Thunder Client by ThunderGamey" above
+  the version text, Thunder splash texts (most of the time; Visual >
   Thunder Title Screen > Thunder splash texts), and an animated storm drawn where the game draws its
   panorama (`GuiMainMenu.renderSkybox`): sky glow, two layers of clouds, lightning with branches,
   sparks, far hills and a blocky Minecraft skyline with trees, each layer moving by its own amount
@@ -72,10 +72,17 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   pass) with the same GL state save/restore as the shaders; Auto quality steps down on slow
   machines; any error falls back to the vanilla panorama. The logo textures
   (`minecraft.png`/`edition.png`) are swapped for THUNDER / CLIENT pixel art; turning the logo
-  off restores the game's own. Right Shift > Visual > Thunder Title Screen: on/off, logo,
-  lightning, parallax strength, quality. The storm is made once per frame into its own texture
+  off restores the game's own. Left-clicking the storm (on the title screen, or behind any menu
+  that shows it) sends a bolt down to exactly where you clicked, with a thunder crack. Right
+  Shift > Visual > Thunder Title Screen: on/off, logo, lightning, lightning where you click,
+  storm sounds, parallax strength, quality. The storm is made once per frame into its own texture
   (at half size on Low, and only every other frame while Low is still slow) and copied wherever
   it is shown.
+- `thunder_ambient.js` (next to `index-js.html`, not in `classes.js`) - the storm sounds of the
+  menus: wind, low air and distant thunder now and then, all made in the browser (Web Audio, no
+  sound files), plus the crack of a clicked strike. `thunder-title.js` blocks them while a world
+  or server is open, so they never play in game, and turns them on or off with Right Shift >
+  Visual > Thunder Title Screen > Storm sounds.
 - `thunder-theme.js` - Thunder Menus: every menu in the Thunder style. The dirt behind menus
   (`GuiScreen.drawBackground`) becomes the storm; lists (worlds, servers, options, packs, ...)
   get the storm under a see-through glass area and repaint it in their header and footer
@@ -112,14 +119,10 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   `getArmorResource`). Items without such a name, or when no loaded pack has the model, are left
   to the game. The models are in Thunder 1.21.11 (see [packs/README.md](packs/README.md)). The
   card's "Check the item in my hand" says what the held item was seen as.
-- `thunder-hitfx.js` - Right Shift > Visual > Thunder Hits and Hit Particles (both off by default).
-  `Minecraft.clickMouse` is wrapped to read what you left-clicked; between frames (runOnGame) the
-  game's own `EntityLightningBolt` is made "effect only" in your client's world at that spot
-  (`World.addWeatherEffect`; it cannot burn or hurt anything and the server never hears of it),
-  flickering a few times, with a quieter thunder crack (`WorldClient.playSound`). Hit Particles
-  adds `ParticleManager.emitParticleAtEntity` bursts (crit, magic, flame, hearts, sparkles, end
-  rod or totem) on the player or mob you hit. Options: also on blocks, sound, time between bolts,
-  particle type and amount.
+- `thunder-hitfx.js` - Right Shift > Visual > Hit Particles (off by default).
+  `Minecraft.clickMouse` is wrapped to read what you left-clicked; between frames (runOnGame)
+  `ParticleManager.emitParticleAtEntity` adds bursts (crit, magic, flame, hearts, sparkles, end
+  rod or totem) on the player or mob you hit. Options: particle type and amount.
 - `thunder-perf.js` - Max FPS (Right Shift > Utility): one click applies the fastest settings.
   - Game settings: render distance 6 or less, Fast graphics, smooth lighting, clouds and entity
     shadows off, minimal particles and unlimited framerate. These go through the game's own

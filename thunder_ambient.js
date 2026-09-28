@@ -1,7 +1,8 @@
 /* Thunder Client Ambient Audio
-   Procedural ambient layer: wind + low air + occasional distant thunder.
-   No external audio assets required. Controls are exposed on window.ThunderAmbient
-   for the in-game module menu to use later.
+   Procedural ambient layer for the menus: wind + low air + occasional distant thunder, and a
+   close thunder crack when you click the storm on the title screen (ThunderAmbient.crack).
+   No external audio assets required. Controls are exposed on window.ThunderAmbient; Thunder
+   Client blocks it (setBlocked) while a world or server is open, so it never plays in game.
 */
 (function(){
   "use strict";
@@ -11,7 +12,9 @@
     volume: 0.16,
     intensity: 0.55,
     started: false,
-    suspended: false
+    suspended: false,
+    blocked: false,     // a world or server is open: stay silent
+    unlocked: false     // the browser allows sound (after the first click or key)
   };
 
   try {
@@ -172,7 +175,7 @@
 
   function start(){
     if(state.started) return;
-    if(!state.enabled) return;
+    if(!state.enabled || state.blocked) return;
 
     var c = getContext();
     if(!c) return;
@@ -200,7 +203,7 @@
   }
 
   function waitForStormToEnd(){
-    if(!state.enabled) return;
+    if(!state.enabled || state.blocked) return;
     if(document.getElementById("stormCanvas")){
       setTimeout(waitForStormToEnd, 750);
       return;
@@ -208,9 +211,50 @@
     setTimeout(start, 800);
   }
 
+  // A close strike: a sharp crack, then a rolling rumble. Plays straight to the speakers (not
+  // through the ambient layer), so it works on the first click too.
+  function crack(){
+    if(!state.enabled || state.blocked || document.hidden) return;
+    var c = getContext();
+    if(!c) return;
+    try{
+      if(c.state === "suspended") c.resume().catch(function(){});
+      var now = c.currentTime, loud = Math.min(0.6, state.volume * 3);
+      var hit = c.createBufferSource(), hitBuf = c.createBuffer(1, Math.floor(c.sampleRate * 0.35), c.sampleRate);
+      var hd = hitBuf.getChannelData(0);
+      for(var i = 0; i < hd.length; i++) hd[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / hd.length, 3);
+      hit.buffer = hitBuf;
+      var hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 900;
+      var hg = c.createGain(); hg.gain.setValueAtTime(loud, now); hg.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+      hit.connect(hp); hp.connect(hg); hg.connect(c.destination);
+      hit.start(now); hit.stop(now + 0.4);
+      var dur = 2.2 + Math.random() * 1.5;
+      var rum = c.createBufferSource(), rumBuf = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate);
+      var rd = rumBuf.getChannelData(0), last = 0;
+      for(var j = 0; j < rd.length; j++){ last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; rd[j] = last * 3.5; }
+      rum.buffer = rumBuf;
+      var lp = c.createBiquadFilter(); lp.type = "lowpass";
+      lp.frequency.setValueAtTime(420, now); lp.frequency.exponentialRampToValueAtTime(60, now + dur);
+      var rg = c.createGain(); rg.gain.setValueAtTime(0.0001, now);
+      rg.gain.linearRampToValueAtTime(loud * 0.9, now + 0.08); rg.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+      rum.connect(lp); lp.connect(rg); rg.connect(c.destination);
+      rum.start(now); rum.stop(now + dur + 0.05);
+    }catch(e){}
+  }
+
   window.ThunderAmbient = {
     start: start,
     stop: stop,
+    crack: crack,
+    // true while a world or server is open: fades out and stays silent until set back to false
+    setBlocked: function(v){
+      v = !!v;
+      if(v === state.blocked) return;
+      state.blocked = v;
+      if(v) stop();
+      else if(state.unlocked) start();
+    },
+    getBlocked: function(){ return state.blocked; },
     setEnabled: function(v){
       state.enabled = !!v;
       save();
@@ -238,6 +282,7 @@
   };
 
   function unlock(){
+    state.unlocked = true;
     var c = getContext();
     if(c && c.state === "suspended") c.resume().catch(function(){});
     waitForStormToEnd();

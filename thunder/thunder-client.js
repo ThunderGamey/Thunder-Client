@@ -229,9 +229,10 @@
     // World shader effects (thunder-world.js): waving plants, water; see-through leaves (Visual)
     shWave:true,shWaveStr:60,shWater:true,shWaterStr:70,clearLeaves:true,
     newItems:true,           // thunder-items.js: newer items on servers drawn with the 1.21.11 pack's models
-    // thunder-hitfx.js: lightning where you left-click, extra hit particles (Visual)
-    hitFx:false,hitFxBlocks:false,hitFxSound:true,hitFxGap:0.5,hitParts:0,hitPartsAmt:1,
+    // thunder-hitfx.js: extra particles on what you hit (Visual)
+    hitParts:0,hitPartsAmt:1,
     titleBg:true,titleLogo:true,titleSplash:true,titleLightning:true,titleParallax:60,titleQuality:0,
+    titleClickBolt:true,menuSounds:true,   // click the title storm for lightning; storm sounds on menus only
     menuTheme:true,menuStorm:true,menuButtons:true
   };
   var S={},k;
@@ -324,8 +325,8 @@
     {cat:'visual',id:'fullbright',name:'Fullbright',desc:'Maximum brightness everywhere.'},
     {cat:'utility',id:'blockF3',name:'Block F3 Screen',desc:'Stops the built-in F3 debug screen from opening.'},
     {cat:'utility',id:null,special:'packs',name:'Resource Pack Check',desc:'Animated textures this session had to repair because a pack was missing or had broken .mcmeta files.'},
-    {cat:'utility',id:null,special:'about',name:'About Thunder Client',wide:true,
-      desc:'Thunder Client is created and owned by Jayvardhan Ginni (ThunderGamey).'}
+    {cat:'utility',id:null,special:'about',name:'Readme',wide:true,
+      desc:'About Thunder Client: what it is and who made it.'}
   ];
 
   // ------------------------------------------------------------------
@@ -336,14 +337,14 @@
   var clicks=[];
   var menuOpen=false;
   var seenLock=false;
-  // Thunder Client is created and owned by Jayvardhan Ginni (ThunderGamey). The name is shown on
-  // the title screen, in the Right Shift menu and in Utility > About Thunder Client.
-  var OWNER='Jayvardhan Ginni',OWNER_TAG='ThunderGamey';
-  var OWNER_LINE='Thunder Client by '+OWNER+' ('+OWNER_TAG+')';
-  var TC={settings:S,defaults:DEFAULTS,lastError:null,owner:OWNER+' ('+OWNER_TAG+')',
+  // Thunder Client is created and owned by Jayvardhan Ginni (ThunderGamey). The title screen corner
+  // and the Right Shift menu say ThunderGamey; Utility > Readme names the owner in full.
+  var OWNER='ThunderGamey',OWNER_FULL='Jayvardhan Ginni (ThunderGamey)';
+  var OWNER_LINE='Thunder Client by '+OWNER;
+  var TC={settings:S,defaults:DEFAULTS,lastError:null,owner:OWNER,
     isMenuOpen:function(){return menuOpen;}};
   W.ThunderClient=TC;
-  try{if(W.console&&W.console.log)W.console.log('%c THUNDER CLIENT %c by '+OWNER+' ('+OWNER_TAG+') ',
+  try{if(W.console&&W.console.log)W.console.log('%c THUNDER CLIENT %c by '+OWNER+' ',
     'background:#3fb6ff;color:#061019;font-weight:bold','color:#ffd84a;font-weight:bold');}catch(_){}
 
   function now(){return W.performance?W.performance.now():Date.now();}
@@ -445,7 +446,6 @@
     '.tcm-side-foot{margin-top:auto;padding:10px 8px 0;font-size:10.5px;color:#5d7487;line-height:1.6}',
     '.tcm-owner{margin-top:10px;padding-top:9px;border-top:1px solid rgba(79,209,255,.10);color:#7f9bb0}',
     '.tcm-owner b{display:block;color:#ffd84a;font-size:11.5px;letter-spacing:.02em}',
-    '.tcm-owner span{display:block;color:#5fb9e6;font-size:10px;letter-spacing:.14em;text-transform:uppercase}',
     '.tcm-kbd{display:inline-block;padding:1px 6px;border-radius:5px;border:1px solid rgba(127,151,170,.35);color:#a9c2d4;font-size:10px;margin-right:4px}',
     '.tcm-main{flex:1;display:flex;flex-direction:column;min-width:0}',
     '.tcm-head{display:flex;align-items:center;gap:12px;padding:16px 18px 12px}',
@@ -592,7 +592,6 @@
     sf.appendChild(el('br'));
     sf.appendChild(el('span','tcm-kbd','Esc'));sf.appendChild(D.createTextNode('close'));
     var own=el('div','tcm-owner');own.appendChild(D.createTextNode('Made by '));own.appendChild(el('b',null,OWNER));
-    own.appendChild(el('span',null,OWNER_TAG));
     sf.appendChild(own);
     side.appendChild(sf);
     panel.appendChild(side);
@@ -794,7 +793,7 @@
   function aboutCard(box){
     var kv=el('div','tcm-kv');box.appendChild(kv);
     function row(k,v){kv.appendChild(el('span',null,k));kv.appendChild(el('b',null,v));}
-    row('Owner',OWNER+' ('+OWNER_TAG+')');
+    row('Created and owned by',OWNER_FULL);
     row('Client','Thunder Client for Eaglercraft 1.12.2');
     row('Built on','Eaglercraft 1.12.2 by lax1dude; Minecraft and its assets by Mojang');
   }
@@ -1444,7 +1443,7 @@
   // @include thunder-items-data.js
   // @include thunder-items.js
 
-  // Hit effects: lightning where you left-click, extra particles on what you hit
+  // Hit effects: extra particles on the player or mob you hit
   // @include thunder-hitfx.js
 
   // Shaders: optional post-processing of the world image (off by default)

@@ -144,7 +144,7 @@
   var TB_Q={1:{div:4,oct:3,spark:1,sdiv:2},2:{div:3,oct:4,spark:1,sdiv:1},3:{div:2,oct:5,spark:1,sdiv:1}};
 
   // ---- GL resources ---------------------------------------------------------------------------
-  var TB=null,tbFail=null,tbDrawn=false,tbFrames=0,tbHold=0,tbSt={tex:[],smp:[],caps:[],vp:[0,0,0,0],done:false};
+  var TB=null,tbFail=null,tbDrawn=false,tbShownAt=0,tbFrames=0,tbHold=0,tbSt={tex:[],smp:[],caps:[],vp:[0,0,0,0],done:false};
   function tbProgram(gl,vs,fsBody,names,samplers){
     var f=gl.createShader(gl.FRAGMENT_SHADER),p=gl.createProgram();
     gl.shaderSource(f,'#version 300 es\n'+fsBody);gl.compileShader(f);
@@ -212,6 +212,7 @@
   // ---- lightning --------------------------------------------------------------------------------
   // A strike: a jagged bolt from above the screen down to the far hills (midpoint displacement)
   // with one or two branches, and a quick double flicker; sometimes only a flash inside the clouds.
+  // at = [x, y] in storm coordinates: a strike that lands there (a click on the storm).
   var tbBolt={pts:new Float32Array(TB_BOLT_N*2),n:0,box:[0,0,0,0],start:-1,sheet:false,cx:0,cy:0.3,rad:0.55,next:0};
   function tbPath(x0,y0,x1,y1,rough,max){
     var pts=[[x0,y0],[x1,y1]];
@@ -226,12 +227,13 @@
     }
     return pts;
   }
-  function tbStrike(t,aspect){
-    var B=tbBolt,half=aspect/2,i;
-    B.start=t;B.sheet=Math.random()<0.3;
-    B.next=t+3.5+Math.random()*5.5;
-    var x0=(Math.random()*1.4-0.7)*half,x1=x0+(Math.random()-0.5)*0.35;
-    var main=tbPath(x0,0.58,x1,-0.22+Math.random()*0.06,0.16,17),all=main.slice();
+  function tbStrike(t,aspect,at){
+    var B=tbBolt,half=aspect/2,i,x0,x1,y1;
+    B.start=t;B.sheet=!at&&Math.random()<0.3;
+    B.next=t+(at?4.5:3.5)+Math.random()*5.5;         // after a click, the sky's own strikes wait a little
+    if(at){x1=at[0];y1=clamp(at[1],-0.47,0.45);x0=x1+(Math.random()-0.5)*0.3;}
+    else{x0=(Math.random()*1.4-0.7)*half;x1=x0+(Math.random()-0.5)*0.35;y1=-0.22+Math.random()*0.06;}
+    var main=tbPath(x0,0.58,x1,y1,at?0.12:0.16,17),all=main.slice();
     for(var k=0;k<2;k++){
       if(k&&Math.random()<0.5)break;
       var st=main[4+Math.floor(Math.random()*7)],dir=Math.random()<0.5?-1:1;
@@ -246,9 +248,33 @@
     }
     B.n=B.sheet?0:n;
     B.box=[mnx-0.12,mny-0.12,mxx+0.12,mxy+0.12];
-    B.cx=B.sheet?(Math.random()*1.4-0.7)*half:x0*0.8;B.cy=B.sheet?0.12+Math.random()*0.3:0.30;
+    B.cx=B.sheet?(Math.random()*1.4-0.7)*half:at?x1:x0*0.8;B.cy=B.sheet?0.12+Math.random()*0.3:at?Math.min(0.3,y1+0.15):0.30;
     B.rad=B.sheet?0.75:0.55;
   }
+  // Left-click on a screen showing the storm (title screen, and the menus behind which Thunder
+  // Menus draws it): a bolt lands where you clicked, with a thunder crack (thunder_ambient.js).
+  // Clicks on the Right Shift menu or other page elements do not count.
+  W.addEventListener('mousedown',function(e){
+    if(e.button!==0||!S.titleBg||!S.titleClickBolt||!TB||!(now()-tbShownAt<300))return;
+    if(!e.target||e.target.tagName!=='CANVAS'||(HEN&&HEN.X))return;
+    var w=W.innerWidth||1,h=W.innerHeight||1,aspect=TB.fw&&TB.fh?TB.fw/TB.fh:w/h;
+    tbStrike((now()-TB.t0)/1000,aspect,[(e.clientX/w-0.5)*aspect,0.5-e.clientY/h]);
+    tbClicks++;
+    if(S.menuSounds&&W.ThunderAmbient&&W.ThunderAmbient.crack){try{W.ThunderAmbient.crack();}catch(_){}}
+  },{capture:true,passive:true});
+  var tbClicks=0;
+
+  // The menu storm sounds (thunder_ambient.js) are for the menus only: silent while a world or
+  // server is open, back on the title screen. Also keeps them in step with the setting.
+  var tbAmbWorld=null,tbAmbOn=null;
+  frameTasks.push(function(){
+    var A=W.ThunderAmbient;
+    if(!A||!A.setBlocked)return;
+    var on=!!S.menuSounds,inWorld=!!(HEN&&HEN.X);
+    if(on!==tbAmbOn){tbAmbOn=on;if(A.getEnabled()!==on)A.setEnabled(on);}
+    if(inWorld!==tbAmbWorld){tbAmbWorld=inWorld;A.setBlocked(inWorld);}
+  });
+
   // flash and bolt brightness over the strike: flicker, dip, second stroke, afterglow
   function tbStrikeLevel(dt){
     if(dt<0)return [0,0];
@@ -343,7 +369,7 @@
       gl.drawArrays(gl.TRIANGLES,0,3);
       if(clip){gl.disable(gl.SCISSOR_TEST);gl.scissor(R.sb[0],R.sb[1],R.sb[2],R.sb[3]);}
       shRestore(gl,tbSt);
-      tbDrawn=true;
+      tbDrawn=true;tbShownAt=tn;
       return true;
     }catch(e){
       tbFail=e;
@@ -500,15 +526,20 @@
 
   // ---- menu -------------------------------------------------------------------------------------
   MODULES.push({cat:'visual',id:'titleBg',name:'Thunder Title Screen',
-    desc:'Animated storm behind the title screen: clouds, lightning, sparks and a blocky skyline that shift with the mouse.',opts:[
+    desc:'Animated storm behind the title screen: clouds, lightning, sparks and a blocky skyline that shift with the mouse. Click the storm and lightning strikes there. Its wind and thunder sounds play on the menus only, never in a world or on a server.',opts:[
       {id:'titleLogo',name:'Thunder logo'},
       {id:'titleSplash',name:'Thunder splash texts'},
       {id:'titleLightning',name:'Lightning'},
+      {id:'titleClickBolt',name:'Lightning where you click'},
+      {id:'menuSounds',name:'Storm sounds (menus only)'},
       {id:'titleParallax',name:'Mouse parallax',min:0,max:100,step:5,fmt:shPct},
       {id:'titleQuality',name:'Quality',choices:['Auto','Low','Medium','High']}]});
   // for testing: strike on the next title frame, optionally holding the bolt for holdMs
   TC.title={strike:function(holdMs){tbBolt.next=-1;tbHold=holdMs>0?now()+holdMs:0;},
+    hold:function(ms){tbHold=ms>0?now()+ms:0;},      // keep the current bolt lit (for screenshots)
     state:function(){return {drawn:tbDrawn,failed:tbFail?String(tbFail.message||tbFail):null,logo:tlState,
     quality:TB?tbQuality(TB):0,auto:TB?TB.auto:0,frameMs:TB?Math.round(TB.dtAvg*10)/10:0,
     cloudRes:TB&&TB.tc?TB.tc.w+'x'+TB.tc.h:'-',stormRes:TB&&TB.ts?TB.ts.w+'x'+TB.ts.h:'-',
-    frames:tbFrames,parallax:[Math.round(tbMouse.x*100)/100,Math.round(tbMouse.y*100)/100],bolt:tbBolt.sheet?'sheet':tbBolt.n};}};
+    frames:tbFrames,parallax:[Math.round(tbMouse.x*100)/100,Math.round(tbMouse.y*100)/100],bolt:tbBolt.sheet?'sheet':tbBolt.n,
+    clicks:tbClicks,boltEnd:tbBolt.n?[tbBolt.pts[32],tbBolt.pts[33]]:null,
+    sound:W.ThunderAmbient?{enabled:W.ThunderAmbient.getEnabled(),blocked:W.ThunderAmbient.getBlocked()}:null};}};

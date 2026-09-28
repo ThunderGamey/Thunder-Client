@@ -48956,9 +48956,10 @@ c.PK;})();
     // World shader effects (thunder-world.js): waving plants, water; see-through leaves (Visual)
     shWave:true,shWaveStr:60,shWater:true,shWaterStr:70,clearLeaves:true,
     newItems:true,           // thunder-items.js: newer items on servers drawn with the 1.21.11 pack's models
-    // thunder-hitfx.js: lightning where you left-click, extra hit particles (Visual)
-    hitFx:false,hitFxBlocks:false,hitFxSound:true,hitFxGap:0.5,hitParts:0,hitPartsAmt:1,
+    // thunder-hitfx.js: extra particles on what you hit (Visual)
+    hitParts:0,hitPartsAmt:1,
     titleBg:true,titleLogo:true,titleSplash:true,titleLightning:true,titleParallax:60,titleQuality:0,
+    titleClickBolt:true,menuSounds:true,   // click the title storm for lightning; storm sounds on menus only
     menuTheme:true,menuStorm:true,menuButtons:true
   };
   var S={},k;
@@ -49051,8 +49052,8 @@ c.PK;})();
     {cat:'visual',id:'fullbright',name:'Fullbright',desc:'Maximum brightness everywhere.'},
     {cat:'utility',id:'blockF3',name:'Block F3 Screen',desc:'Stops the built-in F3 debug screen from opening.'},
     {cat:'utility',id:null,special:'packs',name:'Resource Pack Check',desc:'Animated textures this session had to repair because a pack was missing or had broken .mcmeta files.'},
-    {cat:'utility',id:null,special:'about',name:'About Thunder Client',wide:true,
-      desc:'Thunder Client is created and owned by Jayvardhan Ginni (ThunderGamey).'}
+    {cat:'utility',id:null,special:'about',name:'Readme',wide:true,
+      desc:'About Thunder Client: what it is and who made it.'}
   ];
 
   // ------------------------------------------------------------------
@@ -49063,14 +49064,14 @@ c.PK;})();
   var clicks=[];
   var menuOpen=false;
   var seenLock=false;
-  // Thunder Client is created and owned by Jayvardhan Ginni (ThunderGamey). The name is shown on
-  // the title screen, in the Right Shift menu and in Utility > About Thunder Client.
-  var OWNER='Jayvardhan Ginni',OWNER_TAG='ThunderGamey';
-  var OWNER_LINE='Thunder Client by '+OWNER+' ('+OWNER_TAG+')';
-  var TC={settings:S,defaults:DEFAULTS,lastError:null,owner:OWNER+' ('+OWNER_TAG+')',
+  // Thunder Client is created and owned by Jayvardhan Ginni (ThunderGamey). The title screen corner
+  // and the Right Shift menu say ThunderGamey; Utility > Readme names the owner in full.
+  var OWNER='ThunderGamey',OWNER_FULL='Jayvardhan Ginni (ThunderGamey)';
+  var OWNER_LINE='Thunder Client by '+OWNER;
+  var TC={settings:S,defaults:DEFAULTS,lastError:null,owner:OWNER,
     isMenuOpen:function(){return menuOpen;}};
   W.ThunderClient=TC;
-  try{if(W.console&&W.console.log)W.console.log('%c THUNDER CLIENT %c by '+OWNER+' ('+OWNER_TAG+') ',
+  try{if(W.console&&W.console.log)W.console.log('%c THUNDER CLIENT %c by '+OWNER+' ',
     'background:#3fb6ff;color:#061019;font-weight:bold','color:#ffd84a;font-weight:bold');}catch(_){}
 
   function now(){return W.performance?W.performance.now():Date.now();}
@@ -49172,7 +49173,6 @@ c.PK;})();
     '.tcm-side-foot{margin-top:auto;padding:10px 8px 0;font-size:10.5px;color:#5d7487;line-height:1.6}',
     '.tcm-owner{margin-top:10px;padding-top:9px;border-top:1px solid rgba(79,209,255,.10);color:#7f9bb0}',
     '.tcm-owner b{display:block;color:#ffd84a;font-size:11.5px;letter-spacing:.02em}',
-    '.tcm-owner span{display:block;color:#5fb9e6;font-size:10px;letter-spacing:.14em;text-transform:uppercase}',
     '.tcm-kbd{display:inline-block;padding:1px 6px;border-radius:5px;border:1px solid rgba(127,151,170,.35);color:#a9c2d4;font-size:10px;margin-right:4px}',
     '.tcm-main{flex:1;display:flex;flex-direction:column;min-width:0}',
     '.tcm-head{display:flex;align-items:center;gap:12px;padding:16px 18px 12px}',
@@ -49319,7 +49319,6 @@ c.PK;})();
     sf.appendChild(el('br'));
     sf.appendChild(el('span','tcm-kbd','Esc'));sf.appendChild(D.createTextNode('close'));
     var own=el('div','tcm-owner');own.appendChild(D.createTextNode('Made by '));own.appendChild(el('b',null,OWNER));
-    own.appendChild(el('span',null,OWNER_TAG));
     sf.appendChild(own);
     side.appendChild(sf);
     panel.appendChild(side);
@@ -49521,7 +49520,7 @@ c.PK;})();
   function aboutCard(box){
     var kv=el('div','tcm-kv');box.appendChild(kv);
     function row(k,v){kv.appendChild(el('span',null,k));kv.appendChild(el('b',null,v));}
-    row('Owner',OWNER+' ('+OWNER_TAG+')');
+    row('Created and owned by',OWNER_FULL);
     row('Client','Thunder Client for Eaglercraft 1.12.2');
     row('Built on','Eaglercraft 1.12.2 by lax1dude; Minecraft and its assets by Mojang');
   }
@@ -50631,82 +50630,41 @@ c.PK;})();
     row.appendChild(b);box.appendChild(row);
   };
 
-  // Hit effects: lightning where you left-click, extra particles on what you hit
+  // Hit effects: extra particles on the player or mob you hit
   /* -------------------------------------------------------------------------------------------
      Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
-     Hit effects (Right Shift > Visual): a lightning bolt where you left-click, and extra particles
-     on the mob or player you hit. Included into the client scope of thunder-client.js by build.js.
+     Hit Particles (Right Shift > Visual): extra particles on the mob or player you hit. Included
+     into the client scope of thunder-client.js by build.js. (Lightning where you click lives on
+     the title screen now: see thunder-title.js.)
 
-     Everything happens only in your own game: the bolt is the game's own lightning entity, made
-     as "effect only" in your client's world (it cannot set fires or hurt anything, and the server
-     never hears of it), so nobody else sees it. The clicked spot is read when Minecraft.clickMouse
-     runs; the bolt, its sound and the particles are made between frames through runOnGame.
+     Everything happens only in your own game, so nobody else sees it. What you hit is read when
+     Minecraft.clickMouse runs; the particles are made between frames through runOnGame, with the
+     game's own emitter (the one it uses for critical hits).
 
      Game function this module replaces (the wrapper only reads, then calls the original):
      @hook Cfp net.minecraft.client.Minecraft.clickMouse
 
-     Game functions, classes and fields it uses:
-     @use GCA net.minecraft.entity.effect.EntityLightningBolt.<init>
-     @use Bkv net.minecraft.world.World.addWeatherEffect
-     @use D2I net.minecraft.client.multiplayer.WorldClient.playSound
+     Game functions and fields it uses:
      @use D$s net.minecraft.client.particle.ParticleManager.emitParticleAtEntity
      @use D2a net.minecraft.util.EnumParticleTypes.getParticleFromId
-     @class Ya net.minecraft.entity.effect.EntityLightningBolt
-     @static LeN net.minecraft.init.SoundEvents ENTITY_LIGHTNING_THUNDER
-     @static LeM net.minecraft.init.SoundEvents ENTITY_LIGHTNING_IMPACT
-     @static LnM net.minecraft.util.SoundCategory WEATHER
      @field wL net.minecraft.client.Minecraft.clickMouse Minecraft.leftClickCounter
      @field h3 net.minecraft.client.Minecraft.clickMouse Minecraft.objectMouseOver
      @field kD net.minecraft.client.Minecraft.clickMouse RayTraceResult.typeOfHit
      @field d net.minecraft.client.Minecraft.clickMouse Enum.ordinal (MISS 0, BLOCK 1, ENTITY 2)
      @field X net.minecraft.client.Minecraft.clickMouse Minecraft.world
      @field kr net.minecraft.util.math.RayTraceResult.<init> RayTraceResult.entityHit
-     @field pN net.minecraft.util.math.RayTraceResult.<init> RayTraceResult.hitVec
-     @field bh net.minecraft.util.math.Vec3d.<init> Vec3d.x
-     @field bq net.minecraft.util.math.Vec3d.<init> Vec3d.y
-     @field bi net.minecraft.util.math.Vec3d.<init> Vec3d.z
      @field it net.minecraft.client.entity.EntityPlayerSP.onCriticalHit Minecraft.effectRenderer
-     @field bgi net.minecraft.entity.effect.EntityLightningBolt.<init> EntityLightningBolt.boltLivingTime
-     (Entity.posX/posY/posZ b/f/c, Minecraft.player v and the Minecraft instance HEN are declared
-     in thunder-client.js and thunder-lan.js.)
+     (Minecraft.player v and the Minecraft instance HEN are declared in thunder-client.js and
+     thunder-lan.js.)
      ------------------------------------------------------------------------------------------- */
   // particle choices: Off, then EnumParticleTypes ids
-  var HF_PARTS=[-1,9,10,26,34,21,43,47],HF={last:0,types:{},clicks:0,bolts:0,parts:0,kind:-1};
+  var HF_PARTS=[-1,9,10,26,34,21,43,47],HF={types:{},clicks:0,parts:0,kind:-1};
 
   function hfClick(mc){
     if(mc.wL>0||!mc.h3||!mc.X||!mc.v)return;               // the game ignores this click too
-    var r=mc.h3,kind=r.kD?r.kD.d:0,ent=kind===2?r.kr:null,x,y,z;
+    var r=mc.h3,kind=r.kD?r.kD.d:0,ent=kind===2?r.kr:null;
     HF.clicks++;HF.kind=kind;
-    if(kind===0||(kind===2&&!ent))return;                  // clicked at the air
-    if(S.hitFx&&(ent||S.hitFxBlocks)){
-      var now=Date.now();
-      if(now-HF.last>=S.hitFxGap*1000){
-        HF.last=now;
-        if(ent){x=ent.b;y=ent.f;z=ent.c;}
-        else{x=r.pN.bh;y=r.pN.bq;z=r.pN.bi;}
-        HF.pos=[x,y,z];
-        hfBolt(mc.X,x,y,z);
-      }
-    }
     if(ent&&S.hitParts>0&&HF_PARTS[S.hitParts]>=0)hfParticles(ent,HF_PARTS[S.hitParts],S.hitPartsAmt|0);
-  }
-
-  // the game's lightning, effect only, in this client's world; plus a quieter crack and rumble
-  function hfBolt(w,x,y,z,flashes){
-    var bolt=null,loud=S.hitFxSound&&LeM!==null&&LnM!==null;
-    runOnGame([
-      function(){
-        if(!$rt_resuming()){if(!HEN||HEN.X!==w)return;bolt=new Ya();}
-        if($rt_resuming()||bolt)GCA(bolt,w,x,y,z,1);
-      },
-      function(){
-        if(!bolt)return;
-        bolt.bgi=Math.max(bolt.bgi,flashes||3);       // flickers a few times, like a real strike
-        Bkv(w,bolt);HF.bolts++;
-      },
-      function(){if($rt_resuming()||(bolt&&loud))D2I(w,x,y,z,LeM,LnM,1.0,0.9+Math.random()*0.2,0);},
-      function(){if($rt_resuming()||(bolt&&loud&&LeN!==null))D2I(w,x,y,z,LeN,LnM,0.3,1.2,0);}
-    ]);
   }
 
   function hfParticles(ent,id,times){
@@ -50722,29 +50680,18 @@ c.PK;})();
     runOnGame(steps);
   }
 
-  TC.hitfx={counts:function(){return {clicks:HF.clicks,bolts:HF.bolts,particles:HF.parts,lastKind:HF.kind};},
-    // a bolt a few blocks in front of you (for checking the effect without hitting anything)
-    test:function(flashes){var p=HEN&&HEN.v;if(!p||!HEN.X)return false;HF.pos=[p.b+3,p.f,p.c];hfBolt(HEN.X,p.b+3,p.f,p.c,flashes);return HF.pos;},
-    pos:function(){return HF.pos||null;}};
+  TC.hitfx={counts:function(){return {clicks:HF.clicks,particles:HF.parts,lastKind:HF.kind};}};
 
   var origCfp=Cfp;
   Cfp=function(a){
-    if(!$rt_resuming()&&(S.hitFx||S.hitParts>0)){try{hfClick(a);}catch(e){report(e);}}
+    if(!$rt_resuming()&&S.hitParts>0){try{hfClick(a);}catch(e){report(e);}}
     return origCfp(a);
   };
 
-  function fmtSec(v){return (+v).toFixed(1)+' s';}
-  MODULES.push(
-    {cat:'visual',id:'hitFx',name:'Thunder Hits',
-      desc:'A lightning bolt strikes where you left-click a player or mob (and blocks, if you like). Only you see it: it cannot burn or hurt anything. The sky flashes with each bolt.',
-      opts:[{id:'hitFxBlocks',name:'Also when you click blocks'},
-        {id:'hitFxSound',name:'Thunder sound'},
-        {id:'hitFxGap',name:'Time between bolts',min:0.2,max:3,step:0.1,fmt:fmtSec}]},
-    {cat:'visual',id:null,name:'Hit Particles',
-      desc:'Extra particles on every player or mob you hit. Only you see them.',
-      opts:[{id:'hitParts',name:'Particles',choices:['Off','Crit','Magic','Flame','Hearts','Sparkles','End rod','Totem']},
-        {id:'hitPartsAmt',name:'Amount',min:1,max:3,step:1,fmt:function(v){return 'x'+v;}}]}
-  );
+  MODULES.push({cat:'visual',id:null,name:'Hit Particles',
+    desc:'Extra particles on every player or mob you hit. Only you see them.',
+    opts:[{id:'hitParts',name:'Particles',choices:['Off','Crit','Magic','Flame','Hearts','Sparkles','End rod','Totem']},
+      {id:'hitPartsAmt',name:'Amount',min:1,max:3,step:1,fmt:function(v){return 'x'+v;}}]});
 
   // Shaders: optional post-processing of the world image (off by default)
   /* -------------------------------------------------------------------------------------------
@@ -53182,7 +53129,7 @@ c.PK;})();
   var TB_Q={1:{div:4,oct:3,spark:1,sdiv:2},2:{div:3,oct:4,spark:1,sdiv:1},3:{div:2,oct:5,spark:1,sdiv:1}};
 
   // ---- GL resources ---------------------------------------------------------------------------
-  var TB=null,tbFail=null,tbDrawn=false,tbFrames=0,tbHold=0,tbSt={tex:[],smp:[],caps:[],vp:[0,0,0,0],done:false};
+  var TB=null,tbFail=null,tbDrawn=false,tbShownAt=0,tbFrames=0,tbHold=0,tbSt={tex:[],smp:[],caps:[],vp:[0,0,0,0],done:false};
   function tbProgram(gl,vs,fsBody,names,samplers){
     var f=gl.createShader(gl.FRAGMENT_SHADER),p=gl.createProgram();
     gl.shaderSource(f,'#version 300 es\n'+fsBody);gl.compileShader(f);
@@ -53250,6 +53197,7 @@ c.PK;})();
   // ---- lightning --------------------------------------------------------------------------------
   // A strike: a jagged bolt from above the screen down to the far hills (midpoint displacement)
   // with one or two branches, and a quick double flicker; sometimes only a flash inside the clouds.
+  // at = [x, y] in storm coordinates: a strike that lands there (a click on the storm).
   var tbBolt={pts:new Float32Array(TB_BOLT_N*2),n:0,box:[0,0,0,0],start:-1,sheet:false,cx:0,cy:0.3,rad:0.55,next:0};
   function tbPath(x0,y0,x1,y1,rough,max){
     var pts=[[x0,y0],[x1,y1]];
@@ -53264,12 +53212,13 @@ c.PK;})();
     }
     return pts;
   }
-  function tbStrike(t,aspect){
-    var B=tbBolt,half=aspect/2,i;
-    B.start=t;B.sheet=Math.random()<0.3;
-    B.next=t+3.5+Math.random()*5.5;
-    var x0=(Math.random()*1.4-0.7)*half,x1=x0+(Math.random()-0.5)*0.35;
-    var main=tbPath(x0,0.58,x1,-0.22+Math.random()*0.06,0.16,17),all=main.slice();
+  function tbStrike(t,aspect,at){
+    var B=tbBolt,half=aspect/2,i,x0,x1,y1;
+    B.start=t;B.sheet=!at&&Math.random()<0.3;
+    B.next=t+(at?4.5:3.5)+Math.random()*5.5;         // after a click, the sky's own strikes wait a little
+    if(at){x1=at[0];y1=clamp(at[1],-0.47,0.45);x0=x1+(Math.random()-0.5)*0.3;}
+    else{x0=(Math.random()*1.4-0.7)*half;x1=x0+(Math.random()-0.5)*0.35;y1=-0.22+Math.random()*0.06;}
+    var main=tbPath(x0,0.58,x1,y1,at?0.12:0.16,17),all=main.slice();
     for(var k=0;k<2;k++){
       if(k&&Math.random()<0.5)break;
       var st=main[4+Math.floor(Math.random()*7)],dir=Math.random()<0.5?-1:1;
@@ -53284,9 +53233,33 @@ c.PK;})();
     }
     B.n=B.sheet?0:n;
     B.box=[mnx-0.12,mny-0.12,mxx+0.12,mxy+0.12];
-    B.cx=B.sheet?(Math.random()*1.4-0.7)*half:x0*0.8;B.cy=B.sheet?0.12+Math.random()*0.3:0.30;
+    B.cx=B.sheet?(Math.random()*1.4-0.7)*half:at?x1:x0*0.8;B.cy=B.sheet?0.12+Math.random()*0.3:at?Math.min(0.3,y1+0.15):0.30;
     B.rad=B.sheet?0.75:0.55;
   }
+  // Left-click on a screen showing the storm (title screen, and the menus behind which Thunder
+  // Menus draws it): a bolt lands where you clicked, with a thunder crack (thunder_ambient.js).
+  // Clicks on the Right Shift menu or other page elements do not count.
+  W.addEventListener('mousedown',function(e){
+    if(e.button!==0||!S.titleBg||!S.titleClickBolt||!TB||!(now()-tbShownAt<300))return;
+    if(!e.target||e.target.tagName!=='CANVAS'||(HEN&&HEN.X))return;
+    var w=W.innerWidth||1,h=W.innerHeight||1,aspect=TB.fw&&TB.fh?TB.fw/TB.fh:w/h;
+    tbStrike((now()-TB.t0)/1000,aspect,[(e.clientX/w-0.5)*aspect,0.5-e.clientY/h]);
+    tbClicks++;
+    if(S.menuSounds&&W.ThunderAmbient&&W.ThunderAmbient.crack){try{W.ThunderAmbient.crack();}catch(_){}}
+  },{capture:true,passive:true});
+  var tbClicks=0;
+
+  // The menu storm sounds (thunder_ambient.js) are for the menus only: silent while a world or
+  // server is open, back on the title screen. Also keeps them in step with the setting.
+  var tbAmbWorld=null,tbAmbOn=null;
+  frameTasks.push(function(){
+    var A=W.ThunderAmbient;
+    if(!A||!A.setBlocked)return;
+    var on=!!S.menuSounds,inWorld=!!(HEN&&HEN.X);
+    if(on!==tbAmbOn){tbAmbOn=on;if(A.getEnabled()!==on)A.setEnabled(on);}
+    if(inWorld!==tbAmbWorld){tbAmbWorld=inWorld;A.setBlocked(inWorld);}
+  });
+
   // flash and bolt brightness over the strike: flicker, dip, second stroke, afterglow
   function tbStrikeLevel(dt){
     if(dt<0)return [0,0];
@@ -53381,7 +53354,7 @@ c.PK;})();
       gl.drawArrays(gl.TRIANGLES,0,3);
       if(clip){gl.disable(gl.SCISSOR_TEST);gl.scissor(R.sb[0],R.sb[1],R.sb[2],R.sb[3]);}
       shRestore(gl,tbSt);
-      tbDrawn=true;
+      tbDrawn=true;tbShownAt=tn;
       return true;
     }catch(e){
       tbFail=e;
@@ -53538,18 +53511,23 @@ c.PK;})();
 
   // ---- menu -------------------------------------------------------------------------------------
   MODULES.push({cat:'visual',id:'titleBg',name:'Thunder Title Screen',
-    desc:'Animated storm behind the title screen: clouds, lightning, sparks and a blocky skyline that shift with the mouse.',opts:[
+    desc:'Animated storm behind the title screen: clouds, lightning, sparks and a blocky skyline that shift with the mouse. Click the storm and lightning strikes there. Its wind and thunder sounds play on the menus only, never in a world or on a server.',opts:[
       {id:'titleLogo',name:'Thunder logo'},
       {id:'titleSplash',name:'Thunder splash texts'},
       {id:'titleLightning',name:'Lightning'},
+      {id:'titleClickBolt',name:'Lightning where you click'},
+      {id:'menuSounds',name:'Storm sounds (menus only)'},
       {id:'titleParallax',name:'Mouse parallax',min:0,max:100,step:5,fmt:shPct},
       {id:'titleQuality',name:'Quality',choices:['Auto','Low','Medium','High']}]});
   // for testing: strike on the next title frame, optionally holding the bolt for holdMs
   TC.title={strike:function(holdMs){tbBolt.next=-1;tbHold=holdMs>0?now()+holdMs:0;},
+    hold:function(ms){tbHold=ms>0?now()+ms:0;},      // keep the current bolt lit (for screenshots)
     state:function(){return {drawn:tbDrawn,failed:tbFail?String(tbFail.message||tbFail):null,logo:tlState,
     quality:TB?tbQuality(TB):0,auto:TB?TB.auto:0,frameMs:TB?Math.round(TB.dtAvg*10)/10:0,
     cloudRes:TB&&TB.tc?TB.tc.w+'x'+TB.tc.h:'-',stormRes:TB&&TB.ts?TB.ts.w+'x'+TB.ts.h:'-',
-    frames:tbFrames,parallax:[Math.round(tbMouse.x*100)/100,Math.round(tbMouse.y*100)/100],bolt:tbBolt.sheet?'sheet':tbBolt.n};}};
+    frames:tbFrames,parallax:[Math.round(tbMouse.x*100)/100,Math.round(tbMouse.y*100)/100],bolt:tbBolt.sheet?'sheet':tbBolt.n,
+    clicks:tbClicks,boltEnd:tbBolt.n?[tbBolt.pts[32],tbBolt.pts[33]]:null,
+    sound:W.ThunderAmbient?{enabled:W.ThunderAmbient.getEnabled(),blocked:W.ThunderAmbient.getBlocked()}:null};}};
 
   // Menus: storm backgrounds, glass lists, Thunder buttons, sliders and text boxes everywhere
   /* -------------------------------------------------------------------------------------------
