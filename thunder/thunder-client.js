@@ -250,7 +250,9 @@
     // thunder-minimap.js: minimap (size in px, zoom in px per block, 0 top right / 1 top left)
     minimap:true,minimapSize:130,minimapZoom:2,minimapCorner:0,minimapRound:false,minimapCoords:true,worldMap:true,
     // thunder-extras.js
-    shulkerPreview:true,boat360:true
+    shulkerPreview:true,boat360:true,
+    // thunder-weapons.js
+    spears:true,spearHud:true,crystalTap:false
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -1268,6 +1270,7 @@
     if(S.heldItem&&itemHud)heldHud(ctx);
     if(S.saturation&&itemHud)saturationHud(ctx);
     if(S.crossTarget)crossHud(ctx);
+    spearHud(ctx);                              // spear charge meter (thunder-weapons.js)
     // the font renderer leaves the GL color tinted; put it back so later GUI drawing is unaffected
     op(CFi,1.0,1.0,1.0,1.0);
   }
@@ -1406,7 +1409,10 @@
   DkZ=function(a,b,c,d,e,f,g,h){
     var prev=fpHand,mine,t;
     if($rt_resuming()){t=$rt_nativeThread();mine=t.pop();prev=t.pop();}
-    else mine=e===HFj?1:2;
+    else{
+      mine=e===HFj?1:2;
+      if(mine===1&&wpNoArc())f=0.0;          // a spear jab: the thrust in renderItemSide replaces the sword arc
+    }
     fpHand=mine;
     try{origDkZ(a,b,c,d,e,f,g,h);}
     finally{
@@ -1419,13 +1425,20 @@
   Ch0=function(a,b,c,d,e){
     var st=0;
     if($rt_resuming())st=$rt_nativeThread().pop();
-    else if(fpHand&&S.handItems&&(d===Lke||d===Lkd)){
-      var main=fpHand===1;
-      var sc=handNum(main?S.mainScale:S.offScale,1,0.3,1.5);
-      var dy=handNum(main?S.mainY:S.offY,0,-0.5,0.3);
-      if(Math.abs(sc-1)>=0.001||Math.abs(dy)>=0.001){
+    else if(fpHand&&(d===Lke||d===Lkd)){
+      var main=fpHand===1,pose=main?wpHandPose():null;      // a charging or jabbing spear (thunder-weapons.js)
+      var sc=S.handItems?handNum(main?S.mainScale:S.offScale,1,0.3,1.5):1;
+      var dy=S.handItems?handNum(main?S.mainY:S.offY,0,-0.5,0.3):0;
+      if(pose||Math.abs(sc-1)>=0.001||Math.abs(dy)>=0.001){
         Eu0();
         if(Math.abs(dy)>=0.001)DPm(0.0,dy,0.0);
+        if(pose){
+          var mir=d===Lkd?-1:1;                     // the left hand mirrors sideways turns
+          DPm((pose.tx||0.0)*mir,pose.ty,pose.tz);
+          if(pose.rx)Gc7(pose.rx,1.0,0.0,0.0);
+          if(pose.ry)Gc7(pose.ry*mir,0.0,1.0,0.0);
+          if(pose.rz)Gc7(pose.rz*mir,0.0,0.0,1.0);
+        }
         if(Math.abs(sc-1)>=0.001)FWK(sc,sc,sc);
         st=1;
       }
@@ -1515,6 +1528,25 @@
     if($rt_suspending())$rt_nativeThread().push(2);
   };
 
+  // Fullscreen: Eaglercraft makes only its canvas fullscreen, and a fullscreen element hides the
+  // rest of the page, so the Right Shift menu, HUD editor, maps and cursor would not show (Right
+  // Shift then only released the mouse, which opened the pause menu). The canvas now asks for the
+  // whole page instead. Eaglercraft tells fullscreen by a (display-mode: fullscreen) media query,
+  // which is true either way, and leaves it with document.exitFullscreen, so nothing else changes.
+  function fsWholePage(cv){
+    var root=D.documentElement;
+    ['requestFullscreen','webkitRequestFullscreen','mozRequestFullScreen'].forEach(function(m){
+      if(typeof root[m]==='function')cv[m]=function(){return root[m].apply(root,arguments);};
+    });
+    cv.__thunderFullscreen=true;
+  }
+  var fsCanvas=null;
+  frameTasks.push(function(){
+    if(fsCanvas)return;                            // done once the game's canvas is found
+    var cv=D.querySelector&&D.querySelector('canvas._eaglercraftX_canvas_element');
+    if(cv){fsWholePage(cv);fsCanvas=cv;}
+  });
+
   // Start-up: how far the game has got (for the loading screen), and Quick Start
   // @include thunder-boot.js
 
@@ -1543,6 +1575,9 @@
 
   // Minimap and World Map (M)
   // @include thunder-minimap.js
+
+  // Spears like 1.21.11 (jab and charge on newer servers), Crystal Tap
+  // @include thunder-weapons.js
 
   // Shulker preview, boat view 360
   // @include thunder-extras.js

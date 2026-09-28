@@ -91,6 +91,20 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   from your own height. A few chunks are read per frame, nearest first, again every 20 s; the map
   is kept for the session only. The HUD boxes on the minimap's side start below it, and in the top
   right it moves down while the game shows toasts (advancements, recipes, tutorial hints).
+- `thunder-weapons.js` - Spears like 1.21.11 (Combat, on): on a 1.21.11 or newer server
+  ViaBackwards turns spears into swords for a 1.12 client, and never sends the spear's own
+  actions. A left click with a spear now sends the 1.21.11 "stab" player action
+  (`CPacketPlayerDigging` with action id 7, `BlockPos.ORIGIN`, `DOWN`), only at full charge
+  (cooldown 13-23 ticks by tier, as the 1.21.11 item components say), so the server's own spear
+  attack runs: reach 2-4.5 blocks, hitboxes 0.125 bigger, every mob and player in line. A
+  right-click charge is sent once and ended with "release use item" when you let go (1.12 never
+  said), the off-hand is left alone (the spear always takes the click), spears never mine, the
+  attack indicator follows the spear's real cooldown, a meter under the crosshair shows the charge
+  stage and your speed, and the spear points forward while charging. Only items ViaBackwards
+  marked as spears count, and never in singleplayer or a friend's world (1.12 servers). Crystal
+  Tap (Combat, off): with end crystals in the main hand, a left click on obsidian or bedrock
+  places a crystal; holding the button does not mine it. Hooks `Minecraft.clickMouse`,
+  `rightClickMouse`, `sendClickBlockToController` and `EntityPlayer.getCooledAttackStrength`.
 - `thunder-extras.js` - Shulker Preview (a 9 x 3 panel with the box's items and counts under its
   tooltip, read with the game's own `ItemStackHelper`; `GuiScreen.renderToolTip` is wrapped and
   its prototype slot pointed at the wrapper, since the creative inventory calls it by name) and
@@ -108,8 +122,9 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   answers by opening its pause menu; when one of them was opened during play, closing the last one
   closes that pause menu again (`displayGuiScreen(null)` on the game thread), so you are straight
   back in the game. A pause menu or inventory you opened yourself stays open.
-- `thunder-client.js` - HUD, Right Shift menu, settings, the hooks listed in its header. Among
-  them: Hand Item Size (scales the real first-person sword/shield through
+- `thunder-client.js` - HUD, Right Shift menu, settings, the hooks listed in its header. Fullscreen
+  covers the whole page (Eaglercraft asked for its canvas only, which hid the Right Shift menu,
+  maps and HUD editor in fullscreen). Among them: Hand Item Size (scales the real first-person sword/shield through
   `ItemRenderer.renderItemInFirstPerson` + `renderItemSide`, first-person transforms only),
   Hitboxes (`RenderManager.debugBoundingBox`, kept in sync with F3+B), and a fix for a data-loss
   bug in the base runtime: deleting a world or resource pack also deleted every other world or

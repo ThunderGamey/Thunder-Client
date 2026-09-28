@@ -9,11 +9,8 @@
 
      Everything happens only in your own game, so nobody else sees or hears it, and it cannot burn
      or hurt anything (the server never hears of it). What you hit is read when
-     Minecraft.clickMouse runs; the effect is made between frames through runOnGame, one game call
-     per step.
-
-     Game function this module replaces (the wrapper only reads, then calls the original):
-     @hook Cfp net.minecraft.client.Minecraft.clickMouse
+     Minecraft.clickMouse runs (its wrapper is in thunder-weapons.js and calls hfClick); the
+     effect is made between frames through runOnGame, one game call per step.
 
      Game functions, classes and fields it uses:
      @use D$s net.minecraft.client.particle.ParticleManager.emitParticleAtEntity
@@ -152,12 +149,6 @@
     // the effect on whatever is under the crosshair (for checking it without clicking)
     test:function(){var mc=HEN,r=mc&&mc.h3;if(!r||!r.kr||!mc.X)return false;var f=S.hitEffect|0;
       if(f===1)hfShock(mc.X,r.kr);else if(f===2)hfBolt(mc.X,r.kr.b,r.kr.f,r.kr.c);else if(HF_PARTS[f]>=0)hfParticles(r.kr,HF_PARTS[f],3);return true;}};
-
-  var origCfp=Cfp;
-  Cfp=function(a){
-    if(!$rt_resuming()&&S.hitEffect>0){try{hfClick(a);}catch(e){report(e);}}
-    return origCfp(a);
-  };
 
   MODULES.push({cat:'visual',id:null,name:'Hit Effects',
     desc:'An effect on every player or mob you hit. Thunder shock: a small electric bolt zaps them. Lightning strike: real lightning hits them. Or a burst of particles. Only you see and hear it.',

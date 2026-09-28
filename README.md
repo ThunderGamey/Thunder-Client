@@ -29,7 +29,8 @@ in Right Shift > Utility > Readme.
   tests whether VSync on or off is faster on your device); Totem Counter, Pickup Notifier, Target
   Crosshair, Shield Status colours, Zoom (hold C, scroll to zoom further), Minimap and World Map
   (M), Shulker Preview, Toggle Sneak, Clear Chat, Password Hider, Show Own Name Tag, Crystal
-  Optimizer, XP Orb Clumping, Fast XP, Boat View 360, No Enchant Glint, No Rain, No Pumpkin Blur,
+  Optimizer, Crystal Tap, Spears like 1.21.11 (the jab with its full reach and the charge work on
+  1.21.11 servers), XP Orb Clumping, Fast XP, Boat View 360, No Enchant Glint, No Rain, No Pumpkin Blur,
   Dark Inventories and Thunder menu sounds,
   optional shaders (LOW / MEDIUM / HIGH looks, glowing lava and torches, underwater rays, waving
   plants and leaves, reflective waves on water), an animated Thunder title screen (storm clouds,
