@@ -51,13 +51,19 @@ the game loads, the relay can be reached too.
 
 Set it up once:
 
-1. Cloudflare dashboard -> **Workers & Pages** -> **Create** -> **Import a repository** (connect
-   GitHub if asked) -> pick this repository. In the settings before deploying:
+1. Cloudflare dashboard -> **Workers & Pages** -> **Create application** -> **Import a
+   repository** (connect GitHub if asked) -> pick this repository. On **Set up your
+   application**:
    - **Project name**: `thunder-relay` (the name in `thunder-relay/wrangler.toml`)
-   - **Root directory** (under the build settings): `thunder-relay`
    - **Build command**: leave empty; **Deploy command**: `npx wrangler deploy` (the default)
+   - **Enable Preview builds**: off (only `main` is deployed)
+   - **Advanced settings** -> **Path**: `/thunder-relay`
+   - **API token**: leave it on **Create new token** (Cloudflare makes its own build token)
 
-   Then **Deploy**. Cloudflare deploys it again by itself whenever `main` changes.
+   Then **Deploy**. Cloudflare deploys it again by itself whenever `main` changes. If the build
+   log ends with "root directory not found", the Path is misspelled: fix it under the Worker's
+   **Settings** -> **Build**, then start a new build (**Deployments** -> **Retry build**, or any
+   push to `main`); a build that already failed stays failed.
 2. **Workers & Pages** -> the Pages project that serves the site (`thunderclient`) -> **Settings**
    -> **Bindings** -> **Add** -> **Service binding**: variable name `RELAY`, service
    `thunder-relay`. Save.
