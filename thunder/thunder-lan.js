@@ -10,7 +10,9 @@
        - the relay protocol (EaglerSPRelay, protocol version 1): the host registers and gets a join
          code, a friend looks the code up, and the relay passes the WebRTC offer/answer and ICE
          candidates between them (it never sees game traffic);
-       - WebRTC data channels ("lan", reliable and ordered) between the two browsers;
+       - WebRTC data channels ("lan", reliable and ordered) between the two browsers, with
+         reliable STUN servers and this site's own TURN relay when it has one (/turn,
+         functions/turn.js) for computers that cannot reach each other directly;
        - host: each friend's data channel is bridged to a player channel on the host's server
          worker, bytes passed through unchanged in both directions;
        - friend: the game's own singleplayer connecting screen and login run as usual, with the
@@ -20,12 +22,14 @@
      @hook EBA net.lax1dude.eaglercraft.sp.internal.ClientPlatformSingleplayer.sendPacket
      @hook E9$ net.lax1dude.eaglercraft.sp.SingleplayerServerController.setPaused
      @hook CnZ net.lax1dude.eaglercraft.sp.SingleplayerServerController.killWorker
+     @hook FtB net.lax1dude.eaglercraft.notifications.ServerNotificationManager.runTick
 
      Game functions and classes it uses:
      @use DeG net.lax1dude.eaglercraft.sp.internal.ClientPlatformSingleplayer$WorkerBinaryPacketHandlerImpl.onMessage$exported$0
      @use BGl net.minecraft.client.gui.GuiScreen.<init>
      (Minecraft.displayGuiScreen GGs is declared as a hook in thunder-boot.js.)
      @use EE6 net.lax1dude.eaglercraft.profile.EaglerProfile.getName
+     @use F3B net.lax1dude.eaglercraft.profile.EaglerProfile.setName
      @class BoL net.lax1dude.eaglercraft.sp.gui.GuiScreenSingleplayerConnecting
      @class CO net.minecraft.client.gui.GuiScreen
      @virtual TZ net.minecraft.client.gui.GuiScreen doesGuiPauseGame
@@ -56,6 +60,7 @@
      @field bW net.minecraft.client.gui.GuiIngameMenu.initGui GuiButton.enabled
      @field ds net.minecraft.client.gui.GuiIngameMenu.initGui GuiButton.displayString
      @field bE net.minecraft.client.gui.GuiIngameMenu.actionPerformed GuiButton.id
+     @field Jo net.lax1dude.eaglercraft.notifications.ServerNotificationManager.runTick its notification map (null once destroyed)
      (ArrayList size/get: EH and Bm, declared in thunder-client.js)
   ------------------------------------------------------------------------------------------- */
   var LAN_RELAYS=['wss://relay.deev.is/','wss://relay.lax1dude.net/','wss://relay.shhnowisnottheti.me/'];
@@ -121,26 +126,151 @@
     }
     return out;
   }
+  // Connection servers. Two computers that cannot reach each other directly (school Wi-Fi, Wi-Fi
+  // that keeps devices apart, a router without "NAT loopback") need a TURN relay in between; one
+  // computer never does, which is why two tabs always worked. The public relays only hand out
+  // Google STUN and an old free TURN login (openrelay.metered.ca) that no longer works, so Thunder
+  // adds reliable STUN servers and, when this site has them, its own TURN logins: /turn
+  // (functions/turn.js, Cloudflare's TURN service) or a list in localStorage "thunderLanIce".
+  var LAN_STUN=[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']},{urls:'stun:stun.cloudflare.com:3478'}];
+  var LAN_TURN={servers:[],at:0,state:'',promise:null};
+  // TURN logins from this site. They last a day; a new set is asked for after an hour (after 30 s
+  // when the last try failed). Resolves within 2.5 s either way, keeping the last good set.
+  function lanTurn(){
+    var t=now(),keep=LAN_TURN.state==='ok'||LAN_TURN.state==='none'?3600000:30000;
+    if(LAN_TURN.promise&&t-LAN_TURN.at<keep)return LAN_TURN.promise;
+    LAN_TURN.at=t;
+    var url=null;
+    try{url=new W.URL('turn',W.location.href);}catch(_){}
+    if(!url||!/^https?:$/.test(url.protocol)||!W.fetch){LAN_TURN.state='none';LAN_TURN.promise=Promise.resolve(LAN_TURN.servers);return LAN_TURN.promise;}
+    var ctl=W.AbortController?new W.AbortController():null,timer=0;
+    var got=W.fetch(url.href,{cache:'no-store',credentials:'same-origin',signal:ctl?ctl.signal:undefined})
+      .then(function(r){
+        if(r.status===404){LAN_TURN.state='none';LAN_TURN.servers=[];return null;}
+        if(!r.ok){LAN_TURN.state='error '+r.status;return null;}
+        return r.json();
+      })
+      .then(function(j){
+        if(j){
+          var list=Array.isArray(j.iceServers)?j.iceServers.filter(function(s){return s&&s.urls;}):[];
+          LAN_TURN.servers=list;LAN_TURN.state=list.some(lanIsTurn)?'ok':'none';
+        }
+        return LAN_TURN.servers;
+      })['catch'](function(){LAN_TURN.state='error';return LAN_TURN.servers;});
+    var late=new Promise(function(ok){timer=W.setTimeout(function(){if(ctl)try{ctl.abort();}catch(_){}ok(LAN_TURN.servers);},2500);});
+    LAN_TURN.promise=Promise.race([got,late]).then(function(v){W.clearTimeout(timer);return v;});
+    return LAN_TURN.promise;
+  }
+  function lanIsTurn(s){var u=[].concat(s&&s.urls||[]);for(var i=0;i<u.length;i++)if(/^turns?:/i.test(u[i]))return true;return false;}
+  function lanCustomIce(){try{var o=JSON.parse(W.localStorage.getItem('thunderLanIce')||'null');return Array.isArray(o)?o.filter(function(s){return s&&s.urls;}):[];}catch(_){return [];}}
+  // everything a connection uses: Thunder's STUN servers, two of the relay's STUN servers and its
+  // TURN servers (only while this site has none of its own), then custom and site TURN. Each
+  // address is used once; port 53 is left out (browsers block it, so it only slows the search).
+  function lanIceAll(relayIce){
+    var out=[],seen={},stun=0,site=LAN_TURN.servers.some(lanIsTurn);
+    function add(s){
+      var urls=[].concat(s.urls).filter(function(u){
+        u=String(u);
+        var k=/^turns?:/i.test(u)?u+'|'+(s.username||''):u;
+        if(seen[k]||/^(stuns?|turns?):[^?]*:53(\?|$)/i.test(u))return false;
+        seen[k]=1;return true;
+      });
+      if(!urls.length)return;
+      var e={urls:urls};
+      if(s.username!=null){e.username=s.username;e.credential=s.credential||'';}
+      out.push(e);
+    }
+    LAN_STUN.forEach(add);
+    (relayIce||[]).forEach(function(s){if(lanIsTurn(s)){if(!site)add(s);}else if(stun++<2)add(s);});
+    lanCustomIce().forEach(add);
+    LAN_TURN.servers.forEach(add);
+    return out;
+  }
+  // the kind of path an ICE candidate offers: host (the same network), srflx/prflx (through the
+  // router, found with STUN), relay (a TURN server)
+  function lanCandKind(c){var m=/ typ (host|srflx|prflx|relay)/.exec(String(c||''));return m?m[1]:'';}
+  function lanCount(kinds,c){var k=lanCandKind(c);if(k&&kinds)kinds[k]=(kinds[k]||0)+1;}
+  function lanKinds(o){var a=[];if(o.host)a.push('host');if(o.srflx||o.prflx)a.push('stun');if(o.relay)a.push('turn');return a.join('+')||'none';}
+  // why a connection probably failed, from the candidates each side offered
+  function lanNetHint(mine,theirs){
+    if(!mine.relay&&!theirs.relay){
+      if(LAN_TURN.state==='ok')return ' The TURN relay could not be reached from either network, so a firewall (often school or work Wi-Fi) is blocking it.';
+      return ' Two computers on different networks, or on Wi-Fi that keeps devices apart, often need a TURN relay, and '+
+        (LAN_TURN.state&&LAN_TURN.state!=='none'?'this site\'s TURN relay did not answer ('+LAN_TURN.state+').':'this site has none set up yet (Right Shift \u2192 Friends \u2192 Connection test).');
+    }
+    return ' Networks such as school or work Wi-Fi can block these connections.';
+  }
+  // how a connection ended up going: 'relay' (through a TURN server) or 'direct'; '' when the
+  // browser does not say
+  var LAN_PATHS={direct:'directly',relay:'through the TURN relay'};
+  function lanPath(pc,done){
+    var st;
+    try{st=pc.getStats();}catch(_){done('');return;}
+    st.then(function(r){
+      var pair=null,a,b;
+      r.forEach(function(x){if(!pair&&x.type==='transport'&&x.selectedCandidatePairId)pair=r.get(x.selectedCandidatePairId);});
+      r.forEach(function(x){if(!pair&&x.type==='candidate-pair'&&(x.selected||x.nominated&&x.state==='succeeded'))pair=x;});
+      a=pair&&r.get(pair.localCandidateId);b=pair&&r.get(pair.remoteCandidateId);
+      if(!a||!b){done('');return;}
+      done(a.candidateType==='relay'||b.candidateType==='relay'?'relay':'direct');
+    },function(){done('');});
+  }
+  // Connection test (Right Shift > Friends): whether the relays answer, and which kinds of paths
+  // this device can offer with the same servers a real connection uses
+  var LAN_TEST={state:'',text:''};
+  function lanSelfTest(){
+    if(LAN_TEST.state==='running')return;
+    function finish(text){LAN_TEST.state='done';LAN_TEST.text=text;if(menuOpen)runLive();}
+    if(!lanSupported()){finish('This browser has no WebRTC, so it cannot play with friends.');return;}
+    LAN_TEST.state='running';LAN_TEST.text='Testing, about 8 seconds...';
+    var kinds={},relays=lanRelays(),relaysOk=0;
+    relays.forEach(function(url){
+      var ws=null;
+      try{ws=new W.WebSocket(url);}catch(_){return;}
+      var t=W.setTimeout(function(){try{ws.close();}catch(_){}},5000);
+      ws.onopen=function(){relaysOk++;W.clearTimeout(t);try{ws.close();}catch(_){}};
+      ws.onerror=function(){};
+    });
+    lanTurn().then(function(){
+      var pc;
+      try{pc=new W.RTCPeerConnection({iceServers:lanIceAll([])});}catch(e){finish('WebRTC could not start ('+(e&&e.message||e)+').');return;}
+      pc.onicecandidate=function(e){if(e.candidate)lanCount(kinds,e.candidate.candidate);};
+      try{pc.createDataChannel('test');}catch(_){}
+      pc.createOffer().then(function(o){return pc.setLocalDescription(o);})['catch'](function(){});
+      W.setTimeout(function(){
+        try{pc.close();}catch(_){}
+        var turn=LAN_TURN.state==='ok'?(kinds.relay?'works':'set up, but this network blocks it'):
+          LAN_TURN.state==='none'?'not set up on this site':'this site did not give a login ('+LAN_TURN.state+')';
+        var sum;
+        if(!relaysOk)sum='No relay answered, so this network (or an extension) blocks them: codes cannot work here.';
+        else if(kinds.relay)sum='Friends should be able to connect from other networks too.';
+        else if(!kinds.srflx&&!kinds.prflx)sum='This network blocks browser-to-browser connections; only a TURN relay could get through.';
+        else sum='Friends on the same computer, or on home networks that allow it, can connect. Other networks and school Wi-Fi need the TURN relay.';
+        finish('Relays: '+relaysOk+' of '+relays.length+' answered. Internet (STUN): '+(kinds.srflx||kinds.prflx?'yes':'no')+'. TURN relay: '+turn+'. '+sum);
+      },5000);
+    });
+  }
   var LAN_ERRORS={0:'relay internal error',1:'protocol version not supported',2:'invalid packet',3:'illegal operation',
     4:'wrong code length',5:'no world with that code',6:'the world was closed',7:'unknown client'};
 
   // Connect to the relays in order until one completes the handshake. type 1 = host (code is the
   // world name, the relay answers with the join code), 2 = friend (code is the join code).
   // done(sock, handshake) or fail(message, lastErrorCode). Later packets go to sock.onPacket.
-  // A relay drops a connection whose handshake arrives more than 500 ms after it opened; a busy
-  // game frame can delay the page that long, so a relay that closes right after opening is tried
-  // again (up to 3 times) before moving on.
+  // A relay drops a connection whose handshake arrives more than 500 ms after it opened; the
+  // socket's Worker sends it at once (see lanSocket), and a relay that still closes right after
+  // opening (a page without Workers during a busy game frame) is tried again (up to 3 times)
+  // before moving on.
   function lanHandshake(type,code,progress,done,fail){
     var relays=lanRelays(),idx=-1,tries=0,lastErr='',lastCode=-1,cancelled=false;
     function next(again){
       if(cancelled)return;
       if(again&&tries<3)tries++;
       else{tries=1;if(++idx>=relays.length){fail(lastErr||'no relay could be reached',lastCode);return;}}
-      var url=relays[idx],sock=lanSocket(url),openedAt=0;
+      var url=relays[idx],sock=lanSocket(url,lanHandshakePkt(type,code)),openedAt=0;
       if(progress)progress(url);
       if(!sock){lastErr='could not open '+lanRelayName(url);next();return;}
       var settled=false,t=W.setTimeout(function(){if(!settled){settled=true;lastErr=lanRelayName(url)+' did not answer';sock.close();next();}},LAN_RELAY_TIMEOUT);
-      sock.onOpen=function(){openedAt=now();sock.send(lanHandshakePkt(type,code));};
+      sock.onOpen=function(){openedAt=now();};          // the handshake went out as the socket opened
       sock.onPacket=function(p){
         if(settled)return;
         settled=true;W.clearTimeout(t);
@@ -159,44 +289,93 @@
     next();
     return {cancel:function(){cancelled=true;}};
   }
-  function lanSocket(url){
-    var ws;
-    try{ws=new W.WebSocket(url);}catch(e){return null;}
-    ws.binaryType='arraybuffer';
-    var S2={url:url,open:false,closed:false,onOpen:null,onPacket:null,onClose:null,
-      send:function(buf){if(S2.open&&!S2.closed){try{ws.send(buf);}catch(_){}}},
-      close:function(){if(!S2.closed){S2.closed=true;try{ws.close();}catch(_){}}}};
-    ws.onopen=function(){S2.open=true;if(S2.onOpen)S2.onOpen();};
-    ws.onmessage=function(e){
-      if(typeof e.data==='string'||S2.closed)return;
+  // The relay drops a connection whose handshake comes more than 500 ms after it opened, and a
+  // heavy game frame (a slow computer loading chunks just after entering a world) can hold the
+  // page that long. So the socket runs in a small Worker that sends the handshake (first) the
+  // moment the connection opens, and passes packets to and from the page unchanged. Where a
+  // Worker cannot start, the socket runs on the page as before.
+  var LAN_WS_SRC='var ws=null;onmessage=function(e){var m=e.data;'+
+    'if(m.t==="open"){try{ws=new WebSocket(m.url);}catch(_){postMessage({t:"close"});return;}ws.binaryType="arraybuffer";'+
+      'ws.onopen=function(){if(m.first){try{ws.send(m.first);}catch(_){}}postMessage({t:"open"});};'+
+      'ws.onmessage=function(ev){if(typeof ev.data!=="string")postMessage({t:"msg",d:ev.data},[ev.data]);};'+
+      'ws.onclose=function(){ws=null;postMessage({t:"close"});};ws.onerror=function(){};}'+
+    'else if(m.t==="send"){if(ws&&ws.readyState===1){try{ws.send(m.d);}catch(_){}}}'+
+    'else if(m.t==="close"){if(ws){try{ws.close();}catch(_){}}else postMessage({t:"close"});}};';
+  var lanWsUrl=null;
+  function lanWsWorker(){
+    try{
+      if(!W.Worker||!W.Blob||!W.URL||!W.URL.createObjectURL)return null;
+      if(!lanWsUrl)lanWsUrl=W.URL.createObjectURL(new W.Blob([LAN_WS_SRC],{type:'text/javascript'}));
+      return new W.Worker(lanWsUrl);
+    }catch(_){return null;}
+  }
+  function lanSocket(url,first){
+    var S2={url:url,open:false,closed:false,worker:false,onOpen:null,onPacket:null,onClose:null,send:null,close:null};
+    function opened(){if(S2.open||S2.closed)return;S2.open=true;if(S2.onOpen)S2.onOpen();}
+    function packet(data){
+      if(S2.closed||typeof data==='string')return;
       var p;
-      try{p=lanRead(e.data);}catch(err){S2.close();if(S2.onClose)S2.onClose('bad packet');return;}
+      try{p=lanRead(data);}catch(err){S2.close();if(S2.onClose)S2.onClose('bad packet');return;}
       if(p.other)return;
       if(S2.onPacket)S2.onPacket(p);
-    };
-    ws.onclose=function(){var was=S2.closed;S2.closed=true;S2.open=false;if(!was&&S2.onClose)S2.onClose('closed');};
-    ws.onerror=function(){};
-    return S2;
+    }
+    function ended(){var was=S2.closed;S2.closed=true;S2.open=false;if(!was&&S2.onClose)S2.onClose('closed');}
+    function direct(){
+      var ws;
+      try{ws=new W.WebSocket(url);}catch(e){return false;}
+      ws.binaryType='arraybuffer';
+      S2.worker=false;
+      S2.send=function(buf){if(S2.open&&!S2.closed){try{ws.send(buf);}catch(_){}}};
+      S2.close=function(){if(!S2.closed){S2.closed=true;S2.open=false;try{ws.close();}catch(_){}}};
+      ws.onopen=function(){if(S2.closed){try{ws.close();}catch(_){}return;}if(first){try{ws.send(first);}catch(_){}}opened();};
+      ws.onmessage=function(e){packet(e.data);};
+      ws.onclose=ended;
+      ws.onerror=function(){};
+      return true;
+    }
+    var wk=lanWsWorker();
+    if(wk){
+      var stop=function(){try{wk.terminate();}catch(_){}};
+      S2.worker=true;
+      wk.onmessage=function(e){var m=e.data||{};if(m.t==='open')opened();else if(m.t==='msg')packet(m.d);else if(m.t==='close'){stop();ended();}};
+      wk.onerror=function(ev){
+        try{if(ev&&ev.preventDefault)ev.preventDefault();}catch(_){}
+        stop();
+        if(!S2.open&&!S2.closed&&direct())return;       // the Worker could not start: run on the page
+        ended();
+      };
+      S2.send=function(buf){if(S2.open&&!S2.closed)wk.postMessage({t:'send',d:buf});};
+      S2.close=function(){if(!S2.closed){S2.closed=true;S2.open=false;wk.postMessage({t:'close'});W.setTimeout(stop,2000);}};
+      wk.postMessage({t:'open',url:url,first:first||null});
+      return S2;
+    }
+    return direct()?S2:null;
   }
 
   // ICE candidates as EaglercraftX sends them: collected for LAN_CAND_WAIT after the first one
   // (or until gathering ends), then one JSON list of {sdpMLineIndex, candidate}
-  function lanCollect(pc,ready){
-    var list=[],timer=0,sent=false;
-    function flush(){if(sent)return;sent=true;if(timer)W.clearTimeout(timer);ready(JSON.stringify(list));}
+  // (kinds, if given, counts what kinds of paths the sent list offers)
+  function lanCollect(pc,ready,kinds){
+    var list=[],timer=0,idle=0,sent=false;
+    function flush(){if(sent)return;sent=true;if(timer)W.clearTimeout(timer);if(idle)W.clearTimeout(idle);ready(JSON.stringify(list));}
+    // no candidate at all (a browser or school policy that allows only TURN, and none answers):
+    // the empty list still goes out, so the other side is not left waiting until the relay gives up
+    pc.onicegatheringstatechange=function(){if(pc.iceGatheringState==='gathering'&&!idle&&!timer&&!sent)idle=W.setTimeout(flush,LAN_CAND_WAIT+1000);};
     pc.onicecandidate=function(e){
       if(sent)return;
       if(!e.candidate){flush();return;}           // gathering finished
+      lanCount(kinds,e.candidate.candidate);
       list.push({sdpMLineIndex:''+e.candidate.sdpMLineIndex,candidate:e.candidate.candidate});
-      if(!timer)timer=W.setTimeout(flush,LAN_CAND_WAIT);
+      if(!timer){timer=W.setTimeout(flush,LAN_CAND_WAIT);if(idle)W.clearTimeout(idle);}
     };
     return flush;
   }
-  function lanAddCandidates(pc,text){
+  function lanAddCandidates(pc,text,kinds){
     var list;
     try{list=JSON.parse(text);}catch(_){return 0;}
     var n=0;
     for(var i=0;list&&i<list.length;i++){
+      lanCount(kinds,list[i]&&list[i].candidate);
       try{pc.addIceCandidate(new W.RTCIceCandidate({candidate:list[i].candidate,sdpMLineIndex:+list[i].sdpMLineIndex||0}))['catch'](function(){});n++;}catch(_){}
     }
     return n;
@@ -273,6 +452,7 @@
     var why=lanHostBlocker();
     if(why){lanStatus(LH,'error',why);return;}
     LH.code='';LH.relay='';LH.ice=[];
+    lanTurn();                         // this site's TURN logins, ready before a friend arrives
     lanStatus(LH,'connecting','connecting to a relay');
     LH.pending=lanHandshake(1,'Thunder world;0',function(url){lanStatus(LH,'connecting','connecting to '+lanRelayName(url));},
       function(sock,hs){
@@ -350,6 +530,7 @@
     if(!LH.watch)LH.watch=W.setInterval(function(){
       if(HAY!==LH.worker){for(var k in LH.peers)lanHostDrop(LH.peers[k],'the world stopped');lanHostWorldClosed();}
       else if(!lanWorldRunning()||!HEN||!HEN.X)lanHostWorldClosed();
+      if(LH.state==='open')lanTurn();  // keeps the TURN logins fresh (asks again once an hour)
       if(menuOpen)runLive();
     },1000);
   }
@@ -365,7 +546,7 @@
     if(p.id===0xFF){if(p.code!==7)lanLog('relay error '+p.code+': '+p.text);return;}   // 7: a friend it already finished with
     if(!P)return;
     if(p.id===0x04)lanHostOffer(P,p.text);
-    else if(p.id===0x03){lanAddCandidates(P.pc,p.text);P.gotCands=true;lanHostSendCands(P);}
+    else if(p.id===0x03){lanAddCandidates(P.pc,p.text,P.theirs);P.gotCands=true;lanHostSendCands(P);}
     else if(p.id===0x05)P.relayOk=true;
     else if(p.id===0xFE){
       // the relay is done with this friend. If it gave up before this host even answered (a busy
@@ -379,17 +560,21 @@
   function lanHostNewPeer(id){
     if(!id||LH.peers[id])return;
     var P={id:id,pc:null,dc:null,channel:false,dead:false,gotCands:false,myCands:null,candsSent:false,answered:false,name:'',first:true,play:false,kicked:false,
-      timer:W.setTimeout(function(){if(!P.channel)lanHostDrop(P,'timed out');},LAN_RTC_TIMEOUT+10000)};
+      mine:{},theirs:{},path:'',
+      timer:W.setTimeout(function(){if(!P.channel)lanHostDrop(P,'timed out ('+lanKinds(P.mine)+' / '+lanKinds(P.theirs)+')');},LAN_RTC_TIMEOUT+10000)};
     LH.peers[id]=P;
-    try{P.pc=new W.RTCPeerConnection({iceServers:LH.ice});}catch(e){lanHostDrop(P,'WebRTC failed');return;}
-    lanCollect(P.pc,function(json){P.myCands=json;lanHostSendCands(P);});
+    try{P.pc=new W.RTCPeerConnection({iceServers:lanIceAll(LH.ice)});}catch(e){lanHostDrop(P,'WebRTC failed');return;}
+    lanCollect(P.pc,function(json){P.myCands=json;lanHostSendCands(P);},P.mine);
     P.pc.ondatachannel=function(e){
       var dc=e.channel;P.dc=dc;dc.binaryType='arraybuffer';
       dc.onmessage=function(ev){lanHostFromPeer(P,ev.data);};
       dc.onclose=function(){lanHostDrop(P,'disconnected');};
       if(dc.readyState==='open')lanHostOpenChannel(P);else dc.onopen=function(){lanHostOpenChannel(P);};
     };
-    P.pc.onconnectionstatechange=function(){var s=P.pc.connectionState;if(s==='failed'||s==='closed')lanHostDrop(P,'connection '+s);};
+    P.pc.onconnectionstatechange=function(){
+      var s=P.pc.connectionState;
+      if(s==='failed'||s==='closed')lanHostDrop(P,'connection '+s+(P.channel?'':' ('+lanKinds(P.mine)+' / '+lanKinds(P.theirs)+')'));
+    };
     lanLog('friend '+id+' is connecting');
     if(menuOpen)runLive();
   }
@@ -412,6 +597,7 @@
     W.clearTimeout(P.timer);
     LH.worker.postMessage({ch:LAN_IPC,dat:lanIpcChannel(P.id,true)});
     lanLog('friend '+P.id+' connected');
+    lanPath(P.pc,function(k){P.path=k;if(k)lanLog('friend '+P.id+' is connected '+LAN_PATHS[k]);if(menuOpen)runLive();});
     if(menuOpen)runLive();
   }
   // friend -> host server. The first packet is the login: two players with one name would replace
@@ -487,9 +673,11 @@
   // Friend: join a world by code
   // =====================================================================================
   var LJ={state:'off',msg:'',code:'',relay:'',sock:null,pc:null,dc:null,active:false,opened:false,frags:[],chain:null,
-    pending:null,watch:0,at:0,peer:'',play:false,lost:'',lostTimer:0,scr:null,reason:''};
+    pending:null,watch:0,at:0,peer:'',play:false,lost:'',lostTimer:0,scr:null,reason:'',path:''};
   function lanJoinBlocker(){
     if(!lanSupported())return 'this browser has no WebRTC, which joining needs';
+    // the host's world arrives compressed, and the browser unpacks it (Chrome 80+, Safari 16.4+, Firefox 113+)
+    if(!W.DecompressionStream)return 'this browser is too old to join worlds; update it, or use a recent Chrome, Edge, Firefox or Safari';
     if((HEN&&HEN.X)||lanWorldRunning())return 'leave the world you are in first (Save and Quit), then join';
     if(lanHosting())return 'stop sharing your own world first';
     return '';
@@ -500,7 +688,8 @@
     if(LJ.state==='finding'||LJ.state==='connecting'||LJ.state==='joining'||LJ.active)return;
     var why=lanJoinBlocker();
     if(why){lanStatus(LJ,'error',why);return;}
-    LJ.code=code;LJ.relay='';
+    LJ.code=code;LJ.relay='';LJ.path='';
+    lanTurn();                         // this site's TURN logins, usually in before the relay answers
     lanStatus(LJ,'finding','looking for the world');
     var tryCode=code,tries=0;
     // A relay gives a friend 10 seconds to connect; a host whose game is very busy can answer too
@@ -528,7 +717,7 @@
     if(LJ.state!=='finding'){sock.close();return;}
     LJ.sock=sock;LJ.relay=sock.url;LJ.peer='';
     lanStatus(LJ,'connecting','connecting to your friend');
-    var pc=null,dc=null,cands=null,gotAnswer=false,candsSent=false,gotCands=false,finished=false,failTimer;
+    var pc=null,dc=null,cands=null,gotAnswer=false,candsSent=false,gotCands=false,finished=false,failTimer,starting=false,mine={},theirs={};
     // the relay accepts "connected" (0x05) only after it has passed on the host's candidates; the
     // data channel can open before that (fast networks), and then the 0x05 waits for them
     function finishRelay(){
@@ -547,28 +736,45 @@
       if(canRetry&&retry&&retry())return;
       lanStatus(LJ,'error',msg);
     }
-    failTimer=W.setTimeout(function(){
-      if(LJ.state==='connecting'){if(LJ.peer!=null)sock.send(lanIdPkt(0x06,LJ.peer));fail('could not connect to your friend\'s game. Networks such as school or work Wi-Fi can block these connections.');}
-    },LAN_RTC_TIMEOUT);
+    function noPath(){
+      lanLog('no connection to the host (this side '+lanKinds(mine)+', host '+lanKinds(theirs)+', site TURN '+(LAN_TURN.state||'unknown')+')');
+      if(LJ.peer!=null)sock.send(lanIdPkt(0x06,LJ.peer));
+      fail('could not connect to your friend\'s game.'+lanNetHint(mine,theirs));
+    }
+    failTimer=W.setTimeout(function(){if(LJ.state==='connecting')noPath();},LAN_RTC_TIMEOUT);
     function sendCands(){if(!candsSent&&gotAnswer&&cands!=null){candsSent=true;sock.send(lanPeerPkt(0x03,'',cands));}}
+    // the offer goes out once this site's TURN logins are in (asked for when Join was pressed, so
+    // normally already there; never more than 2.5 s)
+    function start(relayIce){
+      if(pc||LJ.sock!==sock||LJ.state!=='connecting')return;      // cancelled or failed meanwhile
+      try{pc=new W.RTCPeerConnection({iceServers:lanIceAll(relayIce)});}catch(e){fail('WebRTC is not available');return;}
+      LJ.pc=pc;
+      lanCollect(pc,function(json){cands=json;sendCands();},mine);
+      dc=pc.createDataChannel('lan');dc.binaryType='arraybuffer';LJ.dc=dc;
+      dc.onopen=function(){
+        W.clearTimeout(failTimer);
+        if(LJ.state!=='connecting')return;
+        finishRelay();
+        lanJoinStart();
+        lanPath(pc,function(k){if(LJ.pc!==pc)return;LJ.path=k;if(k)lanLog('connected to the host '+LAN_PATHS[k]);if(menuOpen)runLive();});
+      };
+      dc.onmessage=function(e){lanJoinRx(e.data);};
+      dc.onclose=function(){lanJoinLost('your friend\'s game closed the connection');};
+      pc.onconnectionstatechange=function(){
+        var s=pc.connectionState;
+        // no path at all: say so now instead of when failTimer runs out
+        if(s==='failed'&&LJ.state==='connecting'&&LJ.pc===pc&&dc.readyState!=='open'){W.clearTimeout(failTimer);noPath();return;}
+        if((s==='failed'||s==='closed')&&LJ.dc===dc)lanJoinLost('the connection to your friend failed');
+      };
+      pc.createOffer().then(function(o){return pc.setLocalDescription(o);})
+        .then(function(){sock.send(lanPeerPkt(0x04,'',JSON.stringify(pc.localDescription)));})
+        ['catch'](function(e){fail('could not start WebRTC ('+(e&&e.message||e)+')');});
+    }
     sock.onPacket=function(p){
-      if(p.id===0x01&&!pc){
-        try{pc=new W.RTCPeerConnection({iceServers:lanIce(p.servers)});}catch(e){fail('WebRTC is not available');return;}
-        LJ.pc=pc;
-        lanCollect(pc,function(json){cands=json;sendCands();});
-        dc=pc.createDataChannel('lan');dc.binaryType='arraybuffer';LJ.dc=dc;
-        dc.onopen=function(){
-          W.clearTimeout(failTimer);
-          if(LJ.state!=='connecting')return;
-          finishRelay();
-          lanJoinStart();
-        };
-        dc.onmessage=function(e){lanJoinRx(e.data);};
-        dc.onclose=function(){lanJoinLost('your friend\'s game closed the connection');};
-        pc.onconnectionstatechange=function(){var s=pc.connectionState;if((s==='failed'||s==='closed')&&LJ.dc===dc)lanJoinLost('the connection to your friend failed');};
-        pc.createOffer().then(function(o){return pc.setLocalDescription(o);})
-          .then(function(){sock.send(lanPeerPkt(0x04,'',JSON.stringify(pc.localDescription)));})
-          ['catch'](function(e){fail('could not start WebRTC ('+(e&&e.message||e)+')');});
+      if(p.id===0x01&&!pc&&!starting){
+        starting=true;
+        var relayIce=lanIce(p.servers);
+        lanTurn().then(function(){start(relayIce);},function(){start(relayIce);});
         return;
       }
       if(p.id===0x04&&pc){
@@ -577,7 +783,7 @@
         return;
       }
       if(p.id===0x03&&pc){
-        LJ.peer=p.peer;lanAddCandidates(pc,p.text);gotCands=true;
+        LJ.peer=p.peer;lanAddCandidates(pc,p.text,theirs);gotCands=true;
         if(dc&&dc.readyState==='open')finishRelay();
         return;
       }
@@ -595,6 +801,10 @@
     LJ.active=true;LJ.opened=false;LJ.frags=[];LJ.chain=Promise.resolve();LJ.play=false;LJ.lost='';LJ.reason='';
     lanStatus(LJ,'joining','logging in');
     runOnGame([
+      // the login carries the game session's name, which is only copied from the profile on
+      // Edit Profile's Done or when a world closes; Quick Start skips the start-up Edit Profile,
+      // so a friend joining first thing would log in with the random start-up name
+      function(){F3B(EE6());},
       function(){if(!LJ.scr)LJ.scr=new BoL();BGl(LJ.scr);},
       function(){var s=LJ.scr;s.blC=null;s.cxf=0;s.cGJ=0;s.b$T=HEN.cm;s.cTm=$rt_str('Joining '+LJ.code+'...');},
       function(){GGs(HEN,LJ.scr);},
@@ -717,6 +927,18 @@
     return origCnZ();
   };
 
+  // A friend leaving the world (the host stopped sharing, removed them or closed the world) is
+  // handled inside the game's own tick: the Disconnect packet comes through the singleplayer
+  // connection, whose closeChannel runs onDisconnect -> loadWorld(null) on the spot, and that
+  // destroys the connection's server notification manager. The same tick then calls runTick on
+  // it, which crashed the friend's game whenever its 2.5 s timer was due. A destroyed manager has
+  // nothing left to do, so runTick returns.
+  var origFtB=FtB;
+  FtB=function(a){
+    if(a&&a.Jo===null&&!$rt_resuming())return;
+    return origFtB(a);
+  };
+
   // The friend's game sends the local player's packets through this; while joined they go to the
   // friend's host instead of a local server, and IPC to the (absent) local server is dropped.
   var origEBA=EBA;
@@ -786,7 +1008,7 @@
     switch(LJ.state){
       case 'finding':case 'connecting':return ['tcm-warn','Joining',LJ.msg];
       case 'joining':return ['tcm-warn','Joining','logging in to '+LJ.code];
-      case 'playing':return ['tcm-ok','Playing','in your friend\'s world ('+LJ.code+')'];
+      case 'playing':return ['tcm-ok','Playing','in your friend\'s world ('+LJ.code+')'+(LJ.path?', connected '+LAN_PATHS[LJ.path]:'')];
       case 'error':return ['tcm-bad','Could not join',LJ.msg];
       default:
         var why=lanJoinBlocker(),me=lanMyName();
@@ -795,6 +1017,7 @@
   }
   SPECIALS.lanhost=function(box){
     lanCss();
+    lanTurn();
     lanStatusRow(box,lanHostStatus);
     var codeBox=el('div','tcl-code'),codeText=el('b'),codeHint=el('span','','Friends type this code in Right Shift \u2192 Friends \u2192 Join');
     var copy=lanBtn('Copy',function(){try{W.navigator.clipboard.writeText(LH.code);copy.textContent='Copied';W.setTimeout(function(){copy.textContent='Copy';},1200);}catch(_){}});
@@ -804,7 +1027,7 @@
     var list=el('div','tcl-list'),listKey=null;box.appendChild(list);
     function peerRow(P){
       var row=el('div','tcl-peer');
-      row.appendChild(el('span',null,(P.name||'Someone')+(P.kicked?' (leaving)':P.channel?'':' (connecting)')));
+      row.appendChild(el('span',null,(P.name||'Someone')+(P.kicked?' (leaving)':!P.channel?' (connecting)':P.path==='relay'?' (through the TURN relay)':'')));
       if(!P.kicked)row.appendChild(lanBtn('Remove',function(){lanHostKick(P,'The host removed you from the world.','removed by the host');}));
       return row;
     }
@@ -816,7 +1039,7 @@
       codeBox.style.display=LH.state==='open'&&LH.code?'':'none';
       codeText.textContent=LH.code;
       var key='',k,P;
-      for(k in LH.peers){P=LH.peers[k];key+=k+'/'+P.name+'/'+(P.channel?1:0)+(P.kicked?1:0)+'|';}
+      for(k in LH.peers){P=LH.peers[k];key+=k+'/'+P.name+'/'+(P.channel?1:0)+(P.kicked?1:0)+P.path+'|';}
       if(key!==listKey){              // rebuilt only on change, so a Remove click is never lost
         listKey=key;
         while(list.firstChild)list.removeChild(list.firstChild);
@@ -831,6 +1054,7 @@
   };
   SPECIALS.lanjoin=function(box){
     lanCss();
+    lanTurn();
     lanStatusRow(box,lanJoinStatus);
     var row=el('div','tcl-row'),input=el('input');
     input.type='text';input.placeholder='Join code';input.maxLength=32;input.spellcheck=false;input.autocomplete='off';
@@ -860,6 +1084,19 @@
     ].forEach(function(t){ol.appendChild(el('li',null,t));});
     box.appendChild(ol);
   };
+  SPECIALS.lantest=function(box){
+    lanCss();
+    var info=el('div','tcl-list'),act=el('div','tcm-actions');
+    var go=lanBtn('Test connection',function(){lanSelfTest();runLive();});
+    box.appendChild(info);act.appendChild(go);box.appendChild(act);
+    lanTurn().then(function(){if(menuOpen)runLive();});
+    addLive(function(){
+      var turn=LAN_TURN.state==='ok'?'set up':LAN_TURN.state==='none'?'not set up':LAN_TURN.state?'did not answer ('+LAN_TURN.state+')':'checking';
+      info.textContent=LAN_TEST.text||('TURN relay on this site: '+turn+'. The test shows what this network lets through (about 8 seconds).');
+      go.style.display=LAN_TEST.state==='running'?'none':'';
+      go.textContent=LAN_TEST.state==='done'?'Test again':'Test connection';
+    });
+  };
   ICONS.friends='<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="17" cy="9" r="2.6"/><path d="M15.4 13.6c2.6-.4 4.7 1 5.1 4.4"/>';
   CATEGORIES.splice(1,0,{id:'friends',name:'Friends'});
   var LAN_MOD_OPEN={cat:'friends',id:null,name:'Open to Friends',wide:true,special:'lanhost',
@@ -868,7 +1105,9 @@
       desc:'Join a world a friend opened with Open to Friends. Use it from the title screen.'};
   MODULES.push(LAN_MOD_OPEN,LAN_MOD_JOIN,
     {cat:'friends',id:null,name:'How it works',wide:true,special:'lanhow',
-      desc:'Codes come from Eaglercraft\'s public shared-world relays; the game itself runs over a direct browser-to-browser connection.'}
+      desc:'Codes come from Eaglercraft\'s public shared-world relays; the game itself runs over a direct browser-to-browser connection.'},
+    {cat:'friends',id:null,name:'Connection test',wide:true,special:'lantest',
+      desc:'Checks what this network lets through: the relays, direct connections, and the TURN relay that friends on other networks or school Wi-Fi need.'}
   );
 
   // The game's pause menu has an "Open to LAN" button (id 7) that this build leaves greyed out.
@@ -930,4 +1169,5 @@
     }
   },700);
 
-  TC.lan={host:LH,join:LJ,relays:lanRelays,name:lanMyName,open:lanHostStart,stop:lanHostStop,joinCode:lanJoin,cancel:lanJoinCancel};
+  TC.lan={host:LH,join:LJ,relays:lanRelays,name:lanMyName,open:lanHostStart,stop:lanHostStop,joinCode:lanJoin,cancel:lanJoinCancel,
+    turn:LAN_TURN,fetchTurn:lanTurn,test:LAN_TEST,selfTest:lanSelfTest,ice:lanIceAll};

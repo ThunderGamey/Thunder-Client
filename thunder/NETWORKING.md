@@ -32,6 +32,42 @@ Everyone needs a different player name (Edit Profile on the title screen). A fri
 host's name, or the name of someone already in, is refused with a message saying so instead of
 kicking that player out.
 
+## Friends on other networks: switch on the TURN relay (site owner, once)
+
+Two tabs on one computer always connect. Two computers often cannot reach each other directly:
+school and work Wi-Fi, Wi-Fi that keeps devices apart, and home routers without "NAT loopback"
+block it (this is why Friends worked in two tabs on one Mac or one laptop, but not between
+computers). Those connections have to go through a TURN relay. The public Eaglercraft relays
+only hand out an old free TURN login (openrelay.metered.ca) that no longer works, so Thunder
+brings its own: the site asks Cloudflare's TURN service for a login (`functions/turn.js`, a
+Cloudflare Pages Function served at `/turn`) and every Friends connection uses it when a direct
+path fails. Until it is switched on, `/turn` answers "TURN is not set up for this site" and
+Friends works exactly as before.
+
+1. In the Cloudflare dashboard of the account that hosts the site: **Realtime** (called Calls in
+   older dashboards) -> **TURN Server** -> **Create**. Keep the page open: it shows the key's
+   **Turn Token ID** and its **API Token** (the API token is shown once).
+2. **Workers & Pages** -> the Thunder Client Pages project -> **Settings** -> **Variables and
+   Secrets** -> add, for Production:
+   - `TURN_KEY_ID` = the Turn Token ID (type Text)
+   - `TURN_KEY_API_TOKEN` = the API Token (type **Secret**)
+3. Deploy again (Deployments -> the latest one -> Retry deployment, or push any commit). The
+   function only runs on sites deployed from Git (as this one is), not on drag-and-drop uploads.
+4. Check: open `https://<your site>/turn` (for example `https://thunder-client-7ce.pages.dev/turn`):
+   it should list `turn:turn.cloudflare.com` addresses. In the game, **Right Shift -> Friends ->
+   Connection test** should say "TURN relay: works".
+
+The API token never reaches the browser: the page only gets logins that stop working after 24
+hours. Only connections that cannot go directly use the relay. Cloudflare has offered a free
+monthly TURN allowance (1,000 GB a month in 2025) and bills beyond it; check the current prices on
+Cloudflare's Realtime pricing page, and the usage in the dashboard. Cloudflare's own guide to TURN
+keys: https://developers.cloudflare.com/realtime/turn/
+
+Everyone can check their own network with **Right Shift -> Friends -> Connection test**: whether
+the relays answer (school filters sometimes block them, and then codes cannot work at all),
+whether the browser can reach the internet directly (STUN), and whether the TURN relay works
+there.
+
 ## How it works
 
 The server half of Eaglercraft's shared-world system is already in this build: the integrated
@@ -44,9 +80,18 @@ EaglercraftX's LAN framing on them. The browser half was never compiled in, and 
   offer/answer and ICE candidates between them. It never sees game traffic. Relays are tried in
   order: the list in `localStorage.thunderLanRelays` (JSON list, for a self-hosted relay), else
   the `relays` in the launcher's `eaglercraftXOpts`, else `wss://relay.deev.is/`,
-  `wss://relay.lax1dude.net/`, `wss://relay.shhnowisnottheti.me/`.
-- **WebRTC data channel** ("lan", reliable and ordered) directly between the two browsers, using
-  the STUN/TURN servers the relay hands out.
+  `wss://relay.lax1dude.net/`, `wss://relay.shhnowisnottheti.me/`. A relay drops a connection
+  whose handshake comes more than 500 ms after it opened, and a heavy game frame can hold the page
+  that long (a slow computer loading chunks just after entering a world), so the relay socket
+  runs in a small Worker that sends the handshake the moment the connection opens (on the page
+  if a Worker cannot start).
+- **WebRTC data channel** ("lan", reliable and ordered) between the two browsers. Connection
+  servers: Thunder's own STUN servers (Google, Cloudflare), the relay's list, and the site's TURN
+  logins from `/turn` (see above) or a JSON list of `RTCIceServer` entries in
+  `localStorage.thunderLanIce` (for trying another TURN server). If no path works, the message
+  says why: no TURN relay on either side, a TURN relay the network blocks, or a network that
+  blocks browser-to-browser connections. When connected, the friend's Friends panel says whether
+  it went directly or through the TURN relay.
 - **Host:** each friend's data channel is bridged to a player channel on the host's server
   Worker. Bytes pass through unchanged both ways; the Worker already frames and compresses them.
 - **Friend:** the game's own singleplayer connecting screen and login run as usual; the local
@@ -57,8 +102,17 @@ Game functions it wraps (each wrapper falls through to the original; all names a
 `build.js` against the base's own deobfuscation table): `ClientPlatformSingleplayer.sendPacket`
 (friend's outgoing packets), `SingleplayerServerController.setPaused` and
 `GuiScreen.doesGuiPauseGame` (no pause while hosting), `SingleplayerServerController.killWorker`
-(the connecting screen's Cancel ends a join instead of killing the local world Worker) and
-`GuiIngameMenu.initGui`/`actionPerformed` (the pause menu button). Steps that must run on the
+(the connecting screen's Cancel ends a join instead of killing the local world Worker),
+`GuiIngameMenu.initGui`/`actionPerformed` (the pause menu button) and
+`ServerNotificationManager.runTick`. That last one: a friend leaving the world (the host stopped
+sharing, removed them or closed the world) is handled inside the game's own tick, where the
+singleplayer connection tears the world down on the spot and destroys the connection's
+notification manager; the same tick then ran that manager's 2.5-second timer on it, which crashed
+the friend's game whenever the timer happened to be due in that tick (one leave in three in the
+slow test browser). A destroyed manager now just returns. Before a
+friend's login, the game session's name is copied from the profile (`EaglerProfile.setName`):
+Quick Start skips the start-up Edit Profile screen that normally does this, and a friend who
+joined first thing logged in with the random start-up name instead of their own. Steps that must run on the
 game thread (such as opening the connecting screen) go through the shared runner in
 `thunder-client.js`, which runs them from `RateLimitTracker.tick` once per frame.
 
@@ -85,9 +139,32 @@ real mouse/keyboard input unless noted.
 | The join screen's own **Cancel Task** | back to the title screen, join ended, host drops the half-joined friend; the friend's own singleplayer still works (created and entered a new world afterwards) |
 | Rest of Thunder on the same build | shader self-test 263/263 programs, GL error 0; HUD, Hand Item Size, Hitboxes, menu unchanged; no page errors in any browser |
 
-Not tested: the public internet relays and real home/school networks (no internet access from
-the test machine). The relay protocol, codes and messages are the ones the official relay uses,
-so the public relays behave the same, but NAT/firewall behaviour depends on each network.
+Second round (TURN relay, Connection test and fixes), same setup, two Chromium browsers, plus a
+local TURN server (node-turn) handed out through a test `/turn`. "TURN only" means both browsers
+were forced to use relay paths only, as on a network where direct connections are impossible.
+
+| Scenario | Result |
+|---|---|
+| No TURN on the site (`/turn` 404), normal join | joins as before ("connected directly"); TURN state "none" |
+| TURN only, through the site's TURN relay | joins; both sides report "through the TURN relay"; chat goes through |
+| TURN only, no TURN on the site | fails after 20 s with "...often need a TURN relay, and this site has none set up yet" (before: three relay time-outs, 30 s, "did not answer in time") |
+| TURN only, the site's TURN server unreachable | fails after 20 s with "The TURN relay could not be reached from either network..." |
+| The site's TURN unreachable, normal join | joins directly in 8 s: a dead TURN server does not slow joining down |
+| `/turn` answers garbage (misconfigured) | "this site's TURN relay did not answer (error)"; the Connection test card says the same |
+| Connection test card | "Relays: 1 of 1 answered. Internet (STUN): yes. TURN relay: works. ..." |
+| Open to Friends right after entering the world (failed 2 of 3 times before in this slow test browser: handshake too late) | opens every time; the relay logs the handshake 1 ms after the connection opened |
+| No Worker in the browser / a Worker that fails to start | the relay socket runs on the page instead; hosting and joining work |
+| A friend joins first thing after opening the page | logs in with their profile name (before: a random start-up name such as "YeegYee0908") |
+| Friend's profile name = the host's name | refused with "The host of this world is also called ..." |
+| Host stops sharing (3 times), removes the friend, saves and quits, and the host's tab closes, with the friend's notification timer forced due on every tick | the friend always lands on "Connection Lost" with the reason; no crash (before: the friend's game crashed once in three stops, "Cannot read properties of null (reading 'g')" in `ServerNotificationManager.runTick`) |
+| Friend keeps their own pause menu open for 40 s | stays in the world; chat afterwards reaches the host |
+| Browser without `DecompressionStream` | Join says the browser is too old instead of failing later |
+| `functions/turn.js` in Node with Cloudflare's API mocked | not set up -> 404; set up -> Cloudflare's list with port 53 removed, key sent only as the Bearer token, 24 h logins; other sites -> 403; Cloudflare error -> 502 |
+
+Not tested: the public internet relays, Cloudflare's real TURN service and real home/school
+networks (no internet access from the test machine). The relay protocol, codes and messages are
+the ones the official relay uses, so the public relays behave the same, and the TURN relay
+behaves like the local one, but what a network lets through depends on each network.
 
 ## Limits
 
@@ -97,8 +174,10 @@ so the public relays behave the same, but NAT/firewall behaviour depends on each
   down, sharing cannot start; a self-hosted EaglerSPRelay can be set in
   `localStorage.thunderLanRelays` (see above).
 - Some networks (many school and work Wi-Fi networks) block direct browser-to-browser
-  connections. Then the join fails after about 20 seconds with a message saying so; the TURN
-  servers the relay provides help on some of those networks, not all.
+  connections. With the site's TURN relay switched on (see above) friends connect through it;
+  without it, or on a network that blocks the TURN relay too, the join fails after about 20
+  seconds with a message saying which. Networks that block the Eaglercraft relays themselves
+  cannot use codes at all (the Connection test shows it).
 - The host's browser runs the world, so the host's computer speed and upload bandwidth set the
   limit. A few friends is fine; a large group is not what this is for.
 - Friends already in keep playing if the relay connection drops; new friends need the host to

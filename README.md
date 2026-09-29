@@ -41,7 +41,10 @@ in Right Shift > Utility > Readme.
   splash texts), Thunder menus
   everywhere (storm backgrounds, glass lists, Thunder buttons, sliders and text boxes), and **Friends**:
   open your singleplayer world to friends with a join code (Esc > Open to Friends) and join a
-  friend's world from Right Shift > Friends.
+  friend's world from Right Shift > Friends. Friends on other networks or school Wi-Fi connect
+  through the site's TURN relay once it is switched on (`functions/turn.js`, set up once in
+  Cloudflare: see NETWORKING.md), and Right Shift > Friends > Connection test shows what a
+  network lets through.
   Source and build: [`thunder/`](thunder/README.md), shaders:
   [`thunder/SHADERS.md`](thunder/SHADERS.md), Friends: [`thunder/NETWORKING.md`](thunder/NETWORKING.md).
 - **`index.html`** - the original WASM-GC launcher (unchanged).

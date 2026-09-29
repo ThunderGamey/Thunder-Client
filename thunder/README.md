@@ -239,8 +239,9 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   Eaglercraft's own terrain shader; and See-through Leaves (Visual tab). How: [SHADERS.md](SHADERS.md).
 - `thunder-lan.js` - Friends: open a singleplayer world to friends with a join code and join a
   friend's world (EaglerSPRelay signalling + WebRTC, bridged to the integrated server's player
-  channels). How to use it, how it works, what was tested and the limits:
-  [NETWORKING.md](NETWORKING.md).
+  channels), with the site's own TURN relay for friends on other networks (`functions/turn.js`,
+  a Cloudflare Pages Function) and a Connection test. How to use it, how to switch the TURN
+  relay on, how it works, what was tested and the limits: [NETWORKING.md](NETWORKING.md).
 
 ## Backups
 
