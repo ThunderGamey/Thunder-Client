@@ -54205,13 +54205,17 @@ c.PK;})();
       .then(function(r){
         if(r.status===404){LAN_TURN.state='none';LAN_TURN.servers=[];return null;}
         if(!r.ok){LAN_TURN.state='error '+r.status;return null;}
-        return r.json();
+        return r.text();
       })
-      .then(function(j){
-        if(j){
-          var list=Array.isArray(j.iceServers)?j.iceServers.filter(function(s){return s&&s.urls;}):[];
-          LAN_TURN.servers=list;LAN_TURN.state=list.some(lanIsTurn)?'ok':'none';
-        }
+      .then(function(t){
+        if(t==null)return LAN_TURN.servers;
+        var j=null;
+        try{j=JSON.parse(t);}catch(_){}
+        // not Thunder's /turn: a static host (a site deployed without functions/, a copy of the
+        // game elsewhere) answers an unknown address with its start page
+        if(!j||typeof j!=='object'){LAN_TURN.state='none';LAN_TURN.servers=[];return LAN_TURN.servers;}
+        var list=Array.isArray(j.iceServers)?j.iceServers.filter(function(s){return s&&s.urls;}):[];
+        LAN_TURN.servers=list;LAN_TURN.state=list.some(lanIsTurn)?'ok':'none';
         return LAN_TURN.servers;
       })['catch'](function(){LAN_TURN.state='error';return LAN_TURN.servers;});
     var late=new Promise(function(ok){timer=W.setTimeout(function(){if(ctl)try{ctl.abort();}catch(_){}ok(LAN_TURN.servers);},2500);});

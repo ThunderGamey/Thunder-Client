@@ -47,14 +47,19 @@ Friends works exactly as before.
 1. In the Cloudflare dashboard of the account that hosts the site: **Realtime** (called Calls in
    older dashboards) -> **TURN Server** -> **Create**. Keep the page open: it shows the key's
    **Turn Token ID** and its **API Token** (the API token is shown once).
-2. **Workers & Pages** -> the Thunder Client Pages project -> **Settings** -> **Variables and
-   Secrets** -> add, for Production:
+2. **Workers & Pages** -> the Pages project that serves the site (for `thunderclient.pages.dev`,
+   the project named `thunderclient`) -> **Settings** -> **Variables and Secrets** -> add, for
+   Production:
    - `TURN_KEY_ID` = the Turn Token ID (type Text)
    - `TURN_KEY_API_TOKEN` = the API Token (type **Secret**)
 3. Deploy again (Deployments -> the latest one -> Retry deployment, or push any commit). The
-   function only runs on sites deployed from Git (as this one is), not on drag-and-drop uploads.
-4. Check: open `https://<your site>/turn` (for example `https://thunder-client-7ce.pages.dev/turn`):
-   it should list `turn:turn.cloudflare.com` addresses. In the game, **Right Shift -> Friends ->
+   function only runs when the project is connected to this GitHub repository (Settings ->
+   Builds shows the repository and the `main` branch); a project made by dragging files into the
+   dashboard does not run `functions/`.
+4. Check: open `https://thunderclient.pages.dev/turn`. Before step 1-3 it shows
+   `{"iceServers":[],"error":"TURN is not set up for this site"}` (the function is there); after
+   them it lists `turn:turn.cloudflare.com` addresses. If it shows the game's page instead, the
+   project is not deploying `functions/` (see step 3). In the game, **Right Shift -> Friends ->
    Connection test** should say "TURN relay: works".
 
 The API token never reaches the browser: the page only gets logins that stop working after 24
