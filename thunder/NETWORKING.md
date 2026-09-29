@@ -32,7 +32,53 @@ Everyone needs a different player name (Edit Profile on the title screen). A fri
 host's name, or the name of someone already in, is refused with a message saying so instead of
 kicking that player out.
 
-## Friends on other networks: switch on the TURN relay (site owner, once)
+## Play from any network: Thunder's own relay (site owner, once)
+
+The public Eaglercraft relays hand out the join codes, and some networks (school filters,
+extensions) block them; then codes cannot work at all. Some networks and managed laptops also
+block every browser-to-browser connection, TURN included. Thunder's own relay fixes both: it runs
+on the site owner's Cloudflare account (`thunder-relay/`, a Worker with a Durable Object) and is
+reached through the site's own address (`/relay`, forwarded by `functions/relay.js`), so wherever
+the game loads, the relay can be reached too.
+
+- **Codes** come from it (6 characters, for example `k7m2qx`; the public relays' codes have 5).
+  The public relays stay as the fallback when it is off.
+- **The game itself** goes through it when two players cannot connect directly: a friend's game
+  first tries a direct connection (and the TURN relay, if it is on), and after 10 seconds without
+  one, or right away in a browser without WebRTC, both games open a WebSocket to the relay and it
+  passes their packets between them. The friend's Friends panel then says "through the Thunder
+  relay".
+
+Set it up once:
+
+1. Cloudflare dashboard -> **Workers & Pages** -> **Create** -> **Import a repository** (connect
+   GitHub if asked) -> pick this repository. In the settings before deploying:
+   - **Project name**: `thunder-relay` (the name in `thunder-relay/wrangler.toml`)
+   - **Root directory** (under the build settings): `thunder-relay`
+   - **Build command**: leave empty; **Deploy command**: `npx wrangler deploy` (the default)
+
+   Then **Deploy**. Cloudflare deploys it again by itself whenever `main` changes.
+2. **Workers & Pages** -> the Pages project that serves the site (`thunderclient`) -> **Settings**
+   -> **Bindings** -> **Add** -> **Service binding**: variable name `RELAY`, service
+   `thunder-relay`. Save.
+3. **Deployments** -> the latest one -> **Retry deployment** (bindings apply to new deployments).
+4. Check: `https://thunderclient.pages.dev/relay` shows `{"relay":true,"version":1}` (before
+   step 2 it shows `"relay":false`). In the game, **Right Shift -> Friends -> Connection test**
+   should say "Thunder relay: works".
+
+Everyone playing has to reload the page once, so their game knows about the relay (an older copy
+of the page only looks on the public relays and will not find a 6-character code).
+
+Cost: the Workers Free plan includes Durable Objects (in 2025: 100,000 requests a day, where 20
+WebSocket messages count as one request, and 13,000 GB-s of running time a day). A code and a
+connection set-up take a handful of requests. A game that goes through the relay uses more: Thunder
+packs the game's packets into at most about 50 messages a second each way, so the free allowance
+covers several hours of relayed play a day across all players, and direct or TURN connections use
+none of it. On the free plan going over the allowance costs nothing: the relay just stops until the
+next day (UTC), and codes come from the public relays meanwhile. Check Cloudflare's current
+Workers pricing before relying on these numbers.
+
+## Faster connections from other networks: the TURN relay (site owner, once)
 
 Two tabs on one computer always connect. Two computers often cannot reach each other directly:
 school and work Wi-Fi, Wi-Fi that keeps devices apart, and home routers without "NAT loopback"
@@ -80,10 +126,11 @@ server (in its Web Worker) accepts extra player channels (IPC packet `0x0C`) and
 EaglercraftX's LAN framing on them. The browser half was never compiled in, and that is what
 `thunder-lan.js` adds:
 
-- **Relay (signalling only).** EaglerSPRelay protocol version 1 over WebSocket. The host
+- **Relay (signalling).** EaglerSPRelay protocol version 1 over WebSocket. The host
   registers and gets the join code; a friend looks the code up; the relay passes the WebRTC
-  offer/answer and ICE candidates between them. It never sees game traffic. Relays are tried in
-  order: the list in `localStorage.thunderLanRelays` (JSON list, for a self-hosted relay), else
+  offer/answer and ICE candidates between them. Relays are tried in order: the site's own
+  Thunder relay (`/relay`, when the site has it; see above), then the list in
+  `localStorage.thunderLanRelays` (JSON list, for a self-hosted relay), else
   the `relays` in the launcher's `eaglercraftXOpts`, else `wss://relay.deev.is/`,
   `wss://relay.lax1dude.net/`, `wss://relay.shhnowisnottheti.me/`. A relay drops a connection
   whose handshake comes more than 500 ms after it opened, and a heavy game frame can hold the page
@@ -97,6 +144,16 @@ EaglercraftX's LAN framing on them. The browser half was never compiled in, and 
   says why: no TURN relay on either side, a TURN relay the network blocks, or a network that
   blocks browser-to-browser connections. When connected, the friend's Friends panel says whether
   it went directly or through the TURN relay.
+- **Tunnel (Thunder relay only).** When a friend's direct connection has not opened 10 seconds
+  after the offer (or cannot start: no WebRTC on either side), the friend asks the relay for a
+  tunnel (packet `0x20`); the relay answers both games with the friend's id and a one-time token,
+  both open a WebSocket to `/relay?tunnel=` and, once the relay has paired the two, it passes
+  their bytes through unchanged. To the rest of Thunder a tunnel looks like the data channel it
+  replaces. Messages sent within 20 ms travel together (a 4-byte length before each), which keeps
+  the relay's message count, and so Cloudflare's count, low. The relay itself
+  (`thunder-relay/relay.js`) is one Durable Object per world code, holding everything in the
+  WebSockets' attachments so it can sleep between messages; it only accepts the site's own pages
+  (the `Origin` header), and a tunnel only with a token it handed out.
 - **Host:** each friend's data channel is bridged to a player channel on the host's server
   Worker. Bytes pass through unchanged both ways; the Worker already frames and compresses them.
 - **Friend:** the game's own singleplayer connecting screen and login run as usual; the local
@@ -166,23 +223,48 @@ were forced to use relay paths only, as on a network where direct connections ar
 | Browser without `DecompressionStream` | Join says the browser is too old instead of failing later |
 | `functions/turn.js` in Node with Cloudflare's API mocked | not set up -> 404; set up -> Cloudflare's list with port 53 removed, key sent only as the Bearer token, 24 h logins; other sites -> 403; Cloudflare error -> 502 |
 
-Not tested: the public internet relays, Cloudflare's real TURN service and real home/school
-networks (no internet access from the test machine). The relay protocol, codes and messages are
-the ones the official relay uses, so the public relays behave the same, and the TURN relay
-behaves like the local one, but what a network lets through depends on each network.
+Third round (Thunder's own relay). The relay Worker (`thunder-relay/`) and the site (`functions/`)
+ran in Cloudflare's own runtime (wrangler 4, workerd): the Worker with its Durable Object under
+`wrangler dev`, the site under `wrangler pages dev` with the Service binding `RELAY`, exactly as
+deployed. Two Chromium browsers, as before.
+
+| Scenario | Result |
+|---|---|
+| Relay protocol, from Node (24 checks) | host gets a 6-character code and the STUN list; unknown code -> error 5; code typed in capitals works; offer, answer and candidates pass both ways with the friend's id; 0x05 -> host told, friend closed; tunnel token to both ends; wrong or reused token -> 403; tunnel passes bytes unchanged both ways (200 KB in one message too); keepalive answered; host leaving -> friends still signalling get "the world was closed", tunnels keep working; one tunnel end closing closes the other; other sites -> 403 |
+| Host opens, friend joins through the Thunder relay | code `nz6g75` from the relay, friend joins, connection direct |
+| No direct path possible (both browsers limited to TURN, no TURN server) | after 10 s the friend asks for the tunnel and joins through it (16 s in all); chat both ways; the host's list says "(through the Thunder relay)" |
+| Through the tunnel: host stops sharing / removes the friend / friend disconnects / host saves and quits | "The host stopped sharing the world." / "The host removed you from the world." / host sees "left the game" / "The host closed the world."; no crash, no page errors |
+| Friend's browser without WebRTC | straight to the tunnel, joined in 2 s |
+| Host's browser without WebRTC | the host asks the friend to use the tunnel (0x22), joined in 2 s |
+| Public relays unreachable | the code comes from the Thunder relay and the friend joins |
+| Site without the relay (no binding) | `/relay` answers `"relay":false`, both games use the public relay (5-character code) and join; the Connection test says "Thunder relay: not set up on this site" |
+| Worker reached directly from another origin, or the site from another origin | 403; through the site's own pages: accepted |
+| Connection test with the relay on | "Thunder relay: works. ... Friends can join from any network where this page loads" |
+
+Not tested: the public internet relays, Cloudflare's hosted services themselves (TURN, and the
+relay running on Cloudflare rather than in its local runtime) and real home/school networks (no
+internet access from the test machine). The relay protocol, codes and messages are the ones the
+official relay uses, so the public relays behave the same; the TURN relay behaves like the local
+one, and Cloudflare runs the Thunder relay on the same runtime it was tested on here. What a
+network lets through still depends on each network.
 
 ## Limits
 
 - Everyone must be on Thunder Client (this build). Other Eaglercraft 1.12 clients have no join
   support, and EaglercraftX 1.8 clients speak a different game version.
-- The public relays are run by the Eaglercraft community, not by Thunder. If all of them are
-  down, sharing cannot start; a self-hosted EaglerSPRelay can be set in
-  `localStorage.thunderLanRelays` (see above).
-- Some networks (many school and work Wi-Fi networks) block direct browser-to-browser
-  connections. With the site's TURN relay switched on (see above) friends connect through it;
-  without it, or on a network that blocks the TURN relay too, the join fails after about 20
-  seconds with a message saying which. Networks that block the Eaglercraft relays themselves
-  cannot use codes at all (the Connection test shows it).
+- With the Thunder relay on, playing needs only what the game itself needs: the page loads, and
+  its WebSockets to the same site work (a network that blocks those blocks nearly every web game).
+  A friend on a network where no direct connection works waits about 10 seconds before the game
+  goes through the relay, and a game through the relay is as fast as the two connections to
+  Cloudflare, usually a little slower than a direct one.
+- Without the Thunder relay, codes come from the public relays, run by the Eaglercraft community.
+  If all of them are down or blocked, sharing cannot start; a self-hosted EaglerSPRelay can be set
+  in `localStorage.thunderLanRelays` (see above). And some networks (many school and work Wi-Fi
+  networks) block direct browser-to-browser connections: with the TURN relay on, friends connect
+  through it; without it, or on a network that blocks it too, the join fails after about 20
+  seconds with a message saying which.
+- The Thunder relay and the TURN relay run within Cloudflare's free allowances (see above); past
+  them, relayed games stop until the next day on the free plan.
 - The host's browser runs the world, so the host's computer speed and upload bandwidth set the
   limit. A few friends is fine; a large group is not what this is for.
 - Friends already in keep playing if the relay connection drops; new friends need the host to

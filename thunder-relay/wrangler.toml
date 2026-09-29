@@ -1,0 +1,16 @@
+# Thunder Client relay (Friends): a Cloudflare Worker with one Durable Object per world code.
+# Deployed from this folder by Cloudflare (Workers & Pages > Create > Import a repository, root
+# directory thunder-relay); the site reaches it through a Service binding RELAY on the Pages
+# project. See thunder/NETWORKING.md.
+name = "thunder-relay"
+main = "relay.js"
+compatibility_date = "2025-09-01"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "ThunderRelay"
+
+# SQLite-backed Durable Objects are the kind the Workers Free plan offers
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ThunderRelay"]
