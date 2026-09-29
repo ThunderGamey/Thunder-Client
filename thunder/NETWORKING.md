@@ -67,7 +67,8 @@ Set it up once:
 2. **Workers & Pages** -> the Pages project that serves the site (`thunderclient`) -> **Settings**
    -> **Bindings** -> **Add** -> **Service binding**: variable name `RELAY`, service
    `thunder-relay`. Save.
-3. **Deployments** -> the latest one -> **Retry deployment** (bindings apply to new deployments).
+3. **Deployments** -> the latest one -> **Retry deployment** (bindings apply to new deployments;
+   any push to `main` deploys the site again too).
 4. Check: `https://thunderclient.pages.dev/relay` shows `{"relay":true,"version":1}` (before
    step 2 it shows `"relay":false`). In the game, **Right Shift -> Friends -> Connection test**
    should say "Thunder relay: works".
