@@ -13,6 +13,8 @@
        not slow the game down (like the Clumps mod, but only for drawing; nothing is merged).
      - Fast XP (Combat): bottles o' enchanting thrown every tick while you hold use.
      - Menu Sounds (Utility): a short electric sound when the Thunder menu opens and closes.
+     - Modern Swimming (Movement): the menu switch for thunder-swim.js, and the movement input
+       it adjusts (see there).
 
      Game functions this module replaces:
      @hook D8g net.minecraft.util.MovementInputFromOptions.updatePlayerMoveState
@@ -42,19 +44,34 @@
   var QL={sneak:false,sneakWas:false,world:null,chat:0,xpFrame:-1,xpCells:{},xpSkipped:0,crystals:0,masked:0};
   var origD8g=D8g;
   D8g=function(a){
+    var f0=a.s_,s0=a.U4;                             // last tick's input, for Modern Swimming
     origD8g(a);
     if($rt_suspending())return;
-    if(!S.toggleSneak){QL.sneak=false;return;}
-    var gs=a.dfw,down=!!(gs&&gs.b23&&gs.b23.my);
-    if(down&&!QL.sneakWas)QL.sneak=!QL.sneak;          // each press of the sneak key flips it
-    QL.sneakWas=down;
-    if(QL.sneak&&!a.U4){a.U4=1;a.Ps*=0.3;a.s_*=0.3;}
+    if(!S.toggleSneak)QL.sneak=false;
+    else{
+      var gs=a.dfw,down=!!(gs&&gs.b23&&gs.b23.my);
+      if(down&&!QL.sneakWas)QL.sneak=!QL.sneak;        // each press of the sneak key flips it
+      QL.sneakWas=down;
+      if(QL.sneak&&!a.U4){a.U4=1;a.Ps*=0.3;a.s_*=0.3;}
+    }
+    if(SWIM&&SWIM.input)SWIM.input(a,f0,s0);          // thunder-swim.js: swimming and crawling
   };
   frameTasks.push(function(){
     var w=HEN&&HEN.X;
     if(w!==QL.world){QL.world=w;QL.sneak=false;}      // a new world or server starts standing
   });
   function sneakToggled(){return !!(S.toggleSneak&&QL.sneak);}
+
+  // ---- Modern Swimming (thunder-swim.js, which runs outside this scope): the menu switch -------
+  var SWIM=$rt_globals.__thunderSwim||null;
+  frameTasks.push(function(){if(SWIM)SWIM.setting=!!S.modernSwim;});
+  function swimNote(){
+    if(!SWIM)return 'Not available in this build.';
+    if(!S.modernSwim)return 'Off: water works the 1.12 way.';
+    if(SWIM.off)return SWIM.offWhy;
+    if(!HEN||!HEN.X)return 'Sprint (R, or double-tap W) with your head underwater to swim.';
+    return DdD(HEN)?'On in this world.':'On here. If this server sets you back while you swim, it switches itself off for this server.';
+  }
 
   // ---- Clear Chat: GuiNewChat.drawChat draws a black box behind every line with Gui.drawRect;
   // while it runs, the drawRect wrapper in thunder-theme.js leaves out pure black boxes ----------
@@ -149,6 +166,10 @@
   }
 
   TC.qol={state:function(){return {sneak:QL.sneak,xpSkipped:QL.xpSkipped,crystals:QL.crystals,masked:QL.masked};}};
+  TC.swim=SWIM;
+  MODULES.push({cat:'movement',id:'modernSwim',special:'swim',name:'Modern Swimming',
+    desc:'Swim like 1.21.11: sprint (R, the sprint key, or double-tap W) with your head underwater and you swim where you look, faster, lying flat, and through one-block gaps. Out of the water in a low gap you crawl. Holding sneak in water sinks you. Works in singleplayer, Friends worlds and on servers.'});
+  SPECIALS.swim=function(box){box.appendChild(el('div','tcm-note',swimNote()));};
   MODULES.push(
     {cat:'movement',id:'toggleSneak',name:'Toggle Sneak',
       desc:'Press sneak once to keep sneaking, press it again to stop. The Sprint box shows when it is on.'},

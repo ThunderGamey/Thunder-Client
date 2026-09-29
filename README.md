@@ -29,7 +29,8 @@ in Right Shift > Utility > Readme.
   tests whether VSync on or off is faster on your device); Totem Counter, Pickup Notifier, Target
   Crosshair, Shield Status colours, Zoom (hold C or your own key, scroll to zoom further), Minimap and World Map
   (M), Waypoints (B, or right-click the World Map; shown in the world with the distance), Shulker Preview, Toggle Sneak, Clear Chat, Password Hider, Show Own Name Tag, Crystal
-  Optimizer, Crystal Tap, Offhand Swap (F over a totem in your inventory puts it in your off hand, like
+  Optimizer, Crystal Tap, Modern Swimming (swim and crawl like 1.21.11: sprint underwater to swim
+  where you look, through one-block gaps, in singleplayer, Friends worlds and on servers), Offhand Swap (F over a totem in your inventory puts it in your off hand, like
   1.16+), Spears like 1.21.11 (the jab with its full reach and the charge work on
   1.21.11 servers), XP Orb Clumping, Fast XP, Boat View 360, No Enchant Glint, No Rain, No Pumpkin Blur,
   Dark Inventories, the Thunder Cursor (a light-blue diamond with a lightning trail) and Thunder

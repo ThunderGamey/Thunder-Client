@@ -190,6 +190,11 @@
 })();
 
 /* ---------------------------------------------------------------------------------------------
+   Modern Swimming (page and worker): swimming and crawling like 1.21.11
+--------------------------------------------------------------------------------------------- */
+// @include thunder-swim.js
+
+/* ---------------------------------------------------------------------------------------------
    Client
 --------------------------------------------------------------------------------------------- */
 (function(){
@@ -246,7 +251,7 @@
     zoom:true,zoomLevel:4,zoomSmooth:true,zoomScroll:true,zoomSens:true,zoomToggle:false,
     // thunder-qol.js
     toggleSneak:false,clearChat:false,hidePasswords:true,ownName:false,crystalOpt:true,xpClumps:true,
-    fastXp:false,menuSfx:true,
+    fastXp:false,menuSfx:true,modernSwim:true,
     // thunder-minimap.js: minimap (size in px, zoom in px per block, 0 top right / 1 top left)
     // minimap off by default for the best FPS (it reads chunks every frame)
     minimap:false,minimapSize:130,minimapZoom:2,minimapCorner:0,minimapRound:false,minimapCoords:true,worldMap:true,
@@ -1293,7 +1298,8 @@
   // toggle sprint
   function sprintTick(player){
     var forward=!!(keyState.KeyW||keyState.ArrowUp);
-    var want=forward&&!menuOpen&&locked()&&!Fch(player)&&!A4G(player)&&!Ctr(player)&&ZP(FAU(player))>6;
+    var want=forward&&!menuOpen&&locked()&&!Fch(player)&&!A4G(player)&&!Ctr(player)&&ZP(FAU(player))>6&&
+      (!SWIM||SWIM.sprintOk(player));                // not on the water surface (thunder-swim.js)
     var cur=!!CBg(player);
     if(want&&!cur)op(FPB,player,1);
     else if(!want&&cur&&!forward)op(FPB,player,0);

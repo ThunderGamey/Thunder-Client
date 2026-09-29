@@ -5,8 +5,8 @@ Thunder Client is created and owned by Jayvardhan Ginni (ThunderGamey).
 `classes.js` is generated. Edit `thunder/thunder-client.js` (and `thunder/thunder-hud.js`,
 `thunder/thunder-shaders.js`, `thunder/thunder-world.js`, `thunder/thunder-lan.js`,
 `thunder/thunder-title.js`, `thunder/thunder-theme.js`, `thunder/thunder-packs.js`,
-`thunder/thunder-items.js`, `thunder/thunder-items-data.js`, `thunder/thunder-hitfx.js` and
-`thunder/thunder-perf.js`, which it pulls in with `// @include`),
+`thunder/thunder-items.js`, `thunder/thunder-items-data.js`, `thunder/thunder-hitfx.js`,
+`thunder/thunder-swim.js` and `thunder/thunder-perf.js`, which it pulls in with `// @include`),
 then run:
 
 ```
@@ -87,6 +87,29 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   enchanting in hand; off by default) and Menu Sounds (the Right Shift menu opens with a near
   thunder strike and a short roll and closes with a soft distant roll: `ThunderAmbient.menuThunder`,
   which also plays in a world).
+- `thunder-swim.js` - Modern Swimming (Movement, on): swimming and crawling like 1.21.11. It is
+  included at the top level, not in the client scope, because the integrated-server worker
+  (singleplayer and Friends worlds) needs half of it too. Sprinting with your eyes and feet in
+  water starts swimming (1.21.11 `Player.updateSwimming`, double-tapping W also works
+  underwater); a swimmer is 0.6 x 0.6 with the eyes 0.4 up (`EntityPlayer.updateSize` and
+  `getEyeHeight`), so one-block gaps fit, and where you cannot stand up you keep crawling at
+  sneaking speed (also when a trapdoor closes over you). In water: you rise and sink toward where
+  you look (8.5% or 6% of the gap a tick, `EntityPlayer.travel`), drag 0.9 while sprinting instead
+  of 0.8 (`getWaterSlowDown`), gravity 0.005 instead of 0.02 and none while sprinting, holding
+  sneak sinks you by 0.04 a tick, a swimmer keeps sprinting against walls and off the bottom, and
+  no sprint starts or lasts on the surface unless you swim (`EntityPlayerSP.onLivingUpdate` and
+  `setSprinting`, and the movement input in `thunder-qol.js`). 1.12 finds water in a box shrunk
+  by 0.4 at both ends, which leaves nothing of a 0.6-tall box, so `handleWaterMovement` gets a
+  box that shrinks back to the player's own; `isOpenBlockSpace` only checks the blocks a small
+  box takes, so you are not pushed out of a gap. Drawing: the body turns along where you look
+  (`RenderPlayer.applyRotations`), the 1.21.11 arm stroke, leg kick and head tilt
+  (`ModelBiped.setRotationAngles`), for other players too (worked out from their sprinting and
+  the water, or a 1.21 server's swimming flag), and the first-person camera slides to the new eye
+  height (`EntityRenderer.orientCamera`). The worker gives its players the same state and box,
+  so the server accepts gaps. A server that sets you back twice in 10 s while you swim or crawl
+  (`SPacketPlayerPosLook.processPacket`) gets 1.12 swimming until you leave it. Four of the
+  wrapped functions are also reached through prototype slots holding the original, which are
+  pointed at the wrappers.
 - `thunder-minimap.js` - Minimap (top corner, north up, players as dots, coordinates) and World
   Map (M or your own key: full screen, drag and scroll; the hint at the top fades away). Both are drawn from the chunks the game has loaded:
   the heightmap top block of every column in its map colour (`getMapColor`), shaded by the height
