@@ -48747,6 +48747,21 @@ c.PK;})();
    @hook Ch0 net.minecraft.client.renderer.ItemRenderer.renderItemSide
    @hook Gxt net.minecraft.client.renderer.entity.RenderManager.doRenderEntity
    @hook DQn net.lax1dude.eaglercraft.Filesystem$FilesystemHandleWrapper.eaglerIterate
+   @hook CZN net.minecraft.world.chunk.Chunk.relightBlock
+   @hook E$n net.minecraft.world.chunk.Chunk.checkLight
+   @hook F$H net.minecraft.world.chunk.Chunk.alfheim$initSkylightForSection
+   @hook FFH net.minecraft.world.chunk.Chunk.setLightFor
+   @hook DPD net.minecraft.world.chunk.Chunk.getLightSubtracted
+   @hook EL4 net.minecraft.world.chunk.Chunk.alfheim$getCachedLightFor
+   @hook DAe dev.redstudio.alfheim.lighting.LightingEngine.fetchNeighborDataFromCursor
+   (the seven above: the End fix below; Chunk.getLightSubtracted is reached through the prototype
+   slot of Chunk H4, which is pointed at the wrapper)
+   @class H4 net.minecraft.world.chunk.Chunk
+   @field tf net.minecraft.world.WorldProvider.getHasNoSky WorldProvider.nether (older name hasNoSky)
+   @field xy net.minecraft.world.chunk.Chunk.<init> WorldProvider.hasSkyLight
+   @field dY net.minecraft.world.chunk.Chunk.alfheim$getCachedLightFor Chunk.world
+   @field b4 net.minecraft.world.chunk.Chunk.alfheim$getCachedLightFor World.provider
+   @field cM3 dev.redstudio.alfheim.lighting.LightingEngine.getChunk LightingEngine.world
    (thunder-shaders.js adds its own hook and names in its header; build.js reads both.)
 
    Game functions it calls:
@@ -48914,6 +48929,46 @@ c.PK;})();
     }
     return origIterate(a,b,c,d);
   };
+})();
+
+/* ---------------------------------------------------------------------------------------------
+   End fix (page and worker). A 1.12 world provider has two flags that mean different things:
+   "is the Nether" (tf here; older mappings call it hasNoSky) and "has sky light" (xy). Chunks are
+   built, saved and sent with sky light arrays only when xy is set, but the lighting code in this
+   build (Chunk.relightBlock, checkLight, setLightFor, getLightSubtracted and the Alfheim lighting
+   engine) asks tf where 1.12 asks hasSkyLight(). The Overworld (tf 0, xy 1) and the Nether (tf 1,
+   xy 0) come out right either way; the End has neither flag, so that code took it for a world
+   with sky light, read sky light arrays its chunks do not have, and the integrated server
+   crashed as soon as a player arrived ("Exception ticking world", NibbleArray.get). While these
+   functions run for a world without sky light, tf reads 1, which is what 1.12 means there.
+   Everything else that reads tf (lava speed, maps, flowers, world height) sees the End as always.
+   The Overworld and the Nether go straight through.
+--------------------------------------------------------------------------------------------- */
+(function(){
+  function skyWrap(orig,prov){
+    return function(a,b,c,d){
+      var p=prov(a),st=0,r;
+      if(!p||p.xy||(p.tf&&!p.thSkyFix))return orig(a,b,c,d);
+      if($rt_resuming())st=$rt_nativeThread().pop();
+      else if(!p.tf){p.tf=1;p.thSkyFix=1;st=1;}
+      try{r=orig(a,b,c,d);}
+      finally{
+        if($rt_suspending())$rt_nativeThread().push(st);
+        else if(st===1){p.tf=0;p.thSkyFix=0;}
+      }
+      return r;
+    };
+  }
+  function chunkProv(a){var w=a&&a.dY;return w?w.b4:null;}
+  function engineProv(a){var w=a&&a.cM3;return w?w.b4:null;}
+  CZN=skyWrap(CZN,chunkProv);
+  E$n=skyWrap(E$n,chunkProv);
+  F$H=skyWrap(F$H,chunkProv);
+  FFH=skyWrap(FFH,chunkProv);
+  DPD=skyWrap(DPD,chunkProv);
+  EL4=skyWrap(EL4,chunkProv);
+  DAe=skyWrap(DAe,engineProv);
+  H4.prototype.eed=function(b,c){return DPD(this,b,c);};
 })();
 
 /* ---------------------------------------------------------------------------------------------

@@ -174,6 +174,17 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   pack whose folder name starts the same way (deleting "New World" wiped "New World-" and
   "New World 2"). Folder listings now end at the folder's "/"
   (`Filesystem$FilesystemHandleWrapper.eaglerIterate`, in the page and in the world Worker).
+  And a fix for the End, which crashed the integrated server the moment a player arrived
+  ("Exception ticking world", `NibbleArray.get` from the Alfheim lighting engine). A world
+  provider has two flags, "is the Nether" and "has sky light"; chunks are built, saved and sent
+  with sky light arrays by the second, but this build's lighting code (`Chunk.relightBlock`,
+  `checkLight`, `setLightFor`, `getLightSubtracted` and the Alfheim engine) asks the first where
+  1.12 asks `hasSkyLight()`. The Overworld and the Nether agree either way; the End has neither,
+  so it was taken for a world with sky light and its missing sky light arrays were read. While
+  those seven functions run for a world without sky light, the Nether flag reads set (what 1.12
+  means there); everything else that reads it (lava speed, maps, flowers, world height) is
+  unchanged, and the Overworld and the Nether go straight through. In the page and the Worker,
+  so the End also works on servers.
 - `thunder-title.js` - the title screen: the owner line "Thunder Client by ThunderGamey" above
   the version text, Thunder splash texts (most of the time; Visual >
   Thunder Title Screen > Thunder splash texts), and an animated storm drawn where the game draws its
