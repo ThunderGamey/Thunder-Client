@@ -34,6 +34,46 @@ Everyone needs a different player name (Edit Profile on the title screen). A fri
 host's name, or the name of someone already in, is refused with a message saying so instead of
 kicking that player out.
 
+## Always open: a computer that keeps one world open
+
+For a computer that is left on for friends (an old laptop, for example): the world opens by
+itself and stays open, so friends can join with its code whenever they like.
+
+Switch it on in the world: **Right Shift -> Friends -> Open to Friends -> Always open this world**
+(it is shared right away). From then on, on this computer:
+
+- **When Thunder starts**, a banner at the top counts down 10 seconds ("Always open: opening ...
+  for friends", with **Open now** and **Not now**), then the world loads and is shared with its
+  code. A freshly started browser first shows the game's own "press any key to enable sound"
+  screen: the game starts after one key press or click, and Always open takes it from there.
+- **If the relay connection drops**, the world is shared again after 5 seconds (then 10, 20, up to
+  a minute apart while it keeps failing), with the same code. Friends already in keep playing. A
+  connection that silently stops working (the relay no longer answers the keepalive for 100
+  seconds) counts as dropped too.
+- **If the world stops with nobody at the computer** (no key, click or mouse movement for 15
+  seconds: the server crashed, for example), it is loaded and shared again after the countdown,
+  at most 3 times in half an hour; then Always open stops and says so.
+- **If you leave the world yourself** (Save and Quit), or play another world or a server, it stays
+  closed until nobody has touched the computer for 5 minutes, or Thunder starts again.
+  **Stop sharing** switches Always open off. The Friends panel always shows what it is doing.
+- If the world is gone (deleted or renamed), Always open stops with a message saying so.
+
+While the world is open, Thunder asks the browser to keep the screen on (Screen Wake Lock) and
+keeps a WebRTC data channel open inside the page: Chrome slows the timers of a tab that has been
+hidden for 5 minutes to one wake-up a minute unless the page uses WebRTC, and that would slow
+the host's own game down. To leave the computer running:
+
+1. Keep the tab open and on screen (its own window is best). The screen stays on while it is.
+2. Plug the computer in. If the tab may get hidden or minimized, also set the computer to never
+   sleep while plugged in (the screen lock does not apply to a hidden tab).
+3. Chrome or Edge: **Settings -> Performance**, add the site to the sites that are always kept
+   active, so the browser never puts the tab to sleep.
+4. After a restart: open the site (the browser can be set to open it when it starts) and press a
+   key once.
+
+Kept in the browser (`localStorage.thunderAlwaysOpen_v1`: the world's folder and name), one world
+per browser.
+
 ## Play from any network: Thunder's own relay (site owner, once)
 
 The public Eaglercraft relays hand out the join codes, and some networks (school filters,
@@ -153,7 +193,10 @@ EaglercraftX's LAN framing on them. The browser half was never compiled in, and 
   whose handshake comes more than 500 ms after it opened, and a heavy game frame can hold the page
   that long (a slow computer loading chunks just after entering a world), so the relay socket
   runs in a small Worker that sends the handshake the moment the connection opens (on the page
-  if a Worker cannot start).
+  if a Worker cannot start). On Thunder's relay the host sends a keepalive (`ping`) every 25
+  seconds, which Cloudflare answers (`pong`) without waking the relay; once it has answered, 100
+  seconds without an answer count as a closed connection (a network that went away without
+  closing it), so the host can share again.
 - **WebRTC data channel** ("lan", reliable and ordered) between the two browsers. Connection
   servers: Thunder's own STUN servers (Google, Cloudflare), the relay's list, and the site's TURN
   logins from `/turn` (see above) or a JSON list of `RTCIceServer` entries in
@@ -182,7 +225,11 @@ Game functions it wraps (each wrapper falls through to the original; all names a
 (friend's outgoing packets), `SingleplayerServerController.setPaused` and
 `GuiScreen.doesGuiPauseGame` (no pause while hosting), `SingleplayerServerController.killWorker`
 (the connecting screen's Cancel ends a join instead of killing the local world Worker),
-`GuiIngameMenu.initGui`/`actionPerformed` (the pause menu button) and
+`GuiIngameMenu.initGui`/`actionPerformed` (the pause menu button; Save and Quit also tells
+Always open the player left on purpose), `Minecraft.launchIntegratedServer` (notes which world
+is running, by its folder, for Always open; Always open calls it to load its world, after
+`SingleplayerServerController.startIntegratedServerWorker` when the game's server Worker has not
+started yet, as the Singleplayer button does) and
 `ServerNotificationManager.runTick`. That last one: a friend leaving the world (the host stopped
 sharing, removed them or closed the world) is handled inside the game's own tick, where the
 singleplayer connection tears the world down on the spot and destroys the connection's
@@ -258,6 +305,24 @@ deployed. Two Chromium browsers, as before.
 | Worker reached directly from another origin, or the site from another origin | 403; through the site's own pages: accepted |
 | Connection test with the relay on | "Thunder relay: works. ... Friends can join from any network where this page loads" |
 
+Fourth round (Always open), same setup as the third: the relay and the site in Cloudflare's local
+runtime, the host in one Chromium browser and a friend in another.
+
+| Scenario | Result |
+|---|---|
+| Switch on in the world (card switch) | shared at once with the world's kept code (`iq2vyy`); the setting is saved |
+| Page reloaded (as after a restart), one key press for the game's sound screen, then hands off | title screen, 10-second countdown banner, the game's server Worker is started, the world loads and is shared with the same code (about 20 s after the countdown). Before the fix: the load failed ("WORLD_WORKER_NOT_RUNNING", the Worker starts with the first Singleplayer click), and a share right after arriving picked a code for the wrong world (the spawn point, which tells worlds apart, comes in a moment later) |
+| Save and Quit | stays closed ("Paused"), sharing and the keep-awake stop |
+| The world stops with nobody at the computer (Save and Quit with the input clock wound back) | "the world stopped with nobody at the computer", countdown, loaded and shared again with the same code. Before the fix: the browser sends mouse moves of no distance about twice a second while the mouse is still, so the computer never counted as unattended |
+| Countdown: **Not now** / **Open now** | stays closed ("Not this time") / loads and shares at once |
+| The relay restarted (like a deploy), with and without a friend in | shared again with the same code; the friend kept playing, then left and joined again with the code |
+| The relay frozen (the connection stays open but nothing answers), twice | after 100 s without a `pong` the connection counts as closed; tries again 5 s, 10 s, 20 s, ... apart; shared again with the same code 4-15 s after the relay answered again |
+| Friend joins the Always open world | joined in 6 s, connected directly |
+| **Stop sharing** | sharing stops and Always open switches off (the setting is removed) |
+| The saved world no longer exists | "the world ... is not in this browser any more", nothing is loaded |
+| Host page frozen for 40 s (a busy or throttled tab) | the host is not timed out; the world stays open |
+| Keep-awake | the page's WebRTC data channel opens (connected); the Screen Wake Lock is refused by the headless test browser (the card then says to set the computer to never sleep) |
+
 Not tested: the public internet relays, Cloudflare's hosted services themselves (TURN, and the
 relay running on Cloudflare rather than in its local runtime) and real home/school networks (no
 internet access from the test machine). The relay protocol, codes and messages are the ones the
@@ -284,7 +349,11 @@ network lets through still depends on each network.
   them, relayed games stop until the next day on the free plan.
 - The host's browser runs the world, so the host's computer speed and upload bandwidth set the
   limit. A few friends is fine; a large group is not what this is for.
-- Friends already in keep playing if the relay connection drops; new friends need the host to
-  press **Reopen** for a new code.
+- Friends already in keep playing if the relay connection drops; new friends can join again once
+  the host presses **Reopen** (or at once with Always open), with the same code through the
+  Thunder relay.
+- Always open needs the computer on, awake and online, with the tab open; the world is only
+  there while it runs. After a restart the game needs one key press before it starts (its sound
+  needs it), so a computer that restarts on its own waits for someone to press a key.
 - The integrated server has no `/kick` (vanilla LAN does not either); use **Remove** in the host's
   Friends panel.

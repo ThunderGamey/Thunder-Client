@@ -275,9 +275,10 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   friend's world (EaglerSPRelay signalling + WebRTC, bridged to the integrated server's player
   channels), with Thunder's own relay (`thunder-relay/`, a Cloudflare Worker reached at `/relay`
   through `functions/relay.js`) that gives codes and carries the game when players cannot connect
-  directly, the site's TURN relay (`functions/turn.js`) and a Connection test. How to use it, how
-  to switch the relays on, how it works, what was tested and the limits:
-  [NETWORKING.md](NETWORKING.md).
+  directly, the site's TURN relay (`functions/turn.js`), a Connection test, and Always open (a
+  computer left on loads and shares one world by itself, and shares it again when the connection
+  drops). How to use it, how to switch the relays on, how it works, what was tested and the
+  limits: [NETWORKING.md](NETWORKING.md).
 
 ## Backups
 

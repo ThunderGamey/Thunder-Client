@@ -54621,6 +54621,7 @@ c.PK;})();
   /* -------------------------------------------------------------------------------------------
      Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
      Thunder LAN: open a singleplayer world to friends, and join a friend's world with a code.
+     Always open keeps one world open on a computer that is left on for it.
      Included into the client scope of thunder-client.js by build.js. How it works, what was
      tested and the limits: thunder/NETWORKING.md.
 
@@ -54646,13 +54647,16 @@ c.PK;})();
      @hook E9$ net.lax1dude.eaglercraft.sp.SingleplayerServerController.setPaused
      @hook CnZ net.lax1dude.eaglercraft.sp.SingleplayerServerController.killWorker
      @hook FtB net.lax1dude.eaglercraft.notifications.ServerNotificationManager.runTick
+     @hook Eh1 net.minecraft.client.Minecraft.launchIntegratedServer
 
      Game functions and classes it uses:
      @use DeG net.lax1dude.eaglercraft.sp.internal.ClientPlatformSingleplayer$WorkerBinaryPacketHandlerImpl.onMessage$exported$0
      @use BGl net.minecraft.client.gui.GuiScreen.<init>
-     (Minecraft.displayGuiScreen GGs is declared as a hook in thunder-boot.js.)
+     (Minecraft.displayGuiScreen GGs is declared as a hook in thunder-boot.js, GuiMainMenu Hj as a
+     class in thunder-title.js.)
      @use EE6 net.lax1dude.eaglercraft.profile.EaglerProfile.getName
      @use F3B net.lax1dude.eaglercraft.profile.EaglerProfile.setName
+     @use Gh8 net.lax1dude.eaglercraft.sp.SingleplayerServerController.startIntegratedServerWorker
      @class BoL net.lax1dude.eaglercraft.sp.gui.GuiScreenSingleplayerConnecting
      @class CO net.minecraft.client.gui.GuiScreen
      @virtual TZ net.minecraft.client.gui.GuiScreen doesGuiPauseGame
@@ -54663,7 +54667,8 @@ c.PK;})();
      Static fields:
      @staticset HAY net.lax1dude.eaglercraft.sp.internal.ClientPlatformSingleplayer.startIntegratedServer (the integrated server's Worker)
      @static H5m net.lax1dude.eaglercraft.sp.internal.ClientPlatformSingleplayer (1 = no Worker: server on the main thread)
-     @static HFB net.lax1dude.eaglercraft.sp.SingleplayerServerController (server state; 2, 3, 9 and 11 = a world is running)
+     @static HFB net.lax1dude.eaglercraft.sp.SingleplayerServerController (server state; 2, 3, 9 and 11 = a world is running,
+       0 = ready for one, -1 = its Worker is starting, -2 = no Worker yet)
      @static H5i net.lax1dude.eaglercraft.sp.SingleplayerServerController (the local player's SingleplayerNetworkManager)
      @staticset HEN net.minecraft.client.Minecraft.<init> (the Minecraft instance)
 
@@ -55004,6 +55009,7 @@ c.PK;})();
     var relays=lanRelays(),idx=-1,tries=0,lastErr='',lastCode=-1,cancelled=false;
     function next(again){
       if(cancelled)return;
+      if(idx>=0&&lastErr)lanLog(lastErr);                  // why the last relay did not work
       if(again&&tries<3)tries++;
       else{tries=1;if(++idx>=relays.length){fail(lastErr||'no relay could be reached',lastCode);return;}}
       // this site's relay picks the world by its address: ?host (a new code) or ?join=code
@@ -55039,7 +55045,7 @@ c.PK;})();
   var LAN_WS_SRC='var ws=null;onmessage=function(e){var m=e.data;'+
     'if(m.t==="open"){try{ws=new WebSocket(m.url);}catch(_){postMessage({t:"close"});return;}ws.binaryType="arraybuffer";'+
       'ws.onopen=function(){if(m.first){try{ws.send(m.first);}catch(_){}}postMessage({t:"open"});};'+
-      'ws.onmessage=function(ev){if(typeof ev.data!=="string")postMessage({t:"msg",d:ev.data},[ev.data]);};'+
+      'ws.onmessage=function(ev){if(typeof ev.data!=="string")postMessage({t:"msg",d:ev.data},[ev.data]);else postMessage({t:"txt",d:ev.data});};'+
       'ws.onclose=function(){ws=null;postMessage({t:"close"});};ws.onerror=function(){};}'+
     'else if(m.t==="send"){if(ws&&ws.readyState===1){try{ws.send(m.d);}catch(_){}}}'+
     'else if(m.t==="close"){if(ws){try{ws.close();}catch(_){}}else postMessage({t:"close"});}};';
@@ -55052,8 +55058,9 @@ c.PK;})();
     }catch(_){return null;}
   }
   function lanSocket(url,first){
-    var S2={url:url,open:false,closed:false,worker:false,onOpen:null,onPacket:null,onClose:null,send:null,close:null};
+    var S2={url:url,open:false,closed:false,worker:false,onOpen:null,onPacket:null,onText:null,onClose:null,send:null,close:null};
     function opened(){if(S2.open||S2.closed)return;S2.open=true;if(S2.onOpen)S2.onOpen();}
+    function text(t){if(!S2.closed&&S2.onText)S2.onText(String(t));}      // this site's relay: "pong"
     function packet(data){
       if(S2.closed||typeof data==='string')return;
       var p;
@@ -55070,7 +55077,7 @@ c.PK;})();
       S2.send=function(buf){if(S2.open&&!S2.closed){try{ws.send(buf);}catch(_){}}};
       S2.close=function(){if(!S2.closed){S2.closed=true;S2.open=false;try{ws.close();}catch(_){}}};
       ws.onopen=function(){if(S2.closed){try{ws.close();}catch(_){}return;}if(first){try{ws.send(first);}catch(_){}}opened();};
-      ws.onmessage=function(e){packet(e.data);};
+      ws.onmessage=function(e){if(typeof e.data==='string')text(e.data);else packet(e.data);};
       ws.onclose=ended;
       ws.onerror=function(){};
       return true;
@@ -55079,7 +55086,7 @@ c.PK;})();
     if(wk){
       var stop=function(){try{wk.terminate();}catch(_){}};
       S2.worker=true;
-      wk.onmessage=function(e){var m=e.data||{};if(m.t==='open')opened();else if(m.t==='msg')packet(m.d);else if(m.t==='close'){stop();ended();}};
+      wk.onmessage=function(e){var m=e.data||{};if(m.t==='open')opened();else if(m.t==='msg')packet(m.d);else if(m.t==='txt')text(m.d);else if(m.t==='close'){stop();ended();}};
       wk.onerror=function(ev){
         try{if(ev&&ev.preventDefault)ev.preventDefault();}catch(_){}
         stop();
@@ -55242,8 +55249,9 @@ c.PK;})();
       function(sock,hs){
         LH.pending=null;
         if(LH.state!=='connecting'){sock.close();return;}
-        LH.sock=sock;LH.code=hs.code;LH.relay=sock.url;LH.site=lanIsSite(sock.url);LH.pinged=now();
+        LH.sock=sock;LH.code=hs.code;LH.relay=sock.url;LH.site=lanIsSite(sock.url);LH.pinged=now();LH.ponged=0;
         if(LH.site)lanKeepGot(String(hs.code||'').toLowerCase());
+        sock.onText=function(t){if(t==='pong'&&LH.sock===sock)LH.ponged=now();};
         var t=W.setTimeout(function(){if(LH.sock===sock&&!LH.ice.length&&LH.state==='connecting'){lanHostStop('the relay did not send its connection servers');}},5000);
         sock.onPacket=function(p){
           if(p.id===0x01&&LH.state==='connecting'){
@@ -55320,6 +55328,13 @@ c.PK;})();
       if(LH.state==='open')lanTurn();  // keeps the TURN logins fresh (asks again once an hour)
       // this site's relay: a keepalive now and then (answered by Cloudflare without waking the relay)
       if(LH.site&&LH.sock&&LH.sock.open&&now()-(LH.pinged||0)>25000){LH.pinged=now();LH.sock.send('ping');}
+      // ...and a connection that stopped answering it (the network went away without closing it)
+      // counts as closed, as if the relay had closed it. Only once it has answered at all.
+      if(LH.site&&LH.sock&&LH.ponged&&LH.state==='open'&&now()-LH.ponged>100000){
+        var dead=LH.sock;LH.sock=null;dead.close();
+        lanLog('the Thunder relay stopped answering');
+        lanStatus(LH,'relaylost','the relay connection stopped answering; friends already in can keep playing');
+      }
       if(menuOpen)runLive();
     },1000);
   }
@@ -55858,7 +55873,13 @@ c.PK;})();
     '#thunder-lan-badge{position:fixed;top:6px;left:50%;transform:translateX(-50%);z-index:2147483000;padding:4px 10px;border-radius:999px;',
       'background:rgba(6,12,20,.72);border:1px solid rgba(79,209,255,.4);color:#dff6ff;font:600 12px system-ui,sans-serif;pointer-events:none;white-space:nowrap;',
       'box-shadow:0 0 12px rgba(79,209,255,.25)}',
-    '#thunder-lan-badge b{font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:.1em;color:#fff}'
+    '#thunder-lan-badge b{font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:.1em;color:#fff}',
+    '#thunder-ao-banner{position:fixed;top:6px;left:50%;transform:translateX(-50%);z-index:2147483001;display:flex;align-items:center;gap:8px;',
+      'padding:4px 5px 4px 12px;border-radius:999px;background:rgba(6,12,20,.88);border:1px solid rgba(79,209,255,.5);color:#dff6ff;',
+      'font:600 12px system-ui,sans-serif;white-space:nowrap;box-shadow:0 0 14px rgba(79,209,255,.3)}',
+    '#thunder-ao-banner button{border:1px solid rgba(120,150,175,.4);background:rgba(14,22,33,.95);color:#cfe6f5;font:600 11px system-ui,sans-serif;',
+      'padding:3px 10px;border-radius:999px;cursor:pointer}',
+    '#thunder-ao-banner button:hover{border-color:rgba(79,209,255,.7);color:#fff}'
   ].join('');
   function lanCss(){
     if(D.getElementById('thunder-lan-style'))return;
@@ -55914,12 +55935,51 @@ c.PK;})();
       return row;
     }
     var act=el('div','tcm-actions');
-    var openB=lanBtn('Open to Friends',lanHostStart),stopB=lanBtn('Stop sharing',function(){lanHostStop('');});
+    // Stop sharing also switches Always open off for this world (it would share it again)
+    var openB=lanBtn('Open to Friends',lanHostStart),stopB=lanBtn('Stop sharing',function(){var ao=aoWorldUp();lanHostStop('');if(ao)aoTurnOff();});
     var rerollB=lanBtn('New code',function(){lanReroll();});
     rerollB.title='Give this world a new code (the old one stops working)';
     act.appendChild(openB);act.appendChild(stopB);act.appendChild(rerollB);box.appendChild(act);
     var keepNote=el('div','tcm-note','This world keeps the same code every time you open it. New code gives it a fresh one.');
     box.appendChild(keepNote);
+    // Always open: in a singleplayer world to switch it on; elsewhere while it is on
+    var aoBox=el('div'),aoRow=el('div','tcm-row'),aoName=el('span'),aoSw=el('button','tcm-switch');
+    aoSw.type='button';aoSw.setAttribute('aria-label','Always open');
+    aoSw.addEventListener('click',function(e){
+      e.stopPropagation();
+      var c=AO.cfg;
+      if(aoInOwnWorld()&&(!c||c.folder!==lanWorld.folder))aoTurnOnHere();else aoTurnOff();
+      runLive();
+    });
+    aoRow.appendChild(aoName);aoRow.appendChild(aoSw);aoBox.appendChild(aoRow);
+    var aoStat=el('div');lanStatusRow(aoStat,aoStatus);aoBox.appendChild(aoStat);
+    var aoNote=el('div','tcm-note');aoBox.appendChild(aoNote);
+    var aoTips=el('ol','tcl-steps');
+    ['Keep this tab open and on screen (its own window is best): Thunder keeps the screen on while it is.',
+     'Plug the computer in. If the tab may get hidden or minimized, also set the computer to never sleep while plugged in.',
+     'Chrome or Edge: Settings \u2192 Performance \u2192 add this site to the sites that are always kept active.',
+     'After the computer restarts, open this site (the browser can open it when it starts) and press any key once, which the game needs for its sound; the world then opens by itself.'
+    ].forEach(function(t){aoTips.appendChild(el('li',null,t));});
+    aoBox.appendChild(aoTips);
+    var aoAct=el('div','tcm-actions'),aoNowB=lanBtn('Open now',aoOpenNow);
+    aoAct.appendChild(aoNowB);aoBox.appendChild(aoAct);
+    box.appendChild(aoBox);
+    addLive(function(){
+      var c=AO.cfg,here=aoInOwnWorld(),mine=!!(c&&here&&c.folder===lanWorld.folder);
+      aoBox.style.display=here||c?'':'none';
+      aoName.textContent=here?'Always open this world':'Always open';
+      aoSw.className='tcm-switch'+((here?mine:!!c)?' tcm-on':'');
+      aoStat.style.display=c?'':'none';
+      aoTips.style.display=c?'':'none';
+      var note;
+      if(!c)note='For a computer you leave on: whenever Thunder starts on it, this world opens for friends by itself with the same code, and it is shared again if the connection drops.';
+      else if(here&&!mine)note='Always open is set for "'+c.name+'". Switch it on to use this world instead.';
+      else note='Stop sharing switches Always open off.'+
+        (AO.awake==='unsupported'?' This browser cannot keep the screen on: set the computer to never sleep.':
+         AO.awake==='denied'?' The browser did not let Thunder keep the screen on: set the computer to never sleep.':'');
+      aoNote.textContent=note;
+      aoNowB.style.display=c&&!aoWorldUp()&&!aoBusy()&&AO.phase!=='checking'&&AO.phase!=='starting'&&AO.phase!=='loading'?'':'none';
+    });
     addLive(function(){
       var live=LH.state==='open'||LH.state==='relaylost';
       codeBox.style.display=LH.state==='open'&&LH.code?'':'none';
@@ -55990,7 +56050,7 @@ c.PK;})();
   ICONS.friends='<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="17" cy="9" r="2.6"/><path d="M15.4 13.6c2.6-.4 4.7 1 5.1 4.4"/>';
   CATEGORIES.splice(1,0,{id:'friends',name:'Friends'});
   var LAN_MOD_OPEN={cat:'friends',id:null,name:'Open to Friends',wide:true,special:'lanhost',
-      desc:'Let friends join this singleplayer world with a code, like LAN but over the internet. You stay the host; the world runs in your browser.'},
+      desc:'Let friends join this singleplayer world with a code, like LAN but over the internet. You stay the host; the world runs in your browser. Always open keeps it open on a computer you leave on.'},
     LAN_MOD_JOIN={cat:'friends',id:null,name:'Join a Friend',wide:true,special:'lanjoin',
       desc:'Join a world a friend opened with Open to Friends. Use it from the title screen.'};
   MODULES.push(LAN_MOD_OPEN,LAN_MOD_JOIN,
@@ -56033,8 +56093,304 @@ c.PK;})();
       lanShowFriends();
       return;
     }
+    if(!$rt_resuming()&&b&&b.bE===1&&aoWorldUp())AO.quit=true;    // Save and Quit: Always open leaves it closed
     return lanIgmAction.call(this,b);
   };
+
+  // =====================================================================================
+  // Always open: a computer left on as the world's home. Switched on in a singleplayer world
+  // (Right Shift > Friends), that world then
+  //   - is loaded by itself when Thunder starts on this computer (after a 10 second countdown
+  //     with Not now), and shared with its kept code. (A freshly started browser shows the
+  //     game's own "press any key to enable sound" first; the game starts after that key.)
+  //   - is shared again whenever the relay connection drops (5 s, then up to a minute apart);
+  //   - is loaded again when it stops with nobody at the computer (the server crashed or the
+  //     game timed out), at most 3 times in 30 minutes;
+  //   - stays closed when the player leaves it (Save and Quit) or plays something else, until
+  //     nobody has touched the computer for 5 minutes, or Thunder starts again.
+  // While it is open the screen is kept on (Screen Wake Lock), and a WebRTC data channel inside
+  // this page stays open: Chrome slows the timers of a tab that has been hidden for 5 minutes to
+  // one wake-up a minute, which would stop the host's own game from answering the server's
+  // keepalives, unless the page is using WebRTC. Kept in this browser (localStorage
+  // "thunderAlwaysOpen_v1": the world's folder and name).
+  // =====================================================================================
+  var AO_STORE='thunderAlwaysOpen_v1';
+  var AO_COUNT=10000;             // countdown before the world is loaded
+  var AO_IDLE=15000;              // no key, click or mouse move this long: nobody at the computer
+  var AO_AWAY=5*60000;            // ...this long: the player has gone
+  var AO_MAX_LOADS=3,AO_LOAD_SPAN=30*60000;
+  var AO={cfg:null,phase:'start',msg:'',until:0,wait:5000,openSince:0,loads:[],up:false,quit:false,input:now(),inAt:0,
+    menuAt:0,startAt:0,lock:null,locking:false,lockTry:0,awake:'',keeper:null,noRtc:false,banner:null,bannerText:null};
+  // the singleplayer world the game is running now, as launchIntegratedServer was given it
+  var lanWorld=null;
+  // Minecraft.launchIntegratedServer(folder, name, settings) starts every singleplayer world:
+  // Play Selected World, Create New World, and Always open
+  var origEh1=Eh1;
+  Eh1=function(a,b,c,d){
+    if(!$rt_resuming()){
+      try{lanWorld={folder:b===null?'':String($rt_ustr(b)),name:c===null?'':String($rt_ustr(c))};}catch(_){lanWorld=null;}
+    }
+    return origEh1(a,b,c,d);
+  };
+  function aoLoad(){
+    try{
+      var o=JSON.parse(W.localStorage.getItem(AO_STORE)||'null');
+      if(o&&typeof o.folder==='string'&&o.folder)return {folder:o.folder,name:typeof o.name==='string'&&o.name?o.name:o.folder};
+    }catch(_){}
+    return null;
+  }
+  function aoSave(){try{if(AO.cfg)W.localStorage.setItem(AO_STORE,JSON.stringify(AO.cfg));else W.localStorage.removeItem(AO_STORE);}catch(_){}}
+  AO.cfg=aoLoad();
+  function aoSet(phase,msg){
+    if(AO.phase===phase&&AO.msg===(msg||''))return;
+    AO.phase=phase;AO.msg=msg||'';
+    if(menuOpen)runLive();
+  }
+  // this computer runs the Always open world (its server; the player may still be joining)
+  function aoWorldUp(){return !!(AO.cfg&&lanWorld&&lanWorld.folder===AO.cfg.folder&&lanWorldRunning()&&!LJ.active);}
+  // a singleplayer world of this computer is running and the player is in it
+  function aoInOwnWorld(){return !!(lanWorld&&lanWorld.folder&&lanWorldRunning()&&HEN&&HEN.X&&!LJ.active);}
+  // anything else going on: another world, a server, a friend's world
+  function aoBusy(){return !!((HEN&&HEN.X)||lanWorldRunning()||LJ.active||LJ.state==='finding'||LJ.state==='connecting'||LJ.state==='joining');}
+  // the game has started: its first menu is up and the built-in packs are ready (or a minute has
+  // passed since the menu came up)
+  function aoReady(){
+    if(!HEN||HEN.cm===null&&!HEN.X)return false;
+    var b=null;try{b=TC.boot?TC.boot():null;}catch(_){b=null;}
+    if(!b)return true;
+    if(!b.menu)return false;
+    if(!AO.menuAt)AO.menuAt=now();
+    return !b.packsBusy||now()-AO.menuAt>60000;
+  }
+  // whether the world's folder is still in the game's storage: true, false, or null (cannot tell)
+  function aoWorldExists(folder){
+    return new Promise(function(done){
+      var req,fresh=false;
+      W.setTimeout(function(){done(null);},5000);
+      try{req=W.indexedDB.open('_net_lax1dude_eaglercraft_v1_8_internal_PlatformFilesystem_1_12_2_');}catch(_){done(null);return;}
+      req.onupgradeneeded=function(){fresh=true;try{req.transaction.abort();}catch(_){}};   // no storage at all: no worlds
+      req.onerror=function(ev){if(ev&&ev.preventDefault)ev.preventDefault();done(fresh?false:null);};
+      req.onblocked=function(){done(null);};
+      req.onsuccess=function(){
+        var db=req.result;
+        try{
+          if(!db.objectStoreNames.contains('filesystem')){db.close();done(null);return;}
+          var g=db.transaction('filesystem','readonly').objectStore('filesystem').get(['eaglercraft/worlds/'+folder+'/level.dat']);
+          g.onsuccess=function(){db.close();done(!!g.result);};
+          g.onerror=function(){db.close();done(null);};
+        }catch(_){try{db.close();}catch(__){}done(null);}
+      };
+    });
+  }
+  function aoCount(){
+    AO.until=now()+AO_COUNT;
+    aoSet('count','');
+  }
+  function aoLoadWorld(){
+    var c=AO.cfg,t=now();
+    if(!c)return;
+    AO.loads=AO.loads.filter(function(x){return t-x<AO_LOAD_SPAN;});
+    if(AO.loads.length>=AO_MAX_LOADS){
+      aoSet('failed','the world stopped '+AO_MAX_LOADS+' times within half an hour, so Always open stopped loading it. Load it yourself to see what happens, or click Open now.');
+      return;
+    }
+    AO.loads.push(t);
+    aoSet('checking','');
+    aoWorldExists(c.folder).then(function(yes){
+      if(AO.phase!=='checking'||AO.cfg!==c)return;       // turned off or changed meanwhile
+      if(yes===false){aoSet('failed','the world "'+c.name+'" is not in this browser any more (deleted or renamed). Switch Always open on again in the world you want.');return;}
+      if(aoBusy()){aoSet('paused','');return;}           // someone started something meanwhile
+      AO.until=now()+60000;                              // the world must be running within a minute
+      AO.startAt=0;
+      aoSet('starting','');                              // aoTick goes on once the game's server is ready
+    });
+  }
+  // The game's server Worker starts with the first Singleplayer click (its "Starting integrated
+  // server" screen calls startIntegratedServerWorker, which does nothing once it runs); a world
+  // can be launched once the server is ready for one.
+  function aoStartServer(){
+    if(HFB!==-2||now()-(AO.startAt||-1e9)<10000)return;
+    AO.startAt=now();
+    runOnGame([function(){Gh8(0);}]);
+  }
+  function aoLaunch(c){
+    lanLog('Always open: loading "'+c.name+'"');
+    runOnGame([function(){
+      if(!$rt_resuming()&&(aoBusy()||AO.cfg!==c||HFB!==0))return;
+      Eh1(HEN,$rt_str(c.folder),$rt_str(c.name),null);
+    }]);
+  }
+  // switched on in the world the player is in (it is shared at once)
+  function aoTurnOnHere(){
+    if(!aoInOwnWorld())return;
+    AO.cfg={folder:lanWorld.folder,name:lanWorld.name||lanWorld.folder};aoSave();
+    AO.loads=[];AO.wait=5000;AO.quit=false;AO.until=0;
+    if(!AO.inAt)AO.inAt=now()-5000;                       // the player has been in this world a while
+    aoSet('hosting','');
+    aoTick();
+  }
+  function aoTurnOff(){
+    AO.cfg=null;aoSave();
+    AO.quit=false;AO.until=0;
+    aoSet('start','');
+    aoTick();
+  }
+  // Open now (card or countdown): the world is loaded (or shared) right away
+  function aoOpenNow(){
+    if(!AO.cfg)return;
+    AO.wait=5000;AO.until=0;
+    if(aoWorldUp()){aoSet('hosting','');aoTick();return;}
+    if(aoBusy())return;
+    AO.loads=[];
+    aoLoadWorld();
+  }
+  function aoNotNow(){if(AO.phase==='count')aoSet('skipped','');aoBanner();}
+  function aoTick(){
+    var t=now(),c=AO.cfg,up=aoWorldUp();
+    // the Always open world stopped: by the player (Save and Quit, or someone at the computer),
+    // or by itself (then it is loaded again)
+    if(AO.up&&!up&&AO.phase!=='failed'){
+      AO.openSince=0;AO.until=0;
+      if(AO.quit||t-AO.input<AO_IDLE)aoSet('paused','');
+      else{aoSet('again','');lanLog('Always open: the world stopped with nobody at the computer');}
+    }
+    if(!up){AO.quit=false;AO.inAt=0;}
+    AO.up=up;
+    if(!c){if(AO.phase!=='start')aoSet('start','');}
+    else if(up&&AO.phase!=='failed'){
+      if(AO.phase!=='hosting'){AO.until=0;AO.wait=5000;AO.openSince=0;aoSet('hosting','');}
+      if(!HEN||!HEN.X||!HEN.v)AO.inAt=0;                  // still loading
+      // the player has just arrived: the world's spawn point (which tells worlds apart, so it
+      // picks the world's code) comes in a moment later
+      else if(!AO.inAt||t-AO.inAt<5000){if(!AO.inAt)AO.inAt=t;}
+      else if(LH.state==='open'){
+        if(!AO.openSince)AO.openSince=t;
+        else if(t-AO.openSince>120000)AO.wait=5000;       // open for a while: the next drop is retried quickly again
+        AO.until=0;
+      }else{
+        AO.openSince=0;
+        var why=lanHostBlocker();
+        if(why)aoSet('failed',why);
+        else if(LH.state!=='connecting'&&!LH.closing){
+          if(!AO.until)AO.until=LH.state==='off'?t:t+AO.wait;   // not shared yet: at once
+          if(t>=AO.until){
+            AO.until=0;AO.wait=Math.min(AO.wait*2,60000);
+            lanLog('Always open: sharing the world'+(LH.state==='off'?'':' again ('+LH.state+(LH.msg?': '+LH.msg:'')+')'));
+            lanHostStart();
+          }
+        }
+      }
+    }
+    else if(up){}                                          // stopped (failed): left as it is
+    else if(aoBusy()){
+      // another world, a server or a friend's world: left alone; afterwards it counts as the
+      // player having left the Always open world
+      if(AO.phase!=='failed')aoSet('paused','');
+    }
+    else{
+      var idle=t-AO.input,title=!!(HEN&&HEN.cm instanceof Hj),ready=aoReady();
+      switch(AO.phase){
+        case 'start':if(ready&&(title||idle>=AO_AWAY))aoCount();break;
+        case 'again':if(ready&&(title||idle>=AO_IDLE))aoCount();break;
+        case 'hosting':aoSet('again','');break;
+        case 'paused':case 'skipped':if(ready&&idle>=AO_AWAY)aoCount();break;
+        case 'count':if(t>=AO.until)aoLoadWorld();break;
+        case 'starting':
+          if(HFB===0){AO.until=t+60000;aoSet('loading','');aoLaunch(c);}
+          else if(t>=AO.until)aoSet('again','');
+          else aoStartServer();
+          break;
+        case 'loading':if(t>=AO.until)aoSet('again','');break;
+      }
+    }
+    aoAwake(!!c&&(AO.phase==='count'||AO.phase==='checking'||AO.phase==='starting'||AO.phase==='loading'||AO.phase==='hosting'));
+    aoBanner();
+  }
+  // Screen Wake Lock (asked for again whenever the tab is visible again) and the WebRTC channel
+  function aoAwake(on){
+    var nav=W.navigator,k=AO.keeper;
+    if(!on){
+      if(AO.lock){var l=AO.lock;AO.lock=null;try{l.release();}catch(_){}}
+      if(k){AO.keeper=null;aoKeeperClose(k);}
+      AO.awake='';
+      return;
+    }
+    if(!nav||!nav.wakeLock||typeof nav.wakeLock.request!=='function')AO.awake='unsupported';
+    else if(AO.lock&&!AO.lock.released)AO.awake='on';
+    else if(D.visibilityState!=='visible')AO.awake='hidden';
+    else if(!AO.locking&&now()-(AO.lockTry||-1e9)>60000){   // refused: asked again a minute later
+      AO.locking=true;AO.lockTry=now();
+      nav.wakeLock.request('screen').then(function(l){
+        AO.locking=false;AO.lockTry=0;
+        if(!AO.cfg){try{l.release();}catch(_){}return;}
+        AO.lock=l;AO.awake='on';
+      },function(e){AO.locking=false;AO.awake='denied';lanLog('Always open: the screen cannot be kept on ('+(e&&e.message||e)+')');});
+    }
+    if(k&&(k.dc.readyState==='open'||now()-k.at<30000))return;   // open, or still connecting
+    if(k){AO.keeper=null;aoKeeperClose(k);}
+    if(!W.RTCPeerConnection||AO.noRtc)return;
+    var a,b;
+    try{a=new W.RTCPeerConnection();b=new W.RTCPeerConnection();}
+    catch(_){AO.noRtc=true;try{if(a)a.close();}catch(__){}return;}
+    k={a:a,b:b,dc:null,at:now()};AO.keeper=k;
+    a.onicecandidate=function(e){if(e.candidate&&AO.keeper===k)b.addIceCandidate(e.candidate)['catch'](function(){});};
+    b.onicecandidate=function(e){if(e.candidate&&AO.keeper===k)a.addIceCandidate(e.candidate)['catch'](function(){});};
+    k.dc=a.createDataChannel('thunder-awake');
+    a.createOffer().then(function(o){return a.setLocalDescription(o);})
+      .then(function(){return b.setRemoteDescription(a.localDescription);})
+      .then(function(){return b.createAnswer();})
+      .then(function(o){return b.setLocalDescription(o);})
+      .then(function(){return a.setRemoteDescription(b.localDescription);})
+      ['catch'](function(){});
+  }
+  function aoKeeperClose(k){try{k.dc.close();}catch(_){}try{k.a.close();}catch(_){}try{k.b.close();}catch(_){}}
+  // the countdown, on top of everything (also over the loading screen)
+  function aoBanner(){
+    var show=AO.phase==='count'&&!!AO.cfg;
+    if(!show){if(AO.banner)AO.banner.style.display='none';return;}
+    if(!AO.banner){
+      lanCss();
+      var b=el('div'),go=el('button',null,'Open now'),no=el('button',null,'Not now');
+      b.id='thunder-ao-banner';go.type=no.type='button';
+      go.addEventListener('click',function(e){e.stopPropagation();aoOpenNow();aoBanner();});
+      no.addEventListener('click',function(e){e.stopPropagation();aoNotNow();});
+      AO.bannerText=el('span');
+      b.appendChild(AO.bannerText);b.appendChild(go);b.appendChild(no);
+      D.body.appendChild(b);AO.banner=b;
+    }
+    AO.banner.style.display='';
+    var s=Math.max(0,Math.ceil((AO.until-now())/1000));
+    AO.bannerText.textContent='Always open: opening "'+AO.cfg.name+'" for friends in '+s+' s';
+  }
+  function aoStatus(){
+    var c=AO.cfg;
+    if(!c)return ['','Off',''];
+    var nm='"'+c.name+'"',s;
+    switch(AO.phase){
+      case 'start':return ['tcm-warn','Waiting','opens '+nm+' once the title screen is up'];
+      case 'count':s=Math.max(0,Math.ceil((AO.until-now())/1000));return ['tcm-warn','Opening soon','loads '+nm+' in '+s+' s'];
+      case 'checking':case 'starting':case 'loading':return ['tcm-warn','Loading',nm];
+      case 'hosting':
+        if(!HEN||!HEN.X)return ['tcm-warn','Loading',nm];
+        if(LH.state==='open')return ['tcm-ok','On',nm+' is open'+(LH.code?' with code '+LH.code:'')];
+        if(LH.state==='connecting'||LH.state==='off')return ['tcm-warn','Opening',nm];
+        s=AO.until?Math.max(0,Math.ceil((AO.until-now())/1000)):0;
+        return ['tcm-warn','Sharing again'+(s?' in '+s+' s':''),LH.msg||'the relay connection closed'];
+      case 'again':return ['tcm-warn','Loading again','the world stopped with nobody at the computer'];
+      case 'paused':return ['','Paused','you left '+nm+'; it opens again when Thunder next starts here, or after 5 minutes with nobody at the computer'];
+      case 'skipped':return ['','Not this time','opens after 5 minutes with nobody at the computer, or when Thunder next starts here'];
+      case 'failed':return ['tcm-bad','Stopped',AO.msg];
+    }
+    return ['','',''];
+  }
+  W.addEventListener('keydown',aoInput,true);
+  W.addEventListener('mousedown',aoInput,true);
+  W.addEventListener('mousemove',aoInput,true);
+  W.addEventListener('wheel',aoInput,{capture:true,passive:true});
+  W.addEventListener('touchstart',aoInput,{capture:true,passive:true});
+  // (the browser also sends mouse moves of no distance when the page changes under a still mouse)
+  function aoInput(e){if(e&&e.type==='mousemove'&&!e.movementX&&!e.movementY)return;AO.input=now();}
+  W.setInterval(function(){try{aoTick();}catch(e){report(e);}},1000);
 
   // small badge while the world is open, so the code is visible without the menu. The same timer
   // puts the card that fits first: Open to Friends in a world, Join a Friend elsewhere (only
@@ -56061,7 +56417,8 @@ c.PK;})();
 
   TC.lan={host:LH,join:LJ,relays:lanRelays,name:lanMyName,open:lanHostStart,stop:lanHostStop,joinCode:lanJoin,cancel:lanJoinCancel,reroll:lanReroll,
     site:LAN_SITE,siteCheck:lanSiteCheck,
-    turn:LAN_TURN,fetchTurn:lanTurn,test:LAN_TEST,selfTest:lanSelfTest,ice:lanIceAll};
+    turn:LAN_TURN,fetchTurn:lanTurn,test:LAN_TEST,selfTest:lanSelfTest,ice:lanIceAll,
+    always:AO,alwaysHere:aoTurnOnHere,alwaysOff:aoTurnOff,alwaysNow:aoOpenNow,alwaysStatus:aoStatus,world:function(){return lanWorld;}};
 
   // Title screen: animated Thunder storm background with mouse parallax, and the Thunder logo
   /* -------------------------------------------------------------------------------------------

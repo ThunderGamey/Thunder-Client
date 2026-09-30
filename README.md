@@ -46,7 +46,9 @@ in Right Shift > Utility > Readme.
   (`thunder-relay/`, set up once in Cloudflare: see NETWORKING.md), codes and games work from any
   network where the page loads: when two players cannot connect directly, the game goes through
   the relay. The optional TURN relay (`functions/turn.js`) makes those connections faster, and
-  Right Shift > Friends > Connection test shows what a network lets through.
+  Right Shift > Friends > Connection test shows what a network lets through. **Always open**
+  (Open to Friends card) turns a computer that is left on into the world's home: the world opens
+  by itself whenever Thunder starts there and is shared again whenever the connection drops.
   Source and build: [`thunder/`](thunder/README.md), shaders:
   [`thunder/SHADERS.md`](thunder/SHADERS.md), Friends: [`thunder/NETWORKING.md`](thunder/NETWORKING.md).
 - **`index.html`** - the original WASM-GC launcher (unchanged).
