@@ -318,7 +318,7 @@
     zoomKey:'KeyC',worldMapKey:'KeyM',
     waypoints:true,waypointKey:'KeyB',waypointsInWorld:true,deathPoints:true,  // thunder-waypoints.js
     // thunder-social.js: Thunder Friends (friends list, chat, pop-ups); O opens the chat
-    socialOn:true,socialListed:true,socialShare:true,socialToasts:true,socialOnlineToasts:true,socialKey:'KeyO'
+    socialOn:true,socialListed:true,socialShare:true,socialToasts:true,socialOnlineToasts:true,socialKey:'KeyO',socialQuickJoin:true
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];

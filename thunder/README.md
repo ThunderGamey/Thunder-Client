@@ -281,8 +281,9 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   limits: [NETWORKING.md](NETWORKING.md).
 - `thunder-social.js` - Thunder Friends: friends list across Thunder Client (add by `Name#tag`),
   who is on Thunder now, chat (O opens it), pop-ups for messages, requests, invites and friends
-  coming online, and friends' open worlds with Join (in the list, the chat and on the
-  Singleplayer / Multiplayer screens). It talks to the friends hub in the relay Worker
+  coming online, and friends' open worlds with who is playing and Join (in the list, the chat and
+  on the Singleplayer / Multiplayer screens), with the host's choice of one-click Join or the code
+  (a switch it adds to the Open to Friends card). It talks to the friends hub in the relay Worker
   (`thunder-relay/social.js`, one Durable Object for everyone) at `/social`
   (`functions/social.js`). Details: [NETWORKING.md](NETWORKING.md).
 

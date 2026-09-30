@@ -5,8 +5,9 @@
      object of the thunder-relay Worker, thunder-relay/social.js). Included into the client scope
      of thunder-client.js by build.js, after thunder-lan.js (it opens and joins worlds with it).
        - Right Shift > Friends: your name and tag, adding friends by Name#tag, requests, the friends
-         list (what each one is playing, with Join for a world they opened and Invite to yours),
-         the chat, and everyone else on Thunder right now.
+         list (what each one is playing, who is in a world they opened, with Join for it and
+         Invite to yours), the chat, and everyone else on Thunder right now.
+       - Open to Friends card: whether friends join your world with one click, or need its code.
        - O (Right Shift > Friends > Thunder Friends settings) opens the chat from a world or the
          title screen.
        - Pop-ups at the top right: messages, friend requests, invites, friends coming online.
@@ -19,12 +20,14 @@
      @class A_3 net.minecraft.client.gui.GuiWorldSelection
      @class OG net.minecraft.client.gui.GuiMultiplayer
      (GuiMainMenu Hj is declared as a class in thunder-title.js.)
+     Instance fields (the size of those screens, for the friends' worlds list at the top):
+     @field q net.minecraft.client.gui.GuiScreen.drawBackground GuiScreen.width
   ------------------------------------------------------------------------------------------- */
   var SO_STORE='thunderSocial_v1',SO_CHATS='thunderSocialChats_v1';
   var SO_KEEP=60,SO_CONVOS=40;          // messages kept per friend, friends with a chat kept
   var SO={state:'off',msg:'',ws:null,id:'',key:'',me:null,friends:{},reqIn:[],reqOut:[],blocked:[],
     online:null,onlineAt:0,chats:{},unread:{},sel:'',retry:0,retryAt:0,connAt:0,pinged:0,heard:0,seq:Date.now(),lastS:'',lastName:'',
-    lastListed:null,lastShare:null,addMsg:'',addOk:false,ver:0,cver:0,over:0,saveT:0,probe:null,fatal:'',connecting:false,arm:{},onToast:{}};
+    lastListed:null,lastShare:null,addMsg:'',addOk:false,ver:0,cver:0,over:0,saveT:0,probe:null,fatal:'',connecting:false,arm:{},onToast:{},ask:'',askErr:'',via:null,joining:null};
   function soLog(m){lanLog('Thunder Friends: '+m);}
   function soChanged(){SO.ver++;if(menuOpen)runLive();soWorlds();}
   function soSet(state,msg){SO.state=state;SO.msg=msg||'';soChanged();}
@@ -177,10 +180,19 @@
   function soReady(){return SO.state==='on'&&!!SO.ws;}
 
   // what friends see you doing (only while "Show friends what I am playing" is on)
+  // (a world you opened: its code only with one-click Join on, and who is in it)
   function soActivity(){
     try{
-      if(LJ.active||LJ.state==='joining'||LJ.state==='playing')return {w:'join'};
-      if(LH.state==='open'&&LH.code)return {w:'host',code:LH.code};
+      if(LJ.active||LJ.state==='joining'||LJ.state==='playing'){
+        var v=SO.via;
+        return v&&v.code===LJ.code?{w:'join',host:v.name}:{w:'join'};     // whose world, when joined here
+      }
+      if(LH.state==='open'&&LH.code){
+        var o={w:'host'},p=soPlayers();
+        if(S.socialQuickJoin)o.code=LH.code;else o.lock=true;
+        if(p.length)o.players=p;
+        return o;
+      }
       if(HEN&&HEN.X){
         if(lanWorldRunning())return {w:'sp'};
         var nm=HEN.v&&HEN.v.d9&&HEN.v.d9.qf,addr=nm&&nm.bR3?String($rt_ustr(nm.bR3)):'';
@@ -190,19 +202,33 @@
     }catch(_){}
     return {w:'menu'};
   }
+  // friends in the world you opened (their game has logged in to it)
+  function soPlayers(){
+    var a=[],k,P;
+    for(k in LH.peers){P=LH.peers[k];if(P&&P.play&&!P.kicked&&!P.dead&&/^[A-Za-z0-9_]{1,16}$/.test(P.name||''))a.push(P.name);}
+    return a.sort().slice(0,16);
+  }
   function soDoing(f){
     if(!f||!f.online)return 'Offline';
     var s=f.s;
     if(!s)return 'Online';
     switch(s.w){
-      case 'host':return 'Has a world open'+(s.code?' \u2022 '+s.code:'');
+      case 'host':
+        var n=s.players?s.players.length:0;
+        return 'Has a world open'+(s.code?' \u2022 '+s.code:s.lock?' \u2022 code needed':'')+(n?' \u2022 '+(n+1)+' playing':'');
       case 'sp':return 'Playing singleplayer';
-      case 'join':return 'In a friend\'s world';
+      case 'join':return !s.host?'In a friend\'s world':SO.me&&s.host===SO.me.name?'In your world':'In '+s.host+'\'s world';
       case 'server':return s.server?'On '+s.server:'On a server';
       default:return 'In the menus';
     }
   }
-  function soHosting(f){return !!(f&&f.online&&f.s&&f.s.w==='host'&&f.s.code);}
+  function soHosting(f){return !!(f&&f.online&&f.s&&f.s.w==='host'&&(f.s.code||f.s.lock));}
+  // who is playing in a friend's open world: the friend, then everyone who joined ("you" for you)
+  function soWho(f){
+    if(!soHosting(f))return '';
+    var me=SO.me&&SO.me.name;
+    return [f.name].concat(f.s.players||[]).map(function(n){return me&&n===me?'you':n;}).join(', ');
+  }
 
   // ---- what the hub says ---------------------------------------------------------------------
   function soDrop(list,id){for(var i=list.length-1;i>=0;i--)if(list[i].id===id)list.splice(i,1);}
@@ -312,18 +338,56 @@
     SO.addMsg='';soChanged();
   }
   function soAct(t,id){if(/^[0-9a-f]{24}$/.test(id||''))soSend({t:t,id:id});}
+  // an invite carries the code (so an invited friend joins with one click, even when others need it)
   function soInvite(id){
     if(!(LH.state==='open'&&LH.code)){soSys(id,'Open your world to friends first (Esc \u2192 Open to Friends).');return;}
     // the hub needs to know the world is open before it passes the invite on
     soStatusNow();
-    soSend({t:'invite',to:id});
+    soSend({t:'invite',to:id,code:LH.code});
   }
-  function soJoin(code){
+  // f: the friend whose world it is (friends then see whose world you are in)
+  function soJoin(code,f){
     var why=lanJoinBlocker();
-    if(why){soToast({kind:'info',title:'Cannot join yet',text:why.charAt(0).toUpperCase()+why.slice(1)+'.',quiet:true});return false;}
-    if(menuOpen)hideMenu();
+    if(why){soToast({kind:'info',title:'Cannot join yet',text:why.charAt(0).toUpperCase()+why.slice(1)+'.',quiet:true,tag:'join'});return false;}
+    code=String(code||'').replace(/\s+/g,'');
+    if(!code)return false;
+    SO.via=f&&f.name?{code:code,name:f.name}:null;
+    SO.joining={code:code,name:f&&f.name||'',id:f&&f.id||'',st:''};SO.askErr='';
+    // (the menu stays open while it connects, and closes by itself when the world starts loading)
     lanJoin(code);
-    return true;
+    soJoinWatch();
+    if(SO.joining)soToast({kind:'info',title:'Joining'+(f&&f.name?' '+f.name+'\'s world':''),text:'Connecting\u2026',quiet:true,tag:'join'});
+    return !!SO.joining;
+  }
+  // a join started here: how it goes (the Join card that shows it may not be on screen)
+  function soJoinWatch(){
+    var j=SO.joining;
+    if(!j)return;
+    if(LJ.code!==j.code||LJ.state==='off'){SO.joining=null;return;}
+    if(LJ.state==='error'){
+      SO.joining=null;
+      var why=String(LJ.msg||'it did not work');why=why.charAt(0).toUpperCase()+why.slice(1);
+      if(j.id&&SO.ask===j.id)SO.askErr=why;
+      soToast({kind:'info',title:'Could not join'+(j.name?' '+j.name+'\'s world':''),text:why,tag:'join'});
+      soChanged();
+      return;
+    }
+    if(LJ.state==='joining'||LJ.state==='playing'){
+      SO.joining=null;
+      if(j.id&&SO.ask===j.id){SO.ask='';SO.askErr='';}
+      soChanged();
+      return;
+    }
+    if(j.st!==LJ.state){j.st=LJ.state;soChanged();}
+  }
+  // Join on a friend's open world: at once, or (when they want friends to need the code) the chat
+  // with that friend opens with a box for the code
+  function soJoinFriend(f){
+    if(!soHosting(f))return false;
+    if(f.s.code)return soJoin(f.s.code,f);
+    SO.ask=f.id;
+    soShowChat(f.id);
+    return false;
   }
   function soStatusNow(){
     if(!soReady())return;
@@ -335,6 +399,7 @@
   // every second: connect when due, keepalive, and tell the hub about changes
   W.setInterval(function(){
     try{
+      if(SO.joining)soJoinWatch();
       if(!S.socialOn){if(SO.ws||SO.state!=='off')soDisconnect();return;}
       // (first once the game has read the profile, so friends never see a stand-in name)
       if(!SO.ws&&!SO.connecting&&!SO.fatal&&(SO.state==='off'||(SO.state==='retry'&&now()>=SO.retryAt))&&soGameUp())soConnect();
@@ -367,7 +432,7 @@
 
   // ---- pop-ups (top right) -------------------------------------------------------------------
   var SO_CSS=[
-    '#thunder-toasts{position:fixed;top:38px;right:10px;z-index:2147483100;display:flex;flex-direction:column;gap:8px;width:290px;max-width:calc(100vw - 20px);pointer-events:none}',
+    '#thunder-toasts{position:fixed;top:38px;right:10px;z-index:2147483646;display:flex;flex-direction:column;gap:8px;width:290px;max-width:calc(100vw - 20px);pointer-events:none}',
     '.tct{pointer-events:auto;padding:9px 11px;border-radius:11px;background:rgba(8,14,22,.92);border:1px solid rgba(79,209,255,.38);color:#e8f6ff;',
       'font:12px/1.4 system-ui,-apple-system,Segoe UI,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.45),0 0 14px rgba(79,209,255,.16);animation:tct-in .18s ease-out;cursor:default}',
     '.tct.tct-click{cursor:pointer}',
@@ -413,19 +478,21 @@
     '.tcs-send{display:flex;gap:6px;padding:7px;border-top:1px solid rgba(110,140,160,.14)}',
     '.tcs-empty{margin:auto;text-align:center;color:#7c95a8;font-size:12px;line-height:1.6;padding:18px}',
     '.tcs-more{display:flex;gap:6px;flex-wrap:wrap;padding:6px 9px;border-bottom:1px solid rgba(110,140,160,.14)}',
+    '.tcs-who{padding:4px 9px;font-size:11px;color:#9fd8f0;border-bottom:1px solid rgba(110,140,160,.14);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.tcs-ask{align-items:center}.tcs-ask .tcs-note{flex:1 0 100%}.tcs-ask .tcs-btn:disabled{opacity:.5;cursor:default}',
+    '.tcs-ask input{flex:1;min-width:60px;height:26px;padding:0 8px;border-radius:7px;border:1px solid rgba(120,150,175,.28);background:rgba(3,7,12,.55);color:#eafaff;font:600 12px ui-monospace,Menlo,Consolas,monospace;outline:0}',
+    '.tcs-ask input:focus{border-color:rgba(79,209,255,.65);box-shadow:0 0 0 3px rgba(79,209,255,.12)}',
     '.tcs-rows{display:flex;flex-direction:column;gap:4px;margin-top:6px;max-height:260px;overflow-y:auto}',
     '.tcs-row{display:flex;align-items:center;gap:8px;padding:5px 9px;border-radius:8px;background:rgba(3,7,12,.42);color:#dff6ff;font-size:12px}',
     '.tcs-row span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
     '.tcs-row em{font-style:normal;font-size:10.5px;color:#7c95a8}',
     // friends' worlds on the Singleplayer / Multiplayer screens
-    '#thunder-fworlds{position:fixed;top:10px;left:10px;z-index:2147483000;width:250px;max-width:calc(100vw - 20px);padding:9px 10px;border-radius:12px;',
-      'background:rgba(8,14,22,.9);border:1px solid rgba(79,209,255,.42);color:#e8f6ff;font:12px/1.4 system-ui,-apple-system,Segoe UI,sans-serif;',
-      'box-shadow:0 6px 24px rgba(0,0,0,.45),0 0 14px rgba(79,209,255,.16)}',
-    '#thunder-fworlds h4{margin:0 0 6px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#7fdcff}',
-    '#thunder-fworlds .tcs-row{background:rgba(3,7,12,.5)}',
-    '#thunder-fworlds.tcs-bar{top:5px;left:6px;width:auto;max-width:44vw;display:flex;align-items:center;gap:8px;padding:3px 4px 3px 10px;border-radius:999px;font-size:11px}',
-    '#thunder-fworlds.tcs-bar span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-    '#thunder-fworlds.tcs-bar .tcs-btn{padding:2px 9px}'
+    '#thunder-fworlds{position:fixed;top:5px;left:6px;z-index:2147483000;display:flex;flex-direction:column;align-items:flex-start;gap:4px;',
+      'color:#e8f6ff;font:11px/1.3 system-ui,-apple-system,Segoe UI,sans-serif}',
+    '.tcs-wl{display:flex;align-items:center;gap:8px;max-width:100%;box-sizing:border-box;padding:3px 4px 3px 10px;border-radius:999px;',
+      'background:rgba(8,14,22,.9);border:1px solid rgba(79,209,255,.42);box-shadow:0 4px 16px rgba(0,0,0,.4),0 0 12px rgba(79,209,255,.14)}',
+    '.tcs-wl span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.tcs-wl .tcs-btn{flex:0 0 auto;padding:2px 9px}'
   ].join('');
   function soCss(){
     if(D.getElementById('thunder-social-style'))return;
@@ -439,17 +506,20 @@
   }
   var soToastBox=null;
   // o: {kind, title, text, id (a friend: click opens the chat), code (an invite: Join), req (a
-  // request: Accept / Decline), quiet (shorter)}
+  // request: Accept / Decline), quiet (shorter), tag (replaces an earlier pop-up with that tag)}
   function soToast(o){
     if(!D.body)return;
     soCss();
-    if(!soToastBox){soToastBox=el('div');soToastBox.id='thunder-toasts';D.body.appendChild(soToastBox);}
+    if(!soToastBox){soToastBox=el('div');soToastBox.id='thunder-toasts';}
+    if(soToastBox.nextSibling||soToastBox.parentNode!==D.body)D.body.appendChild(soToastBox);   // last, so above the menu
+    if(o.tag)[].slice.call(soToastBox.children).forEach(function(c){if(c.getAttribute('data-tag')===o.tag)soToastBox.removeChild(c);});
     while(soToastBox.children.length>=4)soToastBox.removeChild(soToastBox.firstChild);
     var t=el('div','tct'+(o.id?' tct-click':''));
+    if(o.tag)t.setAttribute('data-tag',o.tag);
     t.appendChild(el('b',null,o.title||''));
     if(o.text)t.appendChild(el('p',null,o.text));
     var act=null;
-    if(o.code){act=el('div','tct-act');act.appendChild(soBtn('Join',function(){if(soJoin(o.code))gone();},true));}
+    if(o.code){act=el('div','tct-act');act.appendChild(soBtn('Join',function(){if(soJoin(o.code,SO.friends[o.id]))gone();},true));}
     if(o.req){
       act=el('div','tct-act');
       act.appendChild(soBtn('Accept',function(){soAct('accept',o.req);gone();},true));
@@ -485,8 +555,8 @@
     W.setTimeout(function(){
       try{
         if(listEl)listEl.scrollTop=0;
-        var inp=D.getElementById('tcs-say');
-        if(inp&&!inp.disabled)inp.focus();
+        var inp=D.getElementById(SO.ask&&SO.ask===SO.sel?'tcs-code':'tcs-say');
+        if(inp&&!inp.disabled&&inp.offsetParent)inp.focus();
       }catch(_){}
     },50);
   }
@@ -584,22 +654,45 @@
     }
     // the chat
     var head=el('div','tcs-head'),more=el('div','tcs-more'),msgs=el('div','tcs-msgs'),send=el('div','tcs-send');
+    // who is playing in the friend's open world, and the box for its code when it needs one
+    var who=el('div','tcs-who'),ask=el('div','tcs-more tcs-ask'),askTxt=el('span','tcs-note'),askIn=el('input'),askSay=el('span','tcs-note');
+    var askB=soBtn('Join',function(){doAsk();},true),askX=soBtn('Cancel',function(){SO.ask='';paintHead();});
+    askIn.id='tcs-code';askIn.type='text';askIn.placeholder='Code';askIn.maxLength=12;askIn.spellcheck=false;askIn.autocomplete='off';
+    function doAsk(){
+      var f=SO.friends[SO.sel],c=askIn.value.replace(/\s+/g,'');
+      if(!f||!c)return;
+      soJoin(c,f);
+      paintHead();
+    }
+    soKeepKeys(askIn,doAsk);
+    askIn.addEventListener('input',function(){if(SO.askErr){SO.askErr='';paintHead();}});
+    ask.appendChild(askTxt);ask.appendChild(askIn);ask.appendChild(askB);ask.appendChild(askX);ask.appendChild(askSay);
     var say=el('input'),sayB=soBtn('Send',function(){doSend();},true);
     say.id='tcs-say';say.type='text';say.maxLength=300;say.spellcheck=true;say.autocomplete='off';
     function doSend(){if(SO.sel&&soMsg(SO.sel,say.value))say.value='';}
     soKeepKeys(say,doSend);
     send.appendChild(say);send.appendChild(sayB);
-    main.appendChild(head);main.appendChild(more);main.appendChild(msgs);main.appendChild(send);
+    main.appendChild(head);main.appendChild(who);main.appendChild(ask);main.appendChild(more);main.appendChild(msgs);main.appendChild(send);
     var moreOpen=false,chatVer=-1,chatSel=null,chatReady=null;
     function paintHead(){
       while(head.firstChild)head.removeChild(head.firstChild);
       while(more.firstChild)more.removeChild(more.firstChild);
-      var f=SO.friends[SO.sel];
+      var f=SO.friends[SO.sel],w=soWho(f),asking=!!(f&&SO.ask===f.id&&soHosting(f)&&!f.s.code);
       more.style.display=f&&moreOpen?'':'none';
+      who.style.display=w?'':'none';
+      who.textContent=w?'Playing: '+w:'';
+      ask.style.display=asking?'':'none';
+      askTxt.textContent=asking?f.name+'\'s world needs its code:':'';
+      if(!asking)askIn.value='';
+      var busy=asking&&SO.joining&&SO.joining.id===f.id;
+      askSay.textContent=busy?'Connecting\u2026':asking&&SO.askErr?SO.askErr:'';
+      askSay.className='tcs-note'+(SO.askErr&&!busy?' tcs-bad':'');
+      askSay.style.display=askSay.textContent?'':'none';
+      askB.disabled=askIn.disabled=!!busy;
       if(!f){head.appendChild(el('div','tcs-note','Chats'));return;}
       head.appendChild(el('span','tcs-dot'+(soHosting(f)?' tcs-host':f.online?' tcs-on':'')));
       var fn=el('div','tcs-fn');fn.appendChild(el('b',null,soTagged(f)));fn.appendChild(el('i',null,soDoing(f)));head.appendChild(fn);
-      if(soHosting(f))head.appendChild(soBtn('Join',function(){soJoin(f.s.code);},true));
+      if(soHosting(f)&&!asking)head.appendChild(soBtn('Join',function(){if(!soJoinFriend(f))paintHead();W.setTimeout(function(){var i=D.getElementById('tcs-code');if(i&&i.offsetParent)i.focus();},0);},true));
       if(LH.state==='open'&&LH.code&&f.online)head.appendChild(soBtn('Invite',function(){soInvite(f.id);}));
       head.appendChild(soBtn(moreOpen?'Less':'More',function(){moreOpen=!moreOpen;paintHead();}));
       more.appendChild(armBtn('Remove friend','Click again to remove',function(){soAct('remove',f.id);},'remove:'+f.id));
@@ -618,7 +711,7 @@
       var d=el('div','tcs-m'+(m.w==='out'?' tcs-out':m.w==='sys'?' tcs-sys':''));
       d.appendChild(D.createTextNode(m.text));
       if(m.w==='sys'&&m.code){
-        var jb=soBtn('Join',function(){soJoin(m.code);},true);
+        var jb=soBtn('Join',function(){soJoin(m.code,SO.friends[SO.sel]);},true);
         d.appendChild(el('br'));d.appendChild(jb);
       }
       if(m.w!=='sys'){
@@ -689,7 +782,9 @@
     });
   };
 
-  // ---- the friends' worlds panel (Singleplayer and Multiplayer screens) ------------------------
+  // ---- friends' worlds on the Singleplayer and Multiplayer screens -----------------------------
+  // In the empty strip above the screen's list and left of its title (so it never covers either):
+  // one line per open world with who is playing and Join, two lines at most (then "... more").
   var soWorldsBox=null,soWorldsKey='';
   function soWorlds(){
     var scr=HEN&&HEN.cm,show=!!(scr&&(scr instanceof A_3||scr instanceof OG))&&!menuOpen&&soReady(),list=[];
@@ -699,28 +794,50 @@
     soCss();
     if(!soWorldsBox){soWorldsBox=el('div');soWorldsBox.id='thunder-fworlds';D.body.appendChild(soWorldsBox);}
     soWorldsBox.style.display='';
-    // a narrow window: the screen's list fills its width, so a one-line bar in the empty top strip
-    var bar=W.innerWidth<900;
-    var key=(bar?'b':'p')+list.map(function(f){return f.id+f.s.code+f.name;}).join('|');
+    // the screen's width in its own units (GuiScreen.width) and one unit on the page: its title is
+    // centred at the top and its list starts 32 units down
+    var gw=scr.q|0,px=gw>0?W.innerWidth/gw:2,room=Math.max(120,Math.floor((gw/2-56)*px)-6),lines=32*px>=62?2:1;
+    list.sort(function(a,b){return String(a.name).localeCompare(String(b.name));});
+    var key=room+'/'+lines+'/'+list.map(function(f){return f.id+(f.s.code||'-')+f.name+(f.s.players||[]).join(',');}).join('|');
     if(key===soWorldsKey)return;
     soWorldsKey=key;
     while(soWorldsBox.firstChild)soWorldsBox.removeChild(soWorldsBox.firstChild);
-    soWorldsBox.className=bar?'tcs-bar':'';
-    if(bar){
-      var one=list.length===1;
-      soWorldsBox.appendChild(el('span',null,one?list[0].name+'\'s world is open':list.length+' friends\' worlds are open'));
-      soWorldsBox.appendChild(one?soBtn('Join',function(){soJoin(list[0].s.code);},true):soBtn('See',function(){soShowChat('');},true));
-      return;
-    }
-    soWorldsBox.appendChild(el('h4',null,'Friends\' worlds'));
-    list.sort(function(a,b){return String(a.name).localeCompare(String(b.name));}).forEach(function(f){
-      var r=el('div','tcs-row');r.style.marginTop='4px';
-      r.appendChild(el('span',null,f.name+'\'s world'));
-      r.appendChild(soBtn('Join',function(){soJoin(f.s.code);},true));
+    soWorldsBox.style.maxWidth=room+'px';
+    var shown=list.length>lines?lines-1:list.length;
+    list.slice(0,shown).forEach(function(f){
+      var r=el('div','tcs-wl'),w=soWho(f),t=el('span',null,f.name+'\'s world'+(w.indexOf(',')>0?': '+w:' is open'));
+      t.title=w?'Playing: '+w:'';
+      r.appendChild(t);
+      r.appendChild(soBtn(f.s.code?'Join':'Join (code)',function(){soJoinFriend(f);},true));
       soWorldsBox.appendChild(r);
     });
+    if(shown<list.length){
+      var rest=list.length-shown,r2=el('div','tcs-wl');
+      r2.appendChild(el('span',null,shown?rest+' more open':rest+' friends\' worlds are open'));
+      r2.appendChild(soBtn('See',function(){soShowChat('');},true));
+      soWorldsBox.appendChild(r2);
+    }
   }
   frameTasks.push(function(){if(soWorldsBox||soReady())soWorlds();});
+
+  // ---- Open to Friends card: how friends on Thunder Friends join the world ------------------------
+  // (the same setting as in Thunder Friends settings; placed before the card's last part, Always open)
+  var soLanHost=SPECIALS.lanhost;
+  SPECIALS.lanhost=function(box,m){
+    soLanHost(box,m);
+    var part=el('div'),row=el('div','tcm-row'),sw=el('button','tcm-switch'),note=el('div','tcm-note');
+    sw.type='button';sw.setAttribute('aria-label','Friends join with one click');
+    row.appendChild(el('span',null,'Friends join with one click'));row.appendChild(sw);
+    part.appendChild(row);part.appendChild(note);
+    sw.addEventListener('click',function(e){e.stopPropagation();S.socialQuickJoin=!S.socialQuickJoin;save();soStatusNow();runLive();});
+    box.insertBefore(part,box.lastChild);
+    addLive(function(){
+      part.style.display=S.socialOn&&SO.state!=='none'?'':'none';
+      sw.className='tcm-switch'+(S.socialQuickJoin?' tcm-on':'');
+      note.textContent=S.socialQuickJoin?'Thunder Friends: your friends see this world and join it with one click.':
+        'Thunder Friends: your friends see this world is open, but need the code you give them. An Invite still lets that friend in with one click.';
+    });
+  };
 
   // ---- the chat key --------------------------------------------------------------------------
   if(W.addEventListener)W.addEventListener('keydown',function(e){
@@ -744,6 +861,7 @@
         {id:'socialShare',name:'Show friends what I am playing (and the code of a world I open)'},
         {id:'socialToasts',name:'Pop-ups for messages, requests and invites'},
         {id:'socialOnlineToasts',name:'Pop-up when a friend comes online'},
+        {id:'socialQuickJoin',name:'Friends join my world with one click (off: they need its code; an Invite still lets that friend in)'},
         {id:'socialKey',name:'Chat key',key:true,mouse:false}]};
   (function(){
     var i=MODULES.indexOf(LAN_MOD_OPEN),j=MODULES.indexOf(LAN_MOD_JOIN);
@@ -755,4 +873,4 @@
   soLoadChats();
   // for tests and the console
   TC.social={state:SO,connect:soConnect,disconnect:soDisconnect,add:soAddFriend,msg:soMsg,act:soAct,invite:soInvite,
-    join:soJoin,online:soAskOnline,show:soShowChat,toast:soToast,activity:soActivity};
+    join:soJoin,joinFriend:soJoinFriend,online:soAskOnline,show:soShowChat,toast:soToast,activity:soActivity,who:soWho};

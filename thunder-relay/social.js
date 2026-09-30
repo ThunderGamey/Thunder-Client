@@ -19,9 +19,11 @@
 // deleted once delivered.
 //
 // Protocol (JSON text frames; "ping" is answered "pong" without waking the object):
-//   client -> hub: hello {key, name, hide, share} | status {s} | name {name} | hide {v} | share {v}
+//   client -> hub: hello {key, name, hide, share, s} | status {s} | name {name} | hide {v} | share {v}
 //     | online | add {who} | accept {id} | decline {id} | cancel {id} | remove {id} | block {id}
-//     | unblock {id} | msg {to, text} | invite {to} | ack {n}
+//     | unblock {id} | msg {to, text, id} | invite {to, code} | ack {n}
+//   s (what a player is doing): {w: menu | sp | server (server) | join (host: whose world)
+//     | host (code, or lock: friends need the code; players: who joined)}
 //   hub -> client: welcome | presence | request | friend | unfriend | reqgone | blocked | online
 //     | added | msg | msgout | sent | invite | err
 
@@ -39,6 +41,7 @@ const IP_SPAN = 600000;          // per network address (as a hash, in memory on
 const IP_CONNS = 120;            //   new connections
 const IP_ADDS = 60;              //   friend requests (a school network is many players on one address)
 const NAME_RE = /^[A-Za-z0-9_]{1,16}$/;
+const CODE_RE = /^[a-z0-9]{5,6}$/;
 const ID_RE = /^[0-9a-f]{24}$/;
 const WHAT = ['menu', 'sp', 'host', 'join', 'server'];
 
@@ -54,7 +57,14 @@ function cleanName(n) { n = String(n || ''); return NAME_RE.test(n) ? n : 'Playe
 function cleanStatus(s) {
   if (!s || typeof s !== 'object' || WHAT.indexOf(s.w) < 0) return null;
   const o = { w: s.w };
-  if (s.w === 'host' && /^[a-z0-9]{5,6}$/.test(String(s.code || ''))) o.code = String(s.code);
+  if (s.w === 'host') {
+    // a world whose host wants friends to need the code: the code is not sent here at all
+    if (s.lock === true) o.lock = true;
+    else if (CODE_RE.test(String(s.code || ''))) o.code = String(s.code);
+    const p = Array.isArray(s.players) ? s.players.filter((n) => typeof n === 'string' && NAME_RE.test(n)).slice(0, 16) : [];
+    if (p.length) o.players = p;
+  }
+  if (s.w === 'join' && NAME_RE.test(String(s.host || ''))) o.host = String(s.host);
   if (s.w === 'server') o.server = String(s.server || '').replace(/[^A-Za-z0-9.:_\-\/]/g, '').slice(0, 80);
   return o;
 }
@@ -355,9 +365,11 @@ export class ThunderSocial {
     const err = (why) => sendTo(ws, { t: 'err', why, op: 'invite', to });
     if (!ID_RE.test(to)) return;
     if (!this.isFriend(a.id, to)) return err('You can only invite friends.');
-    if (!a.s || a.s.w !== 'host' || !a.s.code) return err('Open your world to friends first.');
+    // the invite carries the code (a world whose friends need the code never sends it in its status)
+    const code = CODE_RE.test(String(m.code || '')) ? String(m.code) : (a.s && a.s.code);
+    if (!a.s || a.s.w !== 'host' || !code) return err('Open your world to friends first.');
     if (!this.online(to)) return err('They are offline.');
-    this.push(to, { t: 'invite', from: { id: a.id, name: a.name, tag: a.tag }, code: a.s.code, at: Date.now() });
+    this.push(to, { t: 'invite', from: { id: a.id, name: a.name, tag: a.tag }, code, at: Date.now() });
     sendTo(ws, { t: 'sent', to, invite: true, at: Date.now() });
   }
 

@@ -51,7 +51,8 @@ in Right Shift > Utility > Readme.
   by itself whenever Thunder starts there and is shared again whenever the connection drops.
   **Thunder Friends**: add friends by `Name#tag`, see who is on Thunder and what your friends are
   playing, chat with them (O in a world, with pop-ups while you play), and join the worlds they
-  open, from the list, an invite or the Singleplayer / Multiplayer screens.
+  open (and see who is playing in them), from the list, an invite or the Singleplayer /
+  Multiplayer screens; the host picks one-click Join or friends needing the code.
   Source and build: [`thunder/`](thunder/README.md), shaders:
   [`thunder/SHADERS.md`](thunder/SHADERS.md), Friends: [`thunder/NETWORKING.md`](thunder/NETWORKING.md).
 - **`index.html`** - the original WASM-GC launcher (unchanged).

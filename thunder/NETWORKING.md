@@ -89,23 +89,31 @@ Thunder relay (see below): nothing else to set up.
   also wait in their **Requests**. **No** turns one down (that player cannot ask again for 7 days);
   **Block** (click twice) stops them for good.
 - **The friends list** shows who is online and what they are doing: in the menus, playing
-  singleplayer, has a world open (with its code), in a friend's world, or on a server (and which).
-  A friend with a world open has **Join**; with your own world open, **Invite** sends a friend a
-  pop-up with **Join**. The Singleplayer and Multiplayer screens also list friends' open worlds
-  with **Join** (a one-line bar at the top in a narrow window).
+  singleplayer, has a world open (with its code, or "code needed", and how many are playing), in
+  a friend's world (whose, when they joined it through Thunder Friends; "In your world" when it
+  is yours), or on a server (and which). A friend's chat shows who is playing in their world
+  ("Playing: Steve, Alex, you"). A friend with a world open has **Join**; with your own world
+  open, **Invite** sends a friend a pop-up with **Join**. The Singleplayer and Multiplayer screens
+  also list friends' open worlds at the top left, next to the screen's title, with who is playing
+  and **Join** (two at most; with more, **See** opens the list).
+- **One-click Join, or the code** (a switch on the **Open to Friends** card, and in **Thunder
+  Friends settings**): on, friends join your world with one click. Off, they see that it is open
+  (and who is playing), but **Join** asks for the code you give them: the code is not sent to the
+  friends hub at all. An **Invite** still lets that friend in with one click. Joining from Thunder
+  Friends says "Joining ..." and, when it fails, why (a pop-up, and under the code box).
 - **Chat**: pick a friend and type, **Enter** sends. **O** opens the chat from a world or the title
   screen (change the key in **Thunder Friends settings**). A message to a friend who is offline
   waits for them (up to 100 messages, 30 days) and says "sent while they were offline". One that
   was refused (sent too fast, or not connected) says "not sent", and one whose connection closed
   before the hub answered says "may not have been sent".
-- **Pop-ups** at the top right: messages, friend requests, invites and friends coming online (once
-  in 5 minutes per friend, so a friend whose connection drops and comes back is not news). In a
-  world they say which key opens the chat.
+- **Pop-ups** at the top right, over the game and the Right Shift menu: messages, friend requests,
+  invites and friends coming online (once in 5 minutes per friend, so a friend whose connection
+  drops and comes back is not news). In a world they say which key opens the chat.
 - **More** (in a chat): **Remove friend** or **Block** (click twice). Blocked players cannot ask you
   or see you online; **Blocked** in the list has **Unblock**.
 - **Thunder Friends settings**: the card's switch (off = you are offline to everyone), **Show me in
-  On Thunder now**, **Show friends what I am playing** (and the code of a world you open), the
-  pop-ups, and the chat key.
+  On Thunder now**, **Show friends what I am playing** (and your open world: its code and who is
+  in it), the pop-ups, one-click Join, and the chat key.
 
 Who you are is a secret key made in this browser the first time (`localStorage.thunderSocial_v1`):
 the hub checks it against your id at every sign-in and never stores it. Another browser or
@@ -264,7 +272,10 @@ EaglercraftX's LAN framing on them. The browser half was never compiled in, and 
   messages in its SQLite storage. Each game keeps one WebSocket to it (`?id=` the account id; the
   first message says hello with the key, which must hash to that id), sleeps between messages
   (keepalives are answered by Cloudflare) and tells friends about changes: online, offline, what
-  you are doing, your name. The game connects once its first menu is up (it uses a stand-in name
+  you are doing, your name. What you are doing is `{w}`: menu, sp, server (and which), join (and
+  whose world), or host with the code (or `lock` when friends need the code: then no code at all)
+  and `players`, the names in your world (from each friend's login; at most 16, checked by the
+  hub like every name). An invite carries the code itself. The game connects once its first menu is up (it uses a stand-in name
   before it has read the saved profile), and again after 2 s, 5 s, ... up to a minute when the
   connection drops. A keepalive left unanswered for 30 s means the connection died without closing
   (a network change, a laptop waking up), so the game drops it and connects again, and so does a
@@ -400,6 +411,22 @@ open, B), a third player from a script, and a protocol test of the hub from Node
 | A's connection drops and comes back twice | B's "is online" pop-up shows the first time only (then not for 5 minutes) |
 | **O** on B's title screen with 13 unread messages from A | the chat with A opens, typing box ready; the unread count is cleared, in the saved chats too |
 | **Copy** in a browser that does not allow the clipboard | says "Not copied" (no error) |
+| Page errors in either browser over the whole round | none |
+
+Sixth round (one-click Join or the code, and who is playing), same setup, with a scripted friend
+hosting a second world with two players in it:
+
+| Scenario | Result |
+|---|---|
+| Hub protocol, from Node (now 55 checks) | with "code needed" the status never carries the code (even when sent) and still says who is in the world; an invite carries the code, a bad one is refused; at most 16 names, only valid names (not numbers or markup); a friend in a world says whose, a bad name is dropped |
+| A (world open, Always open) clicks the new **Friends join with one click** switch off on the Open to Friends card | the hub gets `{w: host, lock: true}`, no code; B's list: "Has a world open, code needed" |
+| B on the Multiplayer screen | "ViggEagler3162_'s world is open" with **Join (code)**, left of the screen title; **Join (code)** opens the chat with A, "Playing: ViggEagler3162_" and the code box ready |
+| B types a wrong code | "Could not join ViggEagler3162_'s world: No open world has the code ..." as a pop-up over the menu and under the code box; the typed code stays |
+| B types the right code | B is in A's world (the menu closes when it loads); A's status lists B; B sees "Playing: ViggEagler3162_, you"; A sees B "In your world" |
+| B leaves, A (code needed) clicks **Invite** in B's chat | B's pop-up **Join** puts B in A's world without the code |
+| Scripted friend hosting (Zed and Yan in the world), window 1280x720 | two lines at the top left above the server list: "Delta_W's world: Delta_W, Zed, Yan" **Join** and A's world **Join (code)**; the list: "Has a world open, dddd22, 3 playing" |
+| Same at 640x360 | one line, "2 friends' worlds are open" **See** (opens the list) |
+| Found and fixed on the way | the one-line bar covered the start of the screen title, and the old panel could cover the top of the list at some window sizes (now sized to the strip left of the title from the screen's own scale); joining from the chat closed the menu at once, so a failed join showed nothing (now it stays open until the world loads, and says why) |
 | Page errors in either browser over the whole round | none |
 
 Not tested: the public internet relays, Cloudflare's hosted services themselves (TURN, and the
