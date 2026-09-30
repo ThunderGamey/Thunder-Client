@@ -316,7 +316,9 @@
     spears:true,spearHud:true,crystalTap:false,offhandSwap:true,offhandKey:'KeyF',
     thunderCursor:true,cursorTrail:true,     // thunder-cursor.js
     zoomKey:'KeyC',worldMapKey:'KeyM',
-    waypoints:true,waypointKey:'KeyB',waypointsInWorld:true,deathPoints:true   // thunder-waypoints.js
+    waypoints:true,waypointKey:'KeyB',waypointsInWorld:true,deathPoints:true,  // thunder-waypoints.js
+    // thunder-social.js: Thunder Friends (friends list, chat, pop-ups); O opens the chat
+    socialOn:true,socialListed:true,socialShare:true,socialToasts:true,socialOnlineToasts:true,socialKey:'KeyO'
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -1719,6 +1721,9 @@
 
   // Friends: open this singleplayer world to friends with a join code, or join a friend's world
   // @include thunder-lan.js
+
+  // Thunder Friends: friends list, who is on Thunder, chat and world invites, with pop-ups
+  // @include thunder-social.js
 
   // Title screen: animated Thunder storm background with mouse parallax, and the Thunder logo
   // @include thunder-title.js

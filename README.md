@@ -49,6 +49,9 @@ in Right Shift > Utility > Readme.
   Right Shift > Friends > Connection test shows what a network lets through. **Always open**
   (Open to Friends card) turns a computer that is left on into the world's home: the world opens
   by itself whenever Thunder starts there and is shared again whenever the connection drops.
+  **Thunder Friends**: add friends by `Name#tag`, see who is on Thunder and what your friends are
+  playing, chat with them (O in a world, with pop-ups while you play), and join the worlds they
+  open, from the list, an invite or the Singleplayer / Multiplayer screens.
   Source and build: [`thunder/`](thunder/README.md), shaders:
   [`thunder/SHADERS.md`](thunder/SHADERS.md), Friends: [`thunder/NETWORKING.md`](thunder/NETWORKING.md).
 - **`index.html`** - the original WASM-GC launcher (unchanged).

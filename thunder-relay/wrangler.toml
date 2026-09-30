@@ -1,4 +1,5 @@
-# Thunder Client relay (Friends): a Cloudflare Worker with one Durable Object per world code.
+# Thunder Client relay (Friends): a Cloudflare Worker with one Durable Object per world code, and
+# one more (SOCIAL, social.js) for the friends list, who is online and messages.
 # Deployed from this folder by Cloudflare (Workers & Pages > Create > Import a repository, root
 # directory thunder-relay); the site reaches it through a Service binding RELAY on the Pages
 # project. See thunder/NETWORKING.md.
@@ -14,3 +15,11 @@ class_name = "ThunderRelay"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["ThunderRelay"]
+
+[[durable_objects.bindings]]
+name = "SOCIAL"
+class_name = "ThunderSocial"
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["ThunderSocial"]

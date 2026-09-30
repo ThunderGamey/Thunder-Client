@@ -1,11 +1,13 @@
-# Playing together: Friends (open a singleplayer world, join with a code)
+# Playing together: Friends (open a singleplayer world, join with a code) and Thunder Friends
 
 Thunder Client stays on Eaglercraft 1.12.2. The Friends feature lets one player open their
 singleplayer survival world and lets friends join it with a short code, like Education Edition's
 join codes or vanilla "Open to LAN", but across the internet. The world runs in the host's
-browser; there is no server to rent.
+browser; there is no server to rent. Thunder Friends adds a friends list across Thunder Client,
+chat with in-game pop-ups, and joining friends' worlds from the list.
 
-Source: `thunder/thunder-lan.js` (pulled into `thunder-client.js` by `// @include`).
+Source: `thunder/thunder-lan.js` and `thunder/thunder-social.js` (pulled into `thunder-client.js`
+by `// @include`); the relay and the friends hub: `thunder-relay/`.
 
 ## How to use it
 
@@ -74,6 +76,45 @@ the host's own game down. To leave the computer running:
 Kept in the browser (`localStorage.thunderAlwaysOpen_v1`: the world's folder and name), one world
 per browser.
 
+## Thunder Friends: friends list, chat and invites
+
+Everyone on Thunder Client can add each other as friends, see what their friends are playing,
+chat with them from anywhere in the game, and join the worlds they open. It runs on the same
+Thunder relay (see below): nothing else to set up.
+
+- **You** are `Name#1234`: your profile name (Edit Profile) and a 4-digit tag that never changes.
+  **Right Shift -> Friends -> Thunder Friends** shows it with a Copy button.
+- **Add a friend**: type their `Name#1234` and **Add** (or **Add** next to them in **On Thunder
+  now**, the list of everyone on Thunder right now). They get a pop-up with **Accept**; requests
+  also wait in their **Requests**. **No** turns one down (that player cannot ask again for 7 days);
+  **Block** (click twice) stops them for good.
+- **The friends list** shows who is online and what they are doing: in the menus, playing
+  singleplayer, has a world open (with its code), in a friend's world, or on a server (and which).
+  A friend with a world open has **Join**; with your own world open, **Invite** sends a friend a
+  pop-up with **Join**. The Singleplayer and Multiplayer screens also list friends' open worlds
+  with **Join** (a one-line bar at the top in a narrow window).
+- **Chat**: pick a friend and type, **Enter** sends. **O** opens the chat from a world or the title
+  screen (change the key in **Thunder Friends settings**). A message to a friend who is offline
+  waits for them (up to 100 messages, 30 days) and says "sent while they were offline". One that
+  was refused (sent too fast, or not connected) says "not sent", and one whose connection closed
+  before the hub answered says "may not have been sent".
+- **Pop-ups** at the top right: messages, friend requests, invites and friends coming online (once
+  in 5 minutes per friend, so a friend whose connection drops and comes back is not news). In a
+  world they say which key opens the chat.
+- **More** (in a chat): **Remove friend** or **Block** (click twice). Blocked players cannot ask you
+  or see you online; **Blocked** in the list has **Unblock**.
+- **Thunder Friends settings**: the card's switch (off = you are offline to everyone), **Show me in
+  On Thunder now**, **Show friends what I am playing** (and the code of a world you open), the
+  pop-ups, and the chat key.
+
+Who you are is a secret key made in this browser the first time (`localStorage.thunderSocial_v1`):
+the hub checks it against your id at every sign-in and never stores it. Another browser or
+computer is another account, and clearing the site's data starts a new one. Chats are kept in this
+browser (`thunderSocialChats_v1`: the last 60 lines with each of the 40 most recent friends). The
+hub keeps names, tags, friends, requests and blocks; messages only until they are delivered.
+Messages and invites only go between friends, as plain text of at most 300 characters, and every
+connection and network address is rate limited (addresses as a hash, in memory only).
+
 ## Play from any network: Thunder's own relay (site owner, once)
 
 The public Eaglercraft relays hand out the join codes, and some networks (school filters,
@@ -121,7 +162,11 @@ Set it up once:
    any push to `main` deploys the site again too).
 4. Check: `https://thunderclient.pages.dev/relay` shows `{"relay":true,"version":1}` (before
    step 2 it shows `"relay":false`). In the game, **Right Shift -> Friends -> Connection test**
-   should say "Thunder relay: works".
+   should say "Thunder relay: works". Thunder Friends comes with it: the same Worker has the
+   friends hub (a second Durable Object, `ThunderSocial`, added by the `v2` migration in
+   `thunder-relay/wrangler.toml` on its next deploy), and `/social` on the site
+   (`functions/social.js`) uses the same `RELAY` binding. `https://thunderclient.pages.dev/social`
+   shows `{"social":true,"version":1}`.
 
 Everyone playing has to reload the page once, so their game knows about the relay (an older copy
 of the page only looks on the public relays and will not find a 6-character code).
@@ -214,6 +259,16 @@ EaglercraftX's LAN framing on them. The browser half was never compiled in, and 
   (`thunder-relay/relay.js`) is one Durable Object per world code, holding everything in the
   WebSockets' attachments so it can sleep between messages; it only accepts the site's own pages
   (the `Origin` header), and a tunnel only with a token it handed out.
+- **Thunder Friends hub** (`thunder-relay/social.js`): one Durable Object for everyone, reached at
+  `/social` like the relay, holding accounts (id, name, tag), friends, requests, blocks and waiting
+  messages in its SQLite storage. Each game keeps one WebSocket to it (`?id=` the account id; the
+  first message says hello with the key, which must hash to that id), sleeps between messages
+  (keepalives are answered by Cloudflare) and tells friends about changes: online, offline, what
+  you are doing, your name. The game connects once its first menu is up (it uses a stand-in name
+  before it has read the saved profile), and again after 2 s, 5 s, ... up to a minute when the
+  connection drops. A keepalive left unanswered for 30 s means the connection died without closing
+  (a network change, a laptop waking up), so the game drops it and connects again, and so does a
+  sign-in the hub has not answered within 20 s. Only the site's own pages may connect (`Origin`).
 - **Host:** each friend's data channel is bridged to a player channel on the host's server
   Worker. Bytes pass through unchanged both ways; the Worker already frames and compresses them.
 - **Friend:** the game's own singleplayer connecting screen and login run as usual; the local
@@ -323,6 +378,30 @@ runtime, the host in one Chromium browser and a friend in another.
 | Host page frozen for 40 s (a busy or throttled tab) | the host is not timed out; the world stays open |
 | Keep-awake | the page's WebRTC data channel opens (connected); the Screen Wake Lock is refused by the headless test browser (the card then says to set the computer to never sleep) |
 
+Fifth round (Thunder Friends), same setup: two Chromium browsers (A hosting its world with Always
+open, B), a third player from a script, and a protocol test of the hub from Node.
+
+| Scenario | Result |
+|---|---|
+| Hub protocol, from Node (49 checks) | sign-in only with the key that hashes to the id; add by `Name#tag`, by name alone (one online player with it) or from the list; accept, decline (then no new request for 7 days), cancel, remove, block, unblock (the other side is told only when something changed); messages live and to an offline friend (waiting, delivered at sign-in, gone once acknowledged), cleaned and cut to 300 characters; copies to the sender's other tabs; status and invites; hidden players not listed or found by name; only friends can message or invite; rate limits (each refused message, invite or request says which one), flooding, binary and oversized frames close the connection; at most 4 tabs; no `Origin` or another site: 403; one address past 120 connections in 10 minutes: 429 |
+| B adds A in the card (typed `Name#tag`, Enter), A clicks **Accept** in the pop-up | friends on both sides, online, with what each is doing; the add box clears |
+| B sends a message while A plays in its world | pop-up at the top right in A's game ("Press O to open the chat"); **O** opens the chat on B, typing box ready; A's reply shows at once in B's open chat (no pop-up there) |
+| A's world open (Always open) | B's list: "Has a world open", code, **Join** in the chat, on the Multiplayer screen (panel, and a one-line bar in a narrow window): each **Join** puts B in A's world; A then sees "In a friend's world" |
+| A (hosting) clicks **Invite** | B gets "... invited you to their world" with **Join** (joined), and a line in the chat |
+| B switches Thunder Friends off, A sends two messages, B switches it on | A sees B offline, the messages "sent while they were offline"; B gets "2 messages ... while you were away" and both in the chat |
+| On Thunder now | "2 other players on Thunder now", friend marked, **Add** sends the request; A switching off "Show me in On Thunder now" takes A off the others' list |
+| **More -> Remove friend** (twice), then re-adding; **Block** on a request (twice), **Unblock** | removed on both sides; friends again; blocked (the request is gone, **Blocked** lists them), unblocked |
+| Relay restarted | both reconnect by themselves within seconds and see each other; A's world is shared again (Always open) and B sees it open again |
+| Found and fixed on the way | the first sign-in used the game's stand-in name (the profile is read a moment later), so a friend who copied it could not add; "click again" buttons reset when the list refreshed; the chat pane repainted while reading older lines |
+| A message sent, then the connection closed at once | "may not have been sent" (B had it); after a reload no message is left "sending" |
+| A's keepalives swallowed (a connection that died without closing) | after 30 s without an answer A dropped it and signed in again by itself (35 s in all) |
+| The hub never answers A's sign-in | "the friends hub did not answer" after 20 s, signed in on the next try |
+| A sends 15 messages at once | the first 12 arrive; the last 3 say "not sent", with one "Slow down a little." line |
+| A's connection drops and comes back twice | B's "is online" pop-up shows the first time only (then not for 5 minutes) |
+| **O** on B's title screen with 13 unread messages from A | the chat with A opens, typing box ready; the unread count is cleared, in the saved chats too |
+| **Copy** in a browser that does not allow the clipboard | says "Not copied" (no error) |
+| Page errors in either browser over the whole round | none |
+
 Not tested: the public internet relays, Cloudflare's hosted services themselves (TURN, and the
 relay running on Cloudflare rather than in its local runtime) and real home/school networks (no
 internet access from the test machine). The relay protocol, codes and messages are the ones the
@@ -352,6 +431,11 @@ network lets through still depends on each network.
 - Friends already in keep playing if the relay connection drops; new friends can join again once
   the host presses **Reopen** (or at once with Always open), with the same code through the
   Thunder relay.
+- Thunder Friends accounts belong to a browser: on another browser or computer you are a new
+  player (friends add that one too), and clearing the site's data loses the account. A message
+  sent while a friend's connection is silently dying (a laptop closing) can be lost: the hub only
+  keeps messages for friends it knows are offline (their game notices within about 30 s and
+  connects again).
 - Always open needs the computer on, awake and online, with the tab open; the world is only
   there while it runs. After a restart the game needs one key press before it starts (its sound
   needs it), so a computer that restarts on its own waits for someone to press a key.

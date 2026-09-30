@@ -3,7 +3,7 @@
 Thunder Client is created and owned by Jayvardhan Ginni (ThunderGamey).
 
 `classes.js` is generated. Edit `thunder/thunder-client.js` (and `thunder/thunder-hud.js`,
-`thunder/thunder-shaders.js`, `thunder/thunder-world.js`, `thunder/thunder-lan.js`,
+`thunder/thunder-shaders.js`, `thunder/thunder-world.js`, `thunder/thunder-lan.js`, `thunder/thunder-social.js`,
 `thunder/thunder-title.js`, `thunder/thunder-theme.js`, `thunder/thunder-packs.js`,
 `thunder/thunder-items.js`, `thunder/thunder-items-data.js`, `thunder/thunder-hitfx.js`,
 `thunder/thunder-swim.js` and `thunder/thunder-perf.js`, which it pulls in with `// @include`),
@@ -279,6 +279,12 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   computer left on loads and shares one world by itself, and shares it again when the connection
   drops). How to use it, how to switch the relays on, how it works, what was tested and the
   limits: [NETWORKING.md](NETWORKING.md).
+- `thunder-social.js` - Thunder Friends: friends list across Thunder Client (add by `Name#tag`),
+  who is on Thunder now, chat (O opens it), pop-ups for messages, requests, invites and friends
+  coming online, and friends' open worlds with Join (in the list, the chat and on the
+  Singleplayer / Multiplayer screens). It talks to the friends hub in the relay Worker
+  (`thunder-relay/social.js`, one Durable Object for everyone) at `/social`
+  (`functions/social.js`). Details: [NETWORKING.md](NETWORKING.md).
 
 ## Backups
 

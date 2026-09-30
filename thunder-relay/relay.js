@@ -72,9 +72,20 @@ function room(env, code, request, params) {
   return env.ROOMS.get(env.ROOMS.idFromName(code)).fetch(new Request(u, request));
 }
 
+export { ThunderSocial } from './social.js';
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === '/social') {
+      // Thunder Friends: friends, who is online, messages (social.js), one object for everyone.
+      // Connections only from the site's own pages (a browser always sends Origin with them).
+      if (!allowed(request, env)) return json({ error: 'not allowed from ' + request.headers.get('Origin') }, 403);
+      if (!env.SOCIAL) return json({ social: false }, 404);
+      if ((request.headers.get('Upgrade') || '').toLowerCase() !== 'websocket') return json({ social: true, version: 1 });
+      if (!request.headers.get('Origin')) return json({ error: 'not allowed without Origin' }, 403);
+      return env.SOCIAL.get(env.SOCIAL.idFromName('hub')).fetch(request);
+    }
     if (url.pathname !== '/relay') return json({ error: 'not found' }, 404);
     if (!allowed(request, env)) return json({ error: 'not allowed from ' + request.headers.get('Origin') }, 403);
     if ((request.headers.get('Upgrade') || '').toLowerCase() !== 'websocket') return json({ relay: true, version: 1 });
