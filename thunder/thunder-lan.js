@@ -387,7 +387,7 @@
       if(again&&tries<3)tries++;
       else{tries=1;if(++idx>=relays.length){fail(lastErr||'no relay could be reached',lastCode);return;}}
       // this site's relay picks the world by its address: ?host (a new code) or ?join=code
-      var url=relays[idx],to=lanIsSite(url)?url+(type===1?'?host':'?join='+encodeURIComponent(code)):url;
+      var url=relays[idx],to=lanIsSite(url)?url+(type===1?'?host'+lanKeepQuery():'?join='+encodeURIComponent(code)):url;
       var sock=lanSocket(to,lanHandshakePkt(type,code)),openedAt=0;
       if(progress)progress(url);
       if(!sock){lastErr='could not open '+lanRelayName(url);next();return;}
@@ -568,12 +568,53 @@
     if(H5m||!HAY)return 'this browser runs the world without a background Worker, which sharing needs';
     return '';
   }
+  // ---- a world keeps its code ----------------------------------------------------------------
+  // Each world gets its own code and secret key the first time it is opened, kept in this browser
+  // (localStorage, per world as the waypoints tell worlds apart). Thunder's relay reserves the code
+  // for that key, so the world opens with the same code every time; "New code" rolls a new one.
+  // The public relays hand out their own codes, so this only works through Thunder's relay.
+  var LAN_KEEP_STORE='thunderWorldCodes_v1',LAN_CODE_CHARS='abcdefghijkmnpqrstuvwxyz23456789';
+  function lanKeepLoad(){try{var o=JSON.parse(W.localStorage.getItem(LAN_KEEP_STORE)||'{}');return o&&typeof o==='object'?o:{};}catch(_){return {};}}
+  function lanKeepSave(o){try{W.localStorage.setItem(LAN_KEEP_STORE,JSON.stringify(o));}catch(_){}}
+  function lanRandom(chars,n){
+    var b=new W.Uint8Array(n),out='',i;
+    try{W.crypto.getRandomValues(b);}catch(_){for(i=0;i<n;i++)b[i]=Math.floor(Math.random()*256);}
+    for(i=0;i<n;i++)out+=chars.charAt(b[i]%chars.length);
+    return out;
+  }
+  function lanNewKept(){return {code:lanRandom(LAN_CODE_CHARS,6),key:lanRandom('0123456789abcdef',32)};}
+  // this world's kept code and key (made the first time), or null outside a singleplayer world
+  function lanKept(){
+    var wk=wptWorldKey();
+    if(!wk||wk.indexOf('sp:')!==0)return null;
+    var all=lanKeepLoad(),e=all[wk];
+    if(!e||!/^[a-z0-9]{6}$/.test(e.code||'')||!/^[0-9a-f]{32}$/.test(e.key||'')){e=lanNewKept();all[wk]=e;lanKeepSave(all);}
+    e.wk=wk;
+    return e;
+  }
+  function lanKeepQuery(){var k=LH.want;return k?'='+k.code+'&key='+k.key:'';}
+  // the relay gave another code (someone else's world has this one): it becomes this world's code
+  function lanKeepGot(code){
+    var k=LH.want;
+    if(!k||!code||code===k.code||!/^[a-z0-9]{6}$/.test(code))return;
+    var all=lanKeepLoad();all[k.wk]={code:code,key:k.key};lanKeepSave(all);k.code=code;
+  }
+  function lanReroll(){
+    var wk=wptWorldKey();
+    if(!wk||wk.indexOf('sp:')!==0)return;
+    var all=lanKeepLoad();all[wk]=lanNewKept();lanKeepSave(all);
+    if(LH.state==='open'||LH.state==='connecting'){
+      lanHostStop('');
+      W.setTimeout(function(){if(LH.state!=='connecting'&&LH.state!=='open')lanHostStart();},1500);
+    }
+  }
   function lanHostStart(){
     if(LH.state==='connecting'||LH.state==='open')return;
     if(LH.closing){lanStatus(LH,'error','the last world is still closing; try again in a few seconds');return;}
     var why=lanHostBlocker();
     if(why){lanStatus(LH,'error',why);return;}
     LH.code='';LH.relay='';LH.ice=[];LH.site=false;
+    try{LH.want=lanKept();}catch(_){LH.want=null;}
     lanTurn();                         // this site's TURN logins, ready before a friend arrives
     lanSiteCheck();
     lanStatus(LH,'connecting','connecting to a relay');
@@ -582,6 +623,7 @@
         LH.pending=null;
         if(LH.state!=='connecting'){sock.close();return;}
         LH.sock=sock;LH.code=hs.code;LH.relay=sock.url;LH.site=lanIsSite(sock.url);LH.pinged=now();
+        if(LH.site)lanKeepGot(String(hs.code||'').toLowerCase());
         var t=W.setTimeout(function(){if(LH.sock===sock&&!LH.ice.length&&LH.state==='connecting'){lanHostStop('the relay did not send its connection servers');}},5000);
         sock.onPacket=function(p){
           if(p.id===0x01&&LH.state==='connecting'){
@@ -1253,7 +1295,11 @@
     }
     var act=el('div','tcm-actions');
     var openB=lanBtn('Open to Friends',lanHostStart),stopB=lanBtn('Stop sharing',function(){lanHostStop('');});
-    act.appendChild(openB);act.appendChild(stopB);box.appendChild(act);
+    var rerollB=lanBtn('New code',function(){lanReroll();});
+    rerollB.title='Give this world a new code (the old one stops working)';
+    act.appendChild(openB);act.appendChild(stopB);act.appendChild(rerollB);box.appendChild(act);
+    var keepNote=el('div','tcm-note','This world keeps the same code every time you open it. New code gives it a fresh one.');
+    box.appendChild(keepNote);
     addLive(function(){
       var live=LH.state==='open'||LH.state==='relaylost';
       codeBox.style.display=LH.state==='open'&&LH.code?'':'none';
@@ -1270,6 +1316,8 @@
       openB.textContent=LH.state==='relaylost'?'Reopen':'Open to Friends';
       if(LH.state==='relaylost')openB.style.display='';
       stopB.style.display=live||LH.state==='connecting'?'':'none';
+      var inSp=!!(HEN&&HEN.X&&lanWorldRunning());
+      rerollB.style.display=inSp?'':'none';keepNote.style.display=inSp?'':'none';
     });
   };
   SPECIALS.lanjoin=function(box){
@@ -1391,6 +1439,6 @@
     }
   },700);
 
-  TC.lan={host:LH,join:LJ,relays:lanRelays,name:lanMyName,open:lanHostStart,stop:lanHostStop,joinCode:lanJoin,cancel:lanJoinCancel,
+  TC.lan={host:LH,join:LJ,relays:lanRelays,name:lanMyName,open:lanHostStart,stop:lanHostStop,joinCode:lanJoin,cancel:lanJoinCancel,reroll:lanReroll,
     site:LAN_SITE,siteCheck:lanSiteCheck,
     turn:LAN_TURN,fetchTurn:lanTurn,test:LAN_TEST,selfTest:lanSelfTest,ice:lanIceAll};

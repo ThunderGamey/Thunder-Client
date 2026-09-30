@@ -35,6 +35,11 @@ const MAX_FRIENDS = 32;                                     // friends in signal
 const MAX_PACKET = 65536;                                   // signalling packets (tunnels pass anything)
 const STUN = ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'];
 
+const OWNER_DAYS = 180;                                      // how long an unused kept code stays reserved
+async function hashKey(key) {
+  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('thunder-world:' + key));
+  return Array.from(new Uint8Array(d)).map((x) => x.toString(16).padStart(2, '0')).join('');
+}
 function rand(chars, n) {
   const b = new Uint8Array(n);
   crypto.getRandomValues(b);
@@ -75,6 +80,14 @@ export default {
     if ((request.headers.get('Upgrade') || '').toLowerCase() !== 'websocket') return json({ relay: true, version: 1 });
     const q = url.searchParams;
     if (q.has('host')) {
+      // a world that keeps its code: ?host=code&key=k (the key is the world's own secret; the
+      // room remembers a hash of it and gives the code to no other world). If the code is in use
+      // by another world, it falls through to a new code below, which the host is told.
+      const want = String(q.get('host') || '').toLowerCase(), key = String(q.get('key') || '').toLowerCase();
+      if (want && new RegExp('^[' + CODE_CHARS + ']{' + CODE_LEN + '}$').test(want) && /^[0-9a-f]{32}$/.test(key)) {
+        const r = await room(env, want, request, { role: 'host', key });
+        if (r.status !== 409) return r;
+      }
       // a new world: a free code (the room answers 409 when its code is taken)
       for (let i = 0; i < 8; i++) {
         const r = await room(env, rand(CODE_CHARS, CODE_LEN), request, { role: 'host' });
@@ -135,7 +148,7 @@ export class ThunderRelay {
   }
 
   host(except) {
-    for (const ws of this.ctx.getWebSockets('h')) if (ws !== except) return ws;
+    for (const ws of this.ctx.getWebSockets('h')) if (ws !== except && !(ws.deserializeAttachment() || {}).gone) return ws;
     return null;
   }
 
@@ -150,7 +163,23 @@ export class ThunderRelay {
     const role = q.get('role'), code = q.get('code') || '';
     let att, tags;
     if (role === 'host') {
-      if (this.host()) return new Response('code taken', { status: 409 });
+      // a code a world keeps: only that world (the same key) may open it, and a new world never
+      // gets it; a claim unused for 180 days is released
+      const key = q.get('key') || '';
+      const owner = await this.ctx.storage.get('owner');
+      const live = owner && Date.now() - owner.t < OWNER_DAYS * 86400000;
+      const mine = key ? await hashKey(key) : '';
+      if (live && owner.h !== mine) return new Response('code taken', { status: 409 });
+      const old = this.host();
+      if (old) {
+        // the same world opening again (a reload) takes over from its old connection
+        if (!key || !live) return new Response('code taken', { status: 409 });
+        const oa = old.deserializeAttachment() || {};
+        oa.gone = 1;                                            // its closing must not touch the new one
+        try { old.serializeAttachment(oa); } catch (e) { /* closed */ }
+        shut(old, 'opened again');
+      }
+      if (key) await this.ctx.storage.put('owner', { h: mine, t: Date.now() });
       att = { r: 'h', code, hs: 0, toks: {} };
       tags = ['h'];
     } else if (role === 'join') {

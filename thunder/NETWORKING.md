@@ -14,7 +14,9 @@ Host (in a singleplayer world):
 1. Press **Esc** and click **Open to Friends** (the pause menu's "Open to LAN" button, which this
    build had greyed out), or press **Right Shift -> Friends -> Open to Friends**.
 2. A code appears (for example `x361h`) in the Friends panel and in a small badge at the top of
-   the screen. Tell your friends the code.
+   the screen. Tell your friends the code. Each world keeps its code: the next time you open the
+   same world it has the same code, so friends can remember it. **New code** (Friends panel)
+   gives the world a fresh one and the old one stops working.
 3. Play normally. While the world is open it does not pause when you open a menu (vanilla LAN
    does the same), so your friends are never frozen.
 4. The Friends panel lists who joined through the code; **Remove** sends one friend out with
@@ -42,7 +44,15 @@ reached through the site's own address (`/relay`, forwarded by `functions/relay.
 the game loads, the relay can be reached too.
 
 - **Codes** come from it (6 characters, for example `k7m2qx`; the public relays' codes have 5).
-  The public relays stay as the fallback when it is off.
+  The public relays stay as the fallback when it is off. A world keeps its code: the first time a
+  world is opened, the game makes a code and a secret key for it (kept in the browser's
+  localStorage, `thunderWorldCodes_v1`, per world as the waypoints tell worlds apart) and asks the
+  relay for that code with `?host=code&key=key`. The code's room keeps only a hash of the key and
+  gives the code to no other world (a new world asking for a random code never lands on it); the
+  same key opening it again takes over from an old connection (a reload). If the code is in use
+  by another world, the relay hands out a new one and the game keeps that instead. A claim unused
+  for 180 days is released. **New code** rolls a new code and key. The public relays choose their
+  own codes, so a kept code only works through Thunder's relay.
 - **The game itself** goes through it when two players cannot connect directly: a friend's game
   first tries a direct connection (and the TURN relay, if it is on), and after 10 seconds without
   one, or right away in a browser without WebRTC, both games open a WebSocket to the relay and it
