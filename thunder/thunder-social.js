@@ -147,10 +147,11 @@
   }
 
   // ---- the connection ------------------------------------------------------------------------
+  // (/social on this site; the offline file uses the website's, see siteUrl in thunder-lan.js)
   function soUrl(){
     try{
-      var u=new W.URL('social',W.location.href);
-      if(!/^https?:$/.test(u.protocol))return '';
+      var u=siteUrl('social');
+      if(!u)return '';
       u.protocol=u.protocol==='https:'?'wss:':'ws:';u.search='?id='+SO.id;u.hash='';
       return u.href;
     }catch(_){return '';}
@@ -159,9 +160,8 @@
   function soProbe(){
     if(SO.probe)return SO.probe;
     SO.probe=new Promise(function(done){
-      var u;
-      try{u=new W.URL('social',W.location.href);}catch(_){done('none');return;}
-      if(!/^https?:$/.test(u.protocol)||!W.fetch){done('none');return;}
+      var u=siteUrl('social');
+      if(!u||!W.fetch){done('none');return;}
       W.fetch(u.href,{cache:'no-store'}).then(function(r){
         if(r.status===404)return {social:false};
         return r.json();
@@ -172,20 +172,23 @@
   }
   function soConnect(){
     if(SO.ws||!S.socialOn||SO.fatal||SO.connecting)return;
-    // the offline file (opened from a folder): Thunder Friends lives on the website
-    if(W.location.protocol==='file:'){if(SO.state!=='none')soSet('none','Thunder Friends works on thunderclient.pages.dev, not in the offline file');return;}
-    SO.connecting=true;
+    // (a page opened from a folder that is not Thunder's offline file has no website to use)
+    if(!siteUrl('social')){if(SO.state!=='none')soSet('none','Thunder Friends works on thunderclient.pages.dev and in its offline file');return;}
+    SO.connecting=true;SO.tryAt=now();
     soIdentity().then(function(){return soProbe();}).then(function(r){
       SO.connecting=false;
       if(!S.socialOn||SO.ws)return;
       if(r==='none'){soSet('none','this site has no Thunder Friends hub');return;}
-      if(r==='error'){soRetry('the site could not be reached');return;}
+      // (the offline file where the website is blocked: asked again less often)
+      if(r==='error'){soRetry(siteFile()?siteName()+' could not be reached':'the site could not be reached',siteFile());return;}
       var url=soUrl(),ws;
       if(!url){soSet('none','this page is not on a website');return;}
       try{ws=new W.WebSocket(url);}catch(e){soRetry('could not connect');return;}
       SO.ws=ws;SO.connAt=now();soSet('connecting','');
+      var opened=false;
       ws.onopen=function(){
         if(SO.ws!==ws)return;
+        opened=true;
         var s=soActivity();
         SO.lastS=JSON.stringify(s);SO.lastListed=!!S.socialListed;SO.lastShare=!!S.socialShare;
         // (the name is what a new account is offered: the profile name)
@@ -220,17 +223,22 @@
         }
         if(SO.fatal){soSet('error',SO.fatal);return;}
         if(!S.socialOn){soSet('off','');return;}
+        if(!opened)SO.probe=null;      // (the site is asked again: it may be out of reach now)
         soRetry(SO.state==='on'?'the connection closed':'could not connect');
       };
       ws.onerror=function(){};
     },function(e){SO.connecting=false;SO.fatal=String(e&&e.message||e);soSet('error',SO.fatal);});
   }
-  function soRetry(why){
-    var waits=[2000,5000,10000,20000,40000,60000];
+  function soRetry(why,far){
+    var waits=far?[15000,60000,300000,600000]:[2000,5000,10000,20000,40000,60000];
     SO.retryAt=now()+waits[Math.min(SO.retry,waits.length-1)];
     SO.retry++;
     soSet('retry',why);
   }
+  // the network came back, or the Thunder Friends card was opened: a try that is still far off
+  // comes now (never twice within 10 s)
+  function soSoon(){if(SO.state==='retry'&&SO.retryAt-now()>5000&&now()-(SO.tryAt||0)>10000)SO.retryAt=now();}
+  if(W.addEventListener)W.addEventListener('online',function(){try{soSoon();}catch(_){}});
   function soDisconnect(){
     var ws=SO.ws;SO.ws=null;
     if(ws){try{ws.close(1000,'off');}catch(_){}soUnsure();}
@@ -704,7 +712,8 @@
       case 'on':return ['tcm-ok','Online',soTagged(SO.me)+(S.socialListed?'':' \u2022 hidden from On Thunder now')];
       case 'auth':return ['tcm-warn','Log in',SO.auth&&SO.auth.old?'choose a password to keep your account':'make your account, or log in'];
       case 'connecting':return ['tcm-warn','Connecting',''];
-      case 'retry':return ['tcm-warn','Offline',(SO.msg?SO.msg+'; ':'')+'trying again in '+Math.max(1,Math.ceil((SO.retryAt-now())/1000))+' s'];
+      case 'retry':var sec=Math.max(1,Math.ceil((SO.retryAt-now())/1000));
+        return ['tcm-warn','Offline',(SO.msg?SO.msg+'; ':'')+'trying again in '+(sec>90?Math.ceil(sec/60)+' min':sec+' s')];
       case 'none':return ['','Not on this site',SO.msg||''];
       case 'error':return ['tcm-bad','Stopped',SO.msg];
       default:return S.socialOn?['tcm-warn','Connecting','']:['','Off','switch Thunder Friends on in its settings below'];
@@ -722,7 +731,7 @@
   }
   // the chat card: you, add a friend, requests, friends (left); the chat with one friend (right)
   SPECIALS.socialchat=function(box){
-    soCss();lanCss();
+    soCss();lanCss();soSoon();
     var wrap=el('div','tcs-chat'),side=el('div','tcs-side'),main=el('div','tcs-main');
     wrap.appendChild(side);wrap.appendChild(main);box.appendChild(wrap);
     // not signed in on this device: make an account, or log in (the rest of the card waits)

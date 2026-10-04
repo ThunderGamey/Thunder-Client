@@ -241,6 +241,33 @@ the relays answer (school filters sometimes block them, and then codes cannot wo
 whether the browser can reach the internet directly (STUN), and whether the TURN relay works
 there.
 
+## The offline file
+
+The offline file (`thunder-offline.html`, see the main README) is a page opened from a folder, so
+it has no site of its own to find `/relay`, `/turn` and `/social` on. It uses the website's: its
+loader tells the game the address (`window.thunderSite`, `https://thunderclient.pages.dev/`), and
+a file downloaded before that existed uses the same address once it has updated itself. So wherever
+thunderclient.pages.dev can be reached (at home, for example) the file has everything the website
+has: codes from the Thunder relay, the game through it when two players cannot connect directly,
+the TURN relay, and Thunder Friends. The file is its own device for Thunder Friends: log in once
+with your account's name and password. Messages in the file that used to say "this site" name the
+website instead ("TURN relay: not set up on thunderclient.pages.dev").
+
+Where the website is blocked (some school networks), the file works as before: codes come from the
+public Eaglercraft relays (a host is on one as soon as the Thunder relay fails, at most about 10
+seconds when the network gives no answer at all), and Thunder Friends says
+"thunderclient.pages.dev could not be reached" and tries again after 15 seconds, a minute, 5
+minutes and then every 10 minutes, and right away when the network comes back or the Thunder
+Friends card is opened (never twice within 10 seconds). A file that loses the website while it is
+open (carried from home to school) notices within seconds and waits the same way; the website
+itself retries a dropped connection within a minute, as before.
+
+A page opened from a folder sends `Origin: null`, so the website lets that in: the relay Worker
+(`/relay`, `/social`) and `/turn` accept `null` besides the site itself (and the `SITES` list), and
+their JSON answers carry `Access-Control-Allow-Origin: *` so the file can read them. This adds
+nothing a program could not already do: programs that send no `Origin` at all were always let in.
+A page from another site (any other `Origin`) is still refused.
+
 ## How it works
 
 The server half of Eaglercraft's shared-world system is already in this build: the integrated
@@ -461,6 +488,32 @@ friends), C a new browser.
 | B logs in to Charlie_T too; C changes the password (**Account -> Change password**) | C: "Password changed. Your other devices were logged out."; B: "You were logged out: the password was changed on another device. Log in again."; the old password is refused, the new one works |
 | Found and fixed on the way | **Log out** (and the other click-twice buttons) grew wider on the first click, wrapped out from under the mouse and cancelled itself: the second click now counts for 4 seconds instead |
 | Page errors in either browser over the whole round | none |
+
+Eighth round (the offline file uses the website): the relay Worker and the site's functions running
+locally (`wrangler dev`, `wrangler pages dev` with the `RELAY` binding), and offline files built
+with `THUNDER_OFFLINE_SITE=http://127.0.0.1:8765/` (the local site) in two fresh Chromium profiles,
+opened from a folder.
+
+| Scenario | Result |
+|---|---|
+| What a page opened from a folder sends (fetch, WebSocket on the page and in a Worker) | `Origin: null`, no Referer; without `Access-Control-Allow-Origin` the fetch fails, with it the answer can be read |
+| Relay protocol from Node (now 27 checks) and hub protocol (now 74) | as before, plus: `Origin: null` let in and its answer readable (`*`), a look-up over WebSocket with `Origin: null` works, `Origin: file://` and other sites refused; a hub connection with `Origin: null` upgrades (101) |
+| `/turn` with a stand-in for Cloudflare | logins for the site's pages, for `Origin: null` and without `Origin`; other sites (also `thunderclient.pages.dev.evil.example`) refused with 403 before Cloudflare is asked; every answer readable (`*`) |
+| Both files start | Thunder Friends: "make your account, or log in" (the hub answered the file) |
+| A makes FileAlpha, B FileBravo; A adds B, B accepts, A writes | friends, both online, the message arrives |
+| B logs out, logs in with a wrong password, then the right one | "Wrong password for FileBravo."; then signed in with its friend |
+| B: **Connection test** | "Thunder relay: works ... TURN relay: not set up on 127.0.0.1:8765. Friends can join from any network where 127.0.0.1:8765 can be reached" (the test machine has no TURN keys or internet) |
+| A makes a world and opens it to friends | a 6-character code from the Thunder relay through the local site |
+| B joins with direct connections made impossible (relay-only ICE, no TURN) | "no direct connection", "asking the Thunder relay for a tunnel", "connected to the host through the Thunder relay" in 22 s; B plays in A's world; Thunder Friends shows A's world with its code and B in it |
+| A file whose website cannot be reached (built for an address where nothing listens) | Thunder Friends "127.0.0.1:8799 could not be reached", next try after 15 s, then 60 s; opening a world: the site relay fails at once and the world is open on the public relay (a stand-in EaglerSPRelay) in 4 s |
+| B (website reachable) joins that 5-character code | the Thunder relay says no world has it, the public relay has it: connected directly in 4.5 s |
+| A file built from the previous version (no `thunderSite`) | finds update 2 on a stand-in for GitHub, downloads it, and after **Restart now** runs it, using thunderclient.pages.dev for Thunder Friends ("thunderclient.pages.dev could not be reached" on the test machine, which has no internet) |
+| The file opened while the website is down, which then comes back; A presses O | "could not be reached", waiting a minute; opening the card connects at once (46 s were left), still logged in |
+| The website goes away while the file is connected | "could not connect", then within 9 s "127.0.0.1:8765 could not be reached" and a 5-minute wait |
+| It comes back and the browser says the network is back (`online`) | connected within a second |
+| `online` every half second for 30 s while the website is down | 3 tries, 11 s apart |
+| The website itself with this build | as before: "Thunder relay: works ... not set up on this site ... where this page loads"; Thunder Friends asks to log in |
+| Page errors | none |
 
 Not tested: the public internet relays, Cloudflare's hosted services themselves (TURN, and the
 relay running on Cloudflare rather than in its local runtime) and real home/school networks (no

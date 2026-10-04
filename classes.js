@@ -54706,6 +54706,28 @@ c.PK;})();
   function lanStatus(o,state,msg){o.state=state;o.msg=msg||'';o.at=now();if(menuOpen)runLive();}
   function lanLog(msg){if(W.console&&W.console.log)W.console.log('[Thunder LAN] '+msg);}
 
+  // Where this site's own services are (/relay, /turn, and /social for Thunder Friends): next to
+  // the page. The offline file (thunder/offline.js, a page opened from a folder) has no site of
+  // its own, so it uses the website's: window.thunderSite (set by its loader), else
+  // thunderclient.pages.dev (a file from before thunderSite, running a newer Thunder it
+  // downloaded). They work wherever that website can be reached; it lets the file in (a page
+  // opened from a folder sends Origin "null").
+  var SITE_HOME='https://thunderclient.pages.dev/';
+  function siteFile(){return !/^https?:/i.test(String(W.location.href));}
+  function siteBase(){
+    if(!siteFile())return String(W.location.href);
+    if(W.thunderSite)return String(W.thunderSite);
+    return W.__thunderOffline?SITE_HOME:'';
+  }
+  function siteUrl(p){
+    try{
+      var b=siteBase(),u=b?new W.URL(p,b):null;
+      return u&&/^https?:$/.test(u.protocol)?u:null;
+    }catch(_){return null;}
+  }
+  // what messages call it: "this site", or the website's name in the offline file
+  function siteName(){var u=siteFile()?siteUrl(''):null;return u?u.host:'this site';}
+
   // relays: localStorage "thunderLanRelays" (JSON list, for self-hosted relays and tests), else
   // the relays in the launcher's eaglercraftXOpts, else the three public ones
   // This site's own relay (the thunder-relay Worker, reached at /relay on the site; see
@@ -54715,8 +54737,8 @@ c.PK;})();
   function lanSiteRelay(){
     try{
       if(W.localStorage.getItem('thunderLanSiteRelay')==='off')return '';
-      var u=new W.URL('relay',W.location.href);
-      if(!/^https?:$/.test(u.protocol))return '';
+      var u=siteUrl('relay');
+      if(!u)return '';
       u.protocol=u.protocol==='https:'?'wss:':'ws:';u.search='';u.hash='';
       return u.href;
     }catch(_){return '';}
@@ -54788,9 +54810,8 @@ c.PK;})();
     var t=now(),keep=LAN_TURN.state==='ok'||LAN_TURN.state==='none'?3600000:30000;
     if(LAN_TURN.promise&&t-LAN_TURN.at<keep)return LAN_TURN.promise;
     LAN_TURN.at=t;
-    var url=null;
-    try{url=new W.URL('turn',W.location.href);}catch(_){}
-    if(!url||!/^https?:$/.test(url.protocol)||!W.fetch){LAN_TURN.state='none';LAN_TURN.promise=Promise.resolve(LAN_TURN.servers);return LAN_TURN.promise;}
+    var url=siteUrl('turn');
+    if(!url||!W.fetch){LAN_TURN.state='none';LAN_TURN.promise=Promise.resolve(LAN_TURN.servers);return LAN_TURN.promise;}
     var ctl=W.AbortController?new W.AbortController():null,timer=0;
     var got=W.fetch(url.href,{cache:'no-store',credentials:'same-origin',signal:ctl?ctl.signal:undefined})
       .then(function(r){
@@ -54848,7 +54869,7 @@ c.PK;})();
     if(!mine.relay&&!theirs.relay){
       if(LAN_TURN.state==='ok')return ' The TURN relay could not be reached from either network, so a firewall (often school or work Wi-Fi) is blocking it.';
       return ' Two computers on different networks, or on Wi-Fi that keeps devices apart, often need a TURN relay, and '+
-        (LAN_TURN.state&&LAN_TURN.state!=='none'?'this site\'s TURN relay did not answer ('+LAN_TURN.state+').':'this site has none set up yet (Right Shift \u2192 Friends \u2192 Connection test).');
+        (LAN_TURN.state&&LAN_TURN.state!=='none'?siteName()+'\'s TURN relay did not answer ('+LAN_TURN.state+').':siteName()+' has none set up yet (Right Shift \u2192 Friends \u2192 Connection test).');
     }
     return ' Networks such as school or work Wi-Fi can block these connections.';
   }
@@ -54900,10 +54921,10 @@ c.PK;})();
     function done(){
       if(--left>0)return;
       var turn=LAN_TURN.state==='ok'?(kinds.relay?'works':'set up, but this network blocks it'):
-        LAN_TURN.state==='none'?'not set up on this site':'this site did not give a login ('+LAN_TURN.state+')';
-      var thunder=site==='ok'?'works':site==='none'?'not set up on this site':'did not answer';
+        LAN_TURN.state==='none'?'not set up on '+siteName():siteName()+' did not give a login ('+LAN_TURN.state+')';
+      var thunder=site==='ok'?'works':site==='none'?'not set up on '+siteName():'did not answer';
       var sum;
-      if(site==='ok')sum='Friends can join from any network where this page loads: when no direct connection works, the game goes through the Thunder relay.';
+      if(site==='ok')sum='Friends can join from any network where '+(siteFile()?siteName()+' can be reached':'this page loads')+': when no direct connection works, the game goes through the Thunder relay.';
       else if(!relaysOk)sum='No relay answered, so this network (or an extension) blocks them: codes cannot work here unless the site owner switches on the Thunder relay.';
       else if(!rtc)sum='This browser has no WebRTC, so it can only play with friends through the Thunder relay.';
       else if(kinds.relay)sum='Friends should be able to connect from other networks too.';
@@ -54920,8 +54941,7 @@ c.PK;})();
     var t=now(),keep=LAN_SITE.state==='ok'||LAN_SITE.state==='none'?3600000:30000;
     if(LAN_SITE.promise&&t-LAN_SITE.at<keep)return LAN_SITE.promise;
     LAN_SITE.at=t;
-    var url=null;
-    try{url=new W.URL('relay',W.location.href);}catch(_){}
+    var url=siteUrl('relay');
     if(!lanSiteRelay()||!url||!W.fetch){LAN_SITE.state='none';LAN_SITE.promise=Promise.resolve('none');return LAN_SITE.promise;}
     LAN_SITE.promise=W.fetch(url.href,{cache:'no-store',credentials:'same-origin'})
       .then(function(r){return r.text().then(function(t){var j=null;try{j=JSON.parse(t);}catch(_){}return {status:r.status,j:j};});})
@@ -56043,7 +56063,7 @@ c.PK;})();
     lanSiteCheck().then(function(){if(menuOpen)runLive();});
     addLive(function(){
       function said(x,on){return x.state==='ok'?on:x.state==='none'?'not set up':x.state?'did not answer ('+x.state+')':'checking';}
-      info.textContent=LAN_TEST.text||('On this site: Thunder relay '+said(LAN_SITE,'on')+', TURN relay '+said(LAN_TURN,'set up')+
+      info.textContent=LAN_TEST.text||('On '+siteName()+': Thunder relay '+said(LAN_SITE,'on')+', TURN relay '+said(LAN_TURN,'set up')+
         '. The test shows what this network lets through (about 8 seconds).');
       go.style.display=LAN_TEST.state==='running'?'none':'';
       go.textContent=LAN_TEST.state==='done'?'Test again':'Test connection';
@@ -56572,10 +56592,11 @@ c.PK;})();
   }
 
   // ---- the connection ------------------------------------------------------------------------
+  // (/social on this site; the offline file uses the website's, see siteUrl in thunder-lan.js)
   function soUrl(){
     try{
-      var u=new W.URL('social',W.location.href);
-      if(!/^https?:$/.test(u.protocol))return '';
+      var u=siteUrl('social');
+      if(!u)return '';
       u.protocol=u.protocol==='https:'?'wss:':'ws:';u.search='?id='+SO.id;u.hash='';
       return u.href;
     }catch(_){return '';}
@@ -56584,9 +56605,8 @@ c.PK;})();
   function soProbe(){
     if(SO.probe)return SO.probe;
     SO.probe=new Promise(function(done){
-      var u;
-      try{u=new W.URL('social',W.location.href);}catch(_){done('none');return;}
-      if(!/^https?:$/.test(u.protocol)||!W.fetch){done('none');return;}
+      var u=siteUrl('social');
+      if(!u||!W.fetch){done('none');return;}
       W.fetch(u.href,{cache:'no-store'}).then(function(r){
         if(r.status===404)return {social:false};
         return r.json();
@@ -56597,20 +56617,23 @@ c.PK;})();
   }
   function soConnect(){
     if(SO.ws||!S.socialOn||SO.fatal||SO.connecting)return;
-    // the offline file (opened from a folder): Thunder Friends lives on the website
-    if(W.location.protocol==='file:'){if(SO.state!=='none')soSet('none','Thunder Friends works on thunderclient.pages.dev, not in the offline file');return;}
-    SO.connecting=true;
+    // (a page opened from a folder that is not Thunder's offline file has no website to use)
+    if(!siteUrl('social')){if(SO.state!=='none')soSet('none','Thunder Friends works on thunderclient.pages.dev and in its offline file');return;}
+    SO.connecting=true;SO.tryAt=now();
     soIdentity().then(function(){return soProbe();}).then(function(r){
       SO.connecting=false;
       if(!S.socialOn||SO.ws)return;
       if(r==='none'){soSet('none','this site has no Thunder Friends hub');return;}
-      if(r==='error'){soRetry('the site could not be reached');return;}
+      // (the offline file where the website is blocked: asked again less often)
+      if(r==='error'){soRetry(siteFile()?siteName()+' could not be reached':'the site could not be reached',siteFile());return;}
       var url=soUrl(),ws;
       if(!url){soSet('none','this page is not on a website');return;}
       try{ws=new W.WebSocket(url);}catch(e){soRetry('could not connect');return;}
       SO.ws=ws;SO.connAt=now();soSet('connecting','');
+      var opened=false;
       ws.onopen=function(){
         if(SO.ws!==ws)return;
+        opened=true;
         var s=soActivity();
         SO.lastS=JSON.stringify(s);SO.lastListed=!!S.socialListed;SO.lastShare=!!S.socialShare;
         // (the name is what a new account is offered: the profile name)
@@ -56645,17 +56668,22 @@ c.PK;})();
         }
         if(SO.fatal){soSet('error',SO.fatal);return;}
         if(!S.socialOn){soSet('off','');return;}
+        if(!opened)SO.probe=null;      // (the site is asked again: it may be out of reach now)
         soRetry(SO.state==='on'?'the connection closed':'could not connect');
       };
       ws.onerror=function(){};
     },function(e){SO.connecting=false;SO.fatal=String(e&&e.message||e);soSet('error',SO.fatal);});
   }
-  function soRetry(why){
-    var waits=[2000,5000,10000,20000,40000,60000];
+  function soRetry(why,far){
+    var waits=far?[15000,60000,300000,600000]:[2000,5000,10000,20000,40000,60000];
     SO.retryAt=now()+waits[Math.min(SO.retry,waits.length-1)];
     SO.retry++;
     soSet('retry',why);
   }
+  // the network came back, or the Thunder Friends card was opened: a try that is still far off
+  // comes now (never twice within 10 s)
+  function soSoon(){if(SO.state==='retry'&&SO.retryAt-now()>5000&&now()-(SO.tryAt||0)>10000)SO.retryAt=now();}
+  if(W.addEventListener)W.addEventListener('online',function(){try{soSoon();}catch(_){}});
   function soDisconnect(){
     var ws=SO.ws;SO.ws=null;
     if(ws){try{ws.close(1000,'off');}catch(_){}soUnsure();}
@@ -57129,7 +57157,8 @@ c.PK;})();
       case 'on':return ['tcm-ok','Online',soTagged(SO.me)+(S.socialListed?'':' \u2022 hidden from On Thunder now')];
       case 'auth':return ['tcm-warn','Log in',SO.auth&&SO.auth.old?'choose a password to keep your account':'make your account, or log in'];
       case 'connecting':return ['tcm-warn','Connecting',''];
-      case 'retry':return ['tcm-warn','Offline',(SO.msg?SO.msg+'; ':'')+'trying again in '+Math.max(1,Math.ceil((SO.retryAt-now())/1000))+' s'];
+      case 'retry':var sec=Math.max(1,Math.ceil((SO.retryAt-now())/1000));
+        return ['tcm-warn','Offline',(SO.msg?SO.msg+'; ':'')+'trying again in '+(sec>90?Math.ceil(sec/60)+' min':sec+' s')];
       case 'none':return ['','Not on this site',SO.msg||''];
       case 'error':return ['tcm-bad','Stopped',SO.msg];
       default:return S.socialOn?['tcm-warn','Connecting','']:['','Off','switch Thunder Friends on in its settings below'];
@@ -57147,7 +57176,7 @@ c.PK;})();
   }
   // the chat card: you, add a friend, requests, friends (left); the chat with one friend (right)
   SPECIALS.socialchat=function(box){
-    soCss();lanCss();
+    soCss();lanCss();soSoon();
     var wrap=el('div','tcs-chat'),side=el('div','tcs-side'),main=el('div','tcs-main');
     wrap.appendChild(side);wrap.appendChild(main);box.appendChild(wrap);
     // not signed in on this device: make an account, or log in (the rest of the card waits)

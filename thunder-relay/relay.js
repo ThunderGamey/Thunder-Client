@@ -48,19 +48,23 @@ function rand(chars, n) {
   return s;
 }
 
+// (any page may read these answers: they only say whether the relay is there, or why not; who may
+// use the relay is decided by allowed() below)
 function json(body, status) {
   return new Response(JSON.stringify(body), {
     status: status || 200,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store', 'access-control-allow-origin': '*' },
   });
 }
 
-// Only pages of the site itself (the request came through its /relay) or the sites listed in the
-// SITES variable (comma-separated origins) may use the relay. Browsers always send Origin on
-// WebSocket connections.
+// Only pages of the site itself (the request came through its /relay), the sites listed in the
+// SITES variable (comma-separated origins) and the offline file (thunder/offline.js: a page opened
+// from a folder, which browsers send as Origin "null") may use the relay. Browsers always send
+// Origin on WebSocket connections; programs that send none were always let in, so "null" (which a
+// sandboxed frame can send too) lets in nothing they could not already do.
 function allowed(request, env) {
   const origin = request.headers.get('Origin');
-  if (!origin) return true;
+  if (!origin || origin === 'null') return true;
   if (origin === new URL(request.url).origin) return true;
   return String(env.SITES || '').split(',').map((s) => s.trim()).filter(Boolean).includes(origin);
 }
@@ -79,7 +83,8 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/social') {
       // Thunder Friends: friends, who is online, messages (social.js), one object for everyone.
-      // Connections only from the site's own pages (a browser always sends Origin with them).
+      // Connections only from the site's own pages and the offline file (a browser always sends
+      // Origin with them).
       if (!allowed(request, env)) return json({ error: 'not allowed from ' + request.headers.get('Origin') }, 403);
       if (!env.SOCIAL) return json({ social: false }, 404);
       if ((request.headers.get('Upgrade') || '').toLowerCase() !== 'websocket') return json({ social: true, version: 1 });

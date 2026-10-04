@@ -10,7 +10,7 @@ export async function onRequest({ request, env }) {
   if (!env.RELAY) {
     return new Response(JSON.stringify({ social: false, error: 'Thunder Friends is not set up for this site' }), {
       status: 404,
-      headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+      headers: { 'content-type': 'application/json', 'cache-control': 'no-store', 'access-control-allow-origin': '*' },
     });
   }
   return env.RELAY.fetch(request);

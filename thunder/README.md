@@ -301,6 +301,11 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   copy in the file runs. Tested: the file from a folder in Chromium (title screen, packs,
   singleplayer world with its worker); an update from a stand-in server (downloaded, checked,
   "Restart now", running with its packs); a broken update (skipped, the copy in the file ran).
+  The loader also tells the game the website's address (`window.thunderSite`;
+  `THUNDER_OFFLINE_SITE` changes it for tests), which the game uses for the Thunder relay, the
+  TURN logins and Thunder Friends (`siteUrl` in `thunder-lan.js`; a file from before falls back to
+  thunderclient.pages.dev). The website lets a page opened from a folder in (`Origin: null`); see
+  "The offline file" in [NETWORKING.md](NETWORKING.md).
 
 ## Backups
 

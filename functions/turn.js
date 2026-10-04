@@ -11,7 +11,9 @@
 // API token, as a secret), and deploy again. Without them this answers 404 and Thunder connects
 // without a TURN relay, as before. See thunder/NETWORKING.md.
 
-const JSON_HEADERS = { 'content-type': 'application/json', 'cache-control': 'no-store' };
+// (the offline file reads this from another address, so the answer says any page may read it; the
+// logins only go to the pages let in below)
+const JSON_HEADERS = { 'content-type': 'application/json', 'cache-control': 'no-store', 'access-control-allow-origin': '*' };
 
 function reply(body, status) {
   return new Response(JSON.stringify(body), { status: status || 200, headers: JSON_HEADERS });
@@ -27,10 +29,12 @@ export async function onRequestGet({ request, env }) {
   if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) {
     return reply({ iceServers: [], error: 'TURN is not set up for this site' }, 404);
   }
-  // only for this site's own pages (a browser sends the page it is on as Referer or Origin)
+  // only for this site's own pages (a browser sends the page it is on as Referer or Origin) and the
+  // offline file (thunder/offline.js: a page opened from a folder, sent as Origin "null"; programs
+  // that send neither were always let in, so "null" lets in nothing they could not already do)
   const self = new URL(request.url).origin;
   const from = request.headers.get('Origin') || request.headers.get('Referer') || '';
-  if (from && from !== self && !from.startsWith(self + '/')) {
+  if (from && from !== 'null' && from !== self && !from.startsWith(self + '/')) {
     return reply({ iceServers: [], error: 'not allowed from ' + from }, 403);
   }
   try {

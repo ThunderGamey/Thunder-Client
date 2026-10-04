@@ -84,6 +84,28 @@
   function lanStatus(o,state,msg){o.state=state;o.msg=msg||'';o.at=now();if(menuOpen)runLive();}
   function lanLog(msg){if(W.console&&W.console.log)W.console.log('[Thunder LAN] '+msg);}
 
+  // Where this site's own services are (/relay, /turn, and /social for Thunder Friends): next to
+  // the page. The offline file (thunder/offline.js, a page opened from a folder) has no site of
+  // its own, so it uses the website's: window.thunderSite (set by its loader), else
+  // thunderclient.pages.dev (a file from before thunderSite, running a newer Thunder it
+  // downloaded). They work wherever that website can be reached; it lets the file in (a page
+  // opened from a folder sends Origin "null").
+  var SITE_HOME='https://thunderclient.pages.dev/';
+  function siteFile(){return !/^https?:/i.test(String(W.location.href));}
+  function siteBase(){
+    if(!siteFile())return String(W.location.href);
+    if(W.thunderSite)return String(W.thunderSite);
+    return W.__thunderOffline?SITE_HOME:'';
+  }
+  function siteUrl(p){
+    try{
+      var b=siteBase(),u=b?new W.URL(p,b):null;
+      return u&&/^https?:$/.test(u.protocol)?u:null;
+    }catch(_){return null;}
+  }
+  // what messages call it: "this site", or the website's name in the offline file
+  function siteName(){var u=siteFile()?siteUrl(''):null;return u?u.host:'this site';}
+
   // relays: localStorage "thunderLanRelays" (JSON list, for self-hosted relays and tests), else
   // the relays in the launcher's eaglercraftXOpts, else the three public ones
   // This site's own relay (the thunder-relay Worker, reached at /relay on the site; see
@@ -93,8 +115,8 @@
   function lanSiteRelay(){
     try{
       if(W.localStorage.getItem('thunderLanSiteRelay')==='off')return '';
-      var u=new W.URL('relay',W.location.href);
-      if(!/^https?:$/.test(u.protocol))return '';
+      var u=siteUrl('relay');
+      if(!u)return '';
       u.protocol=u.protocol==='https:'?'wss:':'ws:';u.search='';u.hash='';
       return u.href;
     }catch(_){return '';}
@@ -166,9 +188,8 @@
     var t=now(),keep=LAN_TURN.state==='ok'||LAN_TURN.state==='none'?3600000:30000;
     if(LAN_TURN.promise&&t-LAN_TURN.at<keep)return LAN_TURN.promise;
     LAN_TURN.at=t;
-    var url=null;
-    try{url=new W.URL('turn',W.location.href);}catch(_){}
-    if(!url||!/^https?:$/.test(url.protocol)||!W.fetch){LAN_TURN.state='none';LAN_TURN.promise=Promise.resolve(LAN_TURN.servers);return LAN_TURN.promise;}
+    var url=siteUrl('turn');
+    if(!url||!W.fetch){LAN_TURN.state='none';LAN_TURN.promise=Promise.resolve(LAN_TURN.servers);return LAN_TURN.promise;}
     var ctl=W.AbortController?new W.AbortController():null,timer=0;
     var got=W.fetch(url.href,{cache:'no-store',credentials:'same-origin',signal:ctl?ctl.signal:undefined})
       .then(function(r){
@@ -226,7 +247,7 @@
     if(!mine.relay&&!theirs.relay){
       if(LAN_TURN.state==='ok')return ' The TURN relay could not be reached from either network, so a firewall (often school or work Wi-Fi) is blocking it.';
       return ' Two computers on different networks, or on Wi-Fi that keeps devices apart, often need a TURN relay, and '+
-        (LAN_TURN.state&&LAN_TURN.state!=='none'?'this site\'s TURN relay did not answer ('+LAN_TURN.state+').':'this site has none set up yet (Right Shift \u2192 Friends \u2192 Connection test).');
+        (LAN_TURN.state&&LAN_TURN.state!=='none'?siteName()+'\'s TURN relay did not answer ('+LAN_TURN.state+').':siteName()+' has none set up yet (Right Shift \u2192 Friends \u2192 Connection test).');
     }
     return ' Networks such as school or work Wi-Fi can block these connections.';
   }
@@ -278,10 +299,10 @@
     function done(){
       if(--left>0)return;
       var turn=LAN_TURN.state==='ok'?(kinds.relay?'works':'set up, but this network blocks it'):
-        LAN_TURN.state==='none'?'not set up on this site':'this site did not give a login ('+LAN_TURN.state+')';
-      var thunder=site==='ok'?'works':site==='none'?'not set up on this site':'did not answer';
+        LAN_TURN.state==='none'?'not set up on '+siteName():siteName()+' did not give a login ('+LAN_TURN.state+')';
+      var thunder=site==='ok'?'works':site==='none'?'not set up on '+siteName():'did not answer';
       var sum;
-      if(site==='ok')sum='Friends can join from any network where this page loads: when no direct connection works, the game goes through the Thunder relay.';
+      if(site==='ok')sum='Friends can join from any network where '+(siteFile()?siteName()+' can be reached':'this page loads')+': when no direct connection works, the game goes through the Thunder relay.';
       else if(!relaysOk)sum='No relay answered, so this network (or an extension) blocks them: codes cannot work here unless the site owner switches on the Thunder relay.';
       else if(!rtc)sum='This browser has no WebRTC, so it can only play with friends through the Thunder relay.';
       else if(kinds.relay)sum='Friends should be able to connect from other networks too.';
@@ -298,8 +319,7 @@
     var t=now(),keep=LAN_SITE.state==='ok'||LAN_SITE.state==='none'?3600000:30000;
     if(LAN_SITE.promise&&t-LAN_SITE.at<keep)return LAN_SITE.promise;
     LAN_SITE.at=t;
-    var url=null;
-    try{url=new W.URL('relay',W.location.href);}catch(_){}
+    var url=siteUrl('relay');
     if(!lanSiteRelay()||!url||!W.fetch){LAN_SITE.state='none';LAN_SITE.promise=Promise.resolve('none');return LAN_SITE.promise;}
     LAN_SITE.promise=W.fetch(url.href,{cache:'no-store',credentials:'same-origin'})
       .then(function(r){return r.text().then(function(t){var j=null;try{j=JSON.parse(t);}catch(_){}return {status:r.status,j:j};});})
@@ -1421,7 +1441,7 @@
     lanSiteCheck().then(function(){if(menuOpen)runLive();});
     addLive(function(){
       function said(x,on){return x.state==='ok'?on:x.state==='none'?'not set up':x.state?'did not answer ('+x.state+')':'checking';}
-      info.textContent=LAN_TEST.text||('On this site: Thunder relay '+said(LAN_SITE,'on')+', TURN relay '+said(LAN_TURN,'set up')+
+      info.textContent=LAN_TEST.text||('On '+siteName()+': Thunder relay '+said(LAN_SITE,'on')+', TURN relay '+said(LAN_TURN,'set up')+
         '. The test shows what this network lets through (about 8 seconds).');
       go.style.display=LAN_TEST.state==='running'?'none':'';
       go.textContent=LAN_TEST.state==='done'?'Test again':'Test connection';

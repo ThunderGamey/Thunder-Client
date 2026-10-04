@@ -5,10 +5,14 @@
   var W=window,D=document;
   var EMB=__EMB__;               // the copy in this file: {seq, classes, packs, built}
   var SOURCES=__SOURCES__;       // where updates come from, in order
+  var SITE=__SITE__;             // the website: Thunder's relay, TURN logins and Thunder Friends
   var FILES=__FILES__;           // the files served from this page: [{path, type}]
   var DBN='thunderOffline',ST='files',LS='thunderOffline_v1';
   var urls={},waiting=[],started=false,base=String(W.location.href).replace(/[?#].*$/,'').replace(/[^\/]*$/,'');
   var T=W.__thunderOffline={file:EMB,running:'',update:null,checked:'',error:''};
+  // (the game uses the website for friends' worlds and Thunder Friends: see siteUrl in
+  // thunder-lan.js; they work wherever the website can be reached)
+  if(!W.thunderSite)W.thunderSite=SITE;
 
   // ---- the files inside the page (base64 blocks at its end)
   function bytesOf(id){

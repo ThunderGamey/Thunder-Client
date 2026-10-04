@@ -20,9 +20,11 @@
  *     (checked against its size and SHA-256) and the packs, for the next start;
  *   - falls back to the copy in the file if an update did not start twice.
  * The game itself (index-js.html, classes.js, assets) is not changed; the website keeps working
- * as before. Thunder Friends and Thunder's relay live on the website, so the file can only use
- * them where the website can be reached; joining friends' worlds by code works through the
- * public Eaglercraft relays without it.
+ * as before. Thunder's relay, its TURN logins and Thunder Friends live on the website: the file
+ * tells the game its address (window.thunderSite), and the game uses them wherever the website
+ * can be reached (it lets the file in: a page opened from a folder sends Origin "null"). Where
+ * it is blocked, joining friends' worlds by code still works through the public Eaglercraft
+ * relays.
  */
 'use strict';
 const fs = require('fs');
@@ -39,6 +41,9 @@ const SOURCES = process.env.THUNDER_OFFLINE_SOURCES ? process.env.THUNDER_OFFLIN
   'https://raw.githubusercontent.com/' + REPO + '/main/',
   'https://cdn.jsdelivr.net/gh/' + REPO + '@main/'
 ];
+// the website (tests: THUNDER_OFFLINE_SITE=url instead)
+const SITE = process.env.THUNDER_OFFLINE_SITE || 'https://thunderclient.pages.dev/';
+if (!/^https?:\/\/[^/]+\/$/.test(SITE)) throw new Error('offline: the site address must look like https://host/');
 
 function read(f) { return fs.readFileSync(path.resolve(ROOT, f)); }
 function sha(b) { return crypto.createHash('sha256').update(b).digest('hex'); }
@@ -71,6 +76,7 @@ const LOADER = fs.readFileSync(path.resolve(__dirname, 'offline-loader.js'), 'ut
 const loader = LOADER
   .replace('__EMB__', JSON.stringify(EMB))
   .replace('__SOURCES__', JSON.stringify(SOURCES))
+  .replace('__SITE__', () => JSON.stringify(SITE))
   .replace('__FILES__', JSON.stringify(files.map((f) => ({ path: f[0], type: f[2] }))));
 
 let html = html0;

@@ -24,9 +24,9 @@
 // other online. Players can leave the Online list. Text is plain text (the client shows it as
 // text, never as HTML), at most 300 characters. Every connection is rate limited, and so is every
 // network address (new connections and friend requests; the address is kept only as a hash, in
-// memory). Only the site's own pages can connect (relay.js checks Origin). Messages to a friend
-// who is offline wait here (at most 100 per player, 30 days) until they come online and are
-// deleted once delivered.
+// memory). Only the site's own pages and the offline file can connect (relay.js checks Origin).
+// Messages to a friend who is offline wait here (at most 100 per player, 30 days) until they come
+// online and are deleted once delivered.
 //
 // Protocol (JSON text frames; "ping" is answered "pong" without waking the object):
 //   client -> hub: hello {key, name, hide, share, s}, then (a device not signed in, told "auth")

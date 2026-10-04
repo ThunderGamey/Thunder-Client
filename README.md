@@ -61,9 +61,11 @@ in Right Shift > Utility > Readme.
   (Downloads is fine) and open it in Chrome or Edge. It updates itself: whenever it can reach
   GitHub (raw.githubusercontent.com, or cdn.jsdelivr.net) it downloads the newest Thunder for the
   next start, and otherwise it runs the version inside it. Worlds and settings in the file are
-  kept apart from the website's (move a world with Edit > Export and Load EPK File). Thunder
-  Friends (accounts, chat) needs the website; joining friends' worlds by code works through the
-  public Eaglercraft relays. Made by `thunder/offline.js` on every update (GitHub Action
+  kept apart from the website's (move a world with Edit > Export and Load EPK File). Wherever
+  thunderclient.pages.dev can be reached (at home, say), the file uses its Thunder relay, TURN
+  relay and Thunder Friends just like the website (log in to your Thunder Friends account once in
+  the file); where it is blocked, joining friends' worlds by code still works through the public
+  Eaglercraft relays. Made by `thunder/offline.js` on every update (GitHub Action
   `thunder-offline.yml`).
 - **`index.html`** - the original WASM-GC launcher (unchanged).
 - **`packs/`** - Thunder's two built-in resource packs, which appear in Options > Resource Packs
