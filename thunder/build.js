@@ -393,4 +393,21 @@ if (path.resolve(OUT) === path.resolve(ROOT, 'classes.js') && fs.existsSync(laun
   const ambient = path.resolve(ROOT, 'thunder_ambient.js');
   if (fs.existsSync(ambient)) stamped = stamped.replace(/thunder_ambient\.js\?v=[A-Za-z0-9._-]+/g, 'thunder_ambient.js?v=' + md5(fs.readFileSync(ambient, 'utf8')).slice(0, 10));
   if (stamped !== html) { fs.writeFileSync(launcher, stamped); console.log('stamp  index-js.html -> classes.js?v=t6-' + outMd5.slice(0, 10)); }
+  // the offline file (thunder/offline.js) reads this from GitHub to find updates: a number that
+  // goes up whenever classes.js changes, its stamp, size and SHA-256, and the built-in packs list's
+  const verFile = path.resolve(ROOT, 'thunder-version.json');
+  let ver = {};
+  try { ver = JSON.parse(fs.readFileSync(verFile, 'utf8')); } catch (e) { ver = {}; }
+  const stamp = 't6-' + outMd5.slice(0, 10), packsList = path.resolve(ROOT, 'packs', 'packs.json');
+  const next = {
+    seq: ver.classes === stamp ? (ver.seq || 1) : (ver.seq || 0) + 1,
+    classes: stamp,
+    size: Buffer.byteLength(out, 'utf8'),
+    sha256: crypto.createHash('sha256').update(out, 'utf8').digest('hex'),
+    packs: fs.existsSync(packsList) ? crypto.createHash('sha256').update(fs.readFileSync(packsList)).digest('hex').slice(0, 16) : ''
+  };
+  if (JSON.stringify(next) !== JSON.stringify(ver)) {
+    fs.writeFileSync(verFile, JSON.stringify(next, null, 2) + '\n');
+    console.log('stamp  thunder-version.json -> ' + next.seq + ' ' + stamp);
+  }
 }

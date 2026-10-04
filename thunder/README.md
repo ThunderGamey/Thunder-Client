@@ -288,6 +288,20 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   (`thunder-relay/social.js`, one Durable Object for everyone) at `/social`
   (`functions/social.js`). Details: [NETWORKING.md](NETWORKING.md).
 
+- `offline.js` and `offline-loader.js` - the offline file, `thunder-offline.html`: the site in one
+  HTML file that runs from a folder (`node thunder/offline.js`; the GitHub Action
+  `thunder-offline.yml` puts it on the "offline" release on every update). The big files are
+  base64 blocks at the end of the page; the loader serves them to the game (a page opened from a
+  folder cannot read the files next to it), runs the game code as an inline script with
+  `eaglercraftXClientScriptElement` (so singleplayer gets its worker), and updates the file:
+  `thunder-version.json` (written by `build.js`: a number that goes up with every classes.js, its
+  size and SHA-256, and the packs list's hash) is read from GitHub 30 s after the game starts; a
+  higher number downloads that classes.js (checked) and the packs into IndexedDB for the next
+  start. An update that does not load, or does not reach the first menu twice, is skipped and the
+  copy in the file runs. Tested: the file from a folder in Chromium (title screen, packs,
+  singleplayer world with its worker); an update from a stand-in server (downloaded, checked,
+  "Restart now", running with its packs); a broken update (skipped, the copy in the file ran).
+
 ## Backups
 
 - `backups/classes.clean-base.js` - clean Eaglercraft 1.12.2 (u0) JS build, the build input.

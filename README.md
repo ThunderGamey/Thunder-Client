@@ -56,6 +56,15 @@ in Right Shift > Utility > Readme.
   Multiplayer screens; the host picks one-click Join or friends needing the code.
   Source and build: [`thunder/`](thunder/README.md), shaders:
   [`thunder/SHADERS.md`](thunder/SHADERS.md), Friends: [`thunder/NETWORKING.md`](thunder/NETWORKING.md).
+- **`thunder-offline.html`** ([download](https://github.com/ThunderGamey/Thunder-Client/releases/download/offline/thunder-offline.html))
+  - the whole client in one file, for when the website is blocked: keep it in a folder
+  (Downloads is fine) and open it in Chrome or Edge. It updates itself: whenever it can reach
+  GitHub (raw.githubusercontent.com, or cdn.jsdelivr.net) it downloads the newest Thunder for the
+  next start, and otherwise it runs the version inside it. Worlds and settings in the file are
+  kept apart from the website's (move a world with Edit > Export and Load EPK File). Thunder
+  Friends (accounts, chat) needs the website; joining friends' worlds by code works through the
+  public Eaglercraft relays. Made by `thunder/offline.js` on every update (GitHub Action
+  `thunder-offline.yml`).
 - **`index.html`** - the original WASM-GC launcher (unchanged).
 - **`packs/`** - Thunder's two built-in resource packs, which appear in Options > Resource Packs
   the first time the client is opened:

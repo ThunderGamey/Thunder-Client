@@ -172,6 +172,8 @@
   }
   function soConnect(){
     if(SO.ws||!S.socialOn||SO.fatal||SO.connecting)return;
+    // the offline file (opened from a folder): Thunder Friends lives on the website
+    if(W.location.protocol==='file:'){if(SO.state!=='none')soSet('none','Thunder Friends works on thunderclient.pages.dev, not in the offline file');return;}
     SO.connecting=true;
     soIdentity().then(function(){return soProbe();}).then(function(r){
       SO.connecting=false;

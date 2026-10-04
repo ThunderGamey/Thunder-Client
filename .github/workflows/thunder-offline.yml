@@ -1,0 +1,52 @@
+name: Thunder offline file
+
+# Builds thunder-offline.html, the whole client in one file that runs from a computer's folder
+# (thunder/offline.js), from what is on main, and puts it on the "offline" release in place of
+# the last one, so its link never changes:
+#   https://github.com/ThunderGamey/Thunder-Client/releases/download/offline/thunder-offline.html
+# A file already downloaded updates itself from GitHub (thunder-version.json); this only keeps
+# the download current. It never commits anything.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "classes.js"
+      - "index-js.html"
+      - "thunder-version.json"
+      - "thunder_ambient.js"
+      - "assets.epk"
+      - "lang/**"
+      - "packs/**"
+      - "favicon.png"
+      - "thunder/offline.js"
+      - "thunder/offline-loader.js"
+      - ".github/workflows/thunder-offline.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: thunder-offline
+  cancel-in-progress: true
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build the offline file
+        run: node thunder/offline.js --out thunder-offline.html
+      - name: Put it on the "offline" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view offline >/dev/null 2>&1; then
+            gh release create offline --title "Thunder Client offline file" --latest=false \
+              --notes "Thunder Client in one file, for when the website is blocked: download thunder-offline.html, keep it (Downloads is fine) and open it in Chrome or Edge. It updates itself from GitHub whenever it can reach it, and runs the version inside it when it cannot."
+          fi
+          gh release upload offline thunder-offline.html --clobber
