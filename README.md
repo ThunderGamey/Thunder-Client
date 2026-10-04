@@ -49,7 +49,8 @@ in Right Shift > Utility > Readme.
   Right Shift > Friends > Connection test shows what a network lets through. **Always open**
   (Open to Friends card) turns a computer that is left on into the world's home: the world opens
   by itself whenever Thunder starts there and is shared again whenever the connection drops.
-  **Thunder Friends**: add friends by `Name#tag`, see who is on Thunder and what your friends are
+  **Thunder Friends** (with an account: a name only you can use and a password, like the logins of
+  Eaglercraft servers): add friends by name, see who is on Thunder and what your friends are
   playing, chat with them (O in a world, with pop-ups while you play), and join the worlds they
   open (and see who is playing in them), from the list, an invite or the Singleplayer /
   Multiplayer screens; the host picks one-click Join or friends needing the code.

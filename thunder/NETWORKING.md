@@ -82,9 +82,18 @@ Everyone on Thunder Client can add each other as friends, see what their friends
 chat with them from anywhere in the game, and join the worlds they open. It runs on the same
 Thunder relay (see below): nothing else to set up.
 
-- **You** are `Name#1234`: your profile name (Edit Profile) and a 4-digit tag that never changes.
+- **Your account**: a name and a password, like the logins of Eaglercraft servers. The first time,
+  **Right Shift -> Friends -> Thunder Friends** asks you to make one (your profile name is
+  offered; each name can have only one account, whatever the capitals), or to **Log in** to
+  yours. Nobody can use Thunder Friends without an account, so nobody can use your name or write
+  as you. A device stays logged in until you **Log out** (**Account** in the card), and you can
+  log in on any other device, with all your friends there. **Account** also changes the password
+  (the old one is needed), which logs out all your other devices. After 8 wrong passwords a name
+  waits 15 minutes. A forgotten password cannot be reset (Thunder has no email for anyone).
+  Players from before accounts choose a password once and keep their friends.
+- **You** are `Name#1234`: your account's name and a 4-digit tag that never changes.
   **Right Shift -> Friends -> Thunder Friends** shows it with a Copy button.
-- **Add a friend**: type their `Name#1234` and **Add** (or **Add** next to them in **On Thunder
+- **Add a friend**: type their name and **Add** (or **Add** next to them in **On Thunder
   now**, the list of everyone on Thunder right now). They get a pop-up with **Accept**; requests
   also wait in their **Requests**. **No** turns one down (that player cannot ask again for 7 days);
   **Block** (click twice) stops them for good.
@@ -115,11 +124,14 @@ Thunder relay (see below): nothing else to set up.
   On Thunder now**, **Show friends what I am playing** (and your open world: its code and who is
   in it), the pop-ups, one-click Join, and the chat key.
 
-Who you are is a secret key made in this browser the first time (`localStorage.thunderSocial_v1`):
-the hub checks it against your id at every sign-in and never stores it. Another browser or
-computer is another account, and clearing the site's data starts a new one. Chats are kept in this
-browser (`thunderSocialChats_v1`: the last 60 lines with each of the 40 most recent friends). The
-hub keeps names, tags, friends, requests and blocks; messages only until they are delivered.
+The password never leaves the browser: it is turned into a key first (PBKDF2-SHA256, 100000
+rounds, salted with the account's name), and the hub keeps only a salted SHA-256 of that key. Each
+browser is a device with its own secret key (`localStorage.thunderSocial_v1`; the hub keeps only a
+hash of it), linked to the account it logged in to. Chats are kept in this browser, per account
+(`thunderSocialChats_v1:<account>`: the last 60 lines with each of the 40 most recent friends), and
+logging out removes that account's chats from the browser. The hub keeps names, tags, password
+hashes, which devices are logged in, friends, requests and blocks; messages only until they are
+delivered.
 Messages and invites only go between friends, as plain text of at most 300 characters, and every
 connection and network address is rate limited (addresses as a hash, in memory only).
 
@@ -268,11 +280,16 @@ EaglercraftX's LAN framing on them. The browser half was never compiled in, and 
   WebSockets' attachments so it can sleep between messages; it only accepts the site's own pages
   (the `Origin` header), and a tunnel only with a token it handed out.
 - **Thunder Friends hub** (`thunder-relay/social.js`): one Durable Object for everyone, reached at
-  `/social` like the relay, holding accounts (id, name, tag), friends, requests, blocks and waiting
-  messages in its SQLite storage. Each game keeps one WebSocket to it (`?id=` the account id; the
-  first message says hello with the key, which must hash to that id), sleeps between messages
+  `/social` like the relay, holding accounts (id, name, tag, the password's salted hash), the
+  devices logged in to each, friends, requests, blocks and waiting messages in its SQLite storage.
+  Each game keeps one WebSocket to it (`?id=` the device id; the first message says hello with the
+  device key, which must hash to that id). A device not logged in gets `auth` and can then only
+  `register` or `login` (with the key the browser made from the password); a logged-in one is
+  signed in to its account at once. A new password (`passwd`, with the old one) unlinks the
+  account's other devices, and `logout` unlinks this one; a device whose own account it left
+  makes a new device key. The hub sleeps between messages
   (keepalives are answered by Cloudflare) and tells friends about changes: online, offline, what
-  you are doing, your name. What you are doing is `{w}`: menu, sp, server (and which), join (and
+  you are doing. What you are doing is `{w}`: menu, sp, server (and which), join (and
   whose world), or host with the code (or `lock` when friends need the code: then no code at all)
   and `players`, the names in your world (from each friend's login; at most 16, checked by the
   hub like every name). An invite carries the code itself. The game connects once its first menu is up (it uses a stand-in name
@@ -429,6 +446,22 @@ hosting a second world with two players in it:
 | Found and fixed on the way | the one-line bar covered the start of the screen title, and the old panel could cover the top of the list at some window sizes (now sized to the strip left of the title from the screen's own scale); joining from the chat closed the menu at once, so a failed join showed nothing (now it stays open until the world loads, and says why) |
 | Page errors in either browser over the whole round | none |
 
+Seventh round (accounts with passwords), same setup: B a player from before accounts (with
+friends), C a new browser.
+
+| Scenario | Result |
+|---|---|
+| Hub protocol, from Node (now 73 checks) | nothing but a name and password before an account is logged in; names 3 to 16 characters, one account per name whatever the capitals; wrong name, wrong password, the right one in any capitals (same account, same id); a device stays logged in; a new password needs the old one and logs out the other devices, which need the new one; log out; a device that left its own account must start with a new key; 8 wrong passwords make the name wait; an account made by a device from before accounts keeps its id (and friends); adding by name alone; at most 4 tabs (the oldest closed) |
+| B opens Thunder Friends (O) | "Choose a password for Thunder Friends", its name offered; **Create account**: signed in as the same YeeishYeer3756#6408 with all its friends |
+| C (new) tries `yeeishyeer3756` | "yeeishyeer3756 is taken. If it is yours, log in." |
+| C makes Charlie_T, adds B by name only, B accepts, C writes | friends, the message arrives |
+| Reload both | both still logged in |
+| C: **Account -> Log out** (twice) | log-in form, "You logged out of Thunder Friends on this device."; new device key; C's chats gone from that browser |
+| C logs in: wrong password, then the right one (name in lower case) | "Wrong password for Charlie_T."; then Charlie_T#7772 with its friend |
+| B logs in to Charlie_T too; C changes the password (**Account -> Change password**) | C: "Password changed. Your other devices were logged out."; B: "You were logged out: the password was changed on another device. Log in again."; the old password is refused, the new one works |
+| Found and fixed on the way | **Log out** (and the other click-twice buttons) grew wider on the first click, wrapped out from under the mouse and cancelled itself: the second click now counts for 4 seconds instead |
+| Page errors in either browser over the whole round | none |
+
 Not tested: the public internet relays, Cloudflare's hosted services themselves (TURN, and the
 relay running on Cloudflare rather than in its local runtime) and real home/school networks (no
 internet access from the test machine). The relay protocol, codes and messages are the ones the
@@ -458,8 +491,8 @@ network lets through still depends on each network.
 - Friends already in keep playing if the relay connection drops; new friends can join again once
   the host presses **Reopen** (or at once with Always open), with the same code through the
   Thunder relay.
-- Thunder Friends accounts belong to a browser: on another browser or computer you are a new
-  player (friends add that one too), and clearing the site's data loses the account. A message
+- Thunder Friends accounts have no email, so a forgotten password cannot be reset: the account is
+  lost (its devices that are still logged in keep working until they log out). A message
   sent while a friend's connection is silently dying (a laptop closing) can be lost: the hub only
   keeps messages for friends it knows are offline (their game notices within about 30 s and
   connects again).

@@ -12,9 +12,13 @@
          title screen.
        - Pop-ups at the top right: messages, friend requests, invites, friends coming online.
        - The Singleplayer and Multiplayer screens list worlds friends have opened, with Join.
-     Who you are: a secret key made in this browser the first time (localStorage
-     "thunderSocial_v1"); the hub knows you by a hash of it. Chats are kept in this browser
-     ("thunderSocialChats_v1"). How it works and what was tested: thunder/NETWORKING.md.
+     Who you are: a Thunder Friends account, a name and a password (Right Shift > Friends asks
+     for one: create it, or log in to it on another device). The password never leaves this
+     browser: it is turned into a key first (PBKDF2), and the hub keeps a salted hash of that.
+     This browser is a device with a secret key (localStorage "thunderSocial_v1"; the hub knows it
+     by a hash) that stays signed in until it logs out. Chats are kept in this browser, per
+     account ("thunderSocialChats_v1:<account>"). How it works and what was tested:
+     thunder/NETWORKING.md.
 
      Classes it uses (which screen is open):
      @class A_3 net.minecraft.client.gui.GuiWorldSelection
@@ -26,8 +30,10 @@
   var SO_STORE='thunderSocial_v1',SO_CHATS='thunderSocialChats_v1';
   var SO_KEEP=60,SO_CONVOS=40;          // messages kept per friend, friends with a chat kept
   var SO={state:'off',msg:'',ws:null,id:'',key:'',me:null,friends:{},reqIn:[],reqOut:[],blocked:[],
-    online:null,onlineAt:0,chats:{},unread:{},sel:'',retry:0,retryAt:0,connAt:0,pinged:0,heard:0,seq:Date.now(),lastS:'',lastName:'',
-    lastListed:null,lastShare:null,addMsg:'',addOk:false,ver:0,cver:0,over:0,saveT:0,probe:null,fatal:'',connecting:false,arm:{},onToast:{},ask:'',askErr:'',via:null,joining:null};
+    online:null,onlineAt:0,chats:{},unread:{},sel:'',retry:0,retryAt:0,connAt:0,pinged:0,heard:0,seq:Date.now(),lastS:'',chatKey:'',
+    lastListed:null,lastShare:null,addMsg:'',addOk:false,ver:0,cver:0,over:0,saveT:0,probe:null,fatal:'',connecting:false,arm:{},onToast:{},ask:'',askErr:'',via:null,joining:null,
+    auth:null,authMode:'',authMsg:'',authOk:false,authBusy:false,authToast:false,reset:'',
+    acctOpen:false,acctPw:false,acctMsg:'',acctOk:false,acctBusy:false};
   function soLog(m){lanLog('Thunder Friends: '+m);}
   function soChanged(){SO.ver++;if(menuOpen)runLive();soWorlds();}
   function soSet(state,msg){SO.state=state;SO.msg=msg||'';soChanged();}
@@ -50,18 +56,56 @@
       return s;
     });
   }
+  // a new device key (this device was signed out): the next connection is a new device
+  function soNewKey(){
+    var old=SO.key,o=null;
+    try{o=JSON.parse(W.localStorage.getItem(SO_STORE)||'null');}catch(_){o=null;}
+    // (another tab of this browser may have made the new one already)
+    if(!(o&&/^[0-9a-f]{64}$/.test(o.key||'')&&o.key!==old)){
+      o={key:lanRandom('0123456789abcdef',64)};
+      try{W.localStorage.setItem(SO_STORE,JSON.stringify(o));}catch(_){}
+    }
+    SO.id='';SO.key='';
+  }
+  // what a password becomes before it leaves this browser: PBKDF2-SHA256, 100000 rounds, salted
+  // with the account's name (the hub never sees the password itself)
+  function soPwKey(name,pw){
+    var cs=W.crypto&&W.crypto.subtle,te=new W.TextEncoder();
+    pw=String(pw);
+    try{pw=pw.normalize('NFC');}catch(_){}
+    return cs.importKey('raw',te.encode(pw),'PBKDF2',false,['deriveBits']).then(function(k){
+      return cs.deriveBits({name:'PBKDF2',salt:te.encode('thunder-friends:'+String(name).toLowerCase()),iterations:100000,hash:'SHA-256'},k,256);
+    }).then(function(b){
+      var a=new Uint8Array(b),s='',i;
+      for(i=0;i<a.length;i++)s+=('0'+a[i].toString(16)).slice(-2);
+      return s;
+    });
+  }
   function soName(){var n=lanMyName();return /^[A-Za-z0-9_]{1,16}$/.test(n)?n:'Player';}
   // the game has read the saved profile (it uses a stand-in name until then): its first menu is up
   function soGameUp(){return !!(HEN&&BOOT.frames>=3&&lanMyName());}
   function soTagged(p){return p?(p.name||'Player')+'#'+(p.tag||'0000'):'';}
 
-  // ---- chats kept in this browser ------------------------------------------------------------
-  function soLoadChats(){
+  // ---- chats kept in this browser (each account's own) ------------------------------------------
+  function soUseChats(aid){
+    var k=SO_CHATS+':'+aid,raw=null;
+    if(SO.saveT){W.clearTimeout(SO.saveT);SO.saveT=0;}
+    SO.chats={};SO.unread={};SO.chatKey=k;
     try{
-      var o=JSON.parse(W.localStorage.getItem(SO_CHATS)||'{}');
+      raw=W.localStorage.getItem(k);
+      // chats from before accounts belong to the account this device made (it has the device's id)
+      if(raw==null&&aid===SO.id){raw=W.localStorage.getItem(SO_CHATS);if(raw!=null){W.localStorage.setItem(k,raw);W.localStorage.removeItem(SO_CHATS);}}
+      var o=JSON.parse(raw||'{}');
       if(o&&typeof o==='object'){SO.chats=o.c&&typeof o.c==='object'?o.c:{};SO.unread=o.u&&typeof o.u==='object'?o.u:{};}
     }catch(_){SO.chats={};SO.unread={};}
+    SO.cver++;
     soUnsure();                         // the page closed before the hub answered
+  }
+  // logging out removes this account's chats from this browser
+  function soDropChats(){
+    if(SO.saveT){W.clearTimeout(SO.saveT);SO.saveT=0;}
+    try{if(SO.chatKey)W.localStorage.removeItem(SO.chatKey);}catch(_){}
+    SO.chats={};SO.unread={};SO.chatKey='';SO.cver++;
   }
   // messages the hub never answered (the connection closed first): they may or may not have arrived
   function soUnsure(){
@@ -70,13 +114,15 @@
     if(n){SO.cver++;soSaveChats();}
   }
   function soSaveChats(){
-    if(SO.saveT)return;
+    if(SO.saveT||!SO.chatKey)return;
+    var key=SO.chatKey;
     SO.saveT=W.setTimeout(function(){
       SO.saveT=0;
+      if(key!==SO.chatKey)return;
       // only the friends talked to most recently
       var ids=Object.keys(SO.chats).sort(function(a,b){return soLastAt(b)-soLastAt(a);});
       for(var i=SO_CONVOS;i<ids.length;i++){delete SO.chats[ids[i]];delete SO.unread[ids[i]];}
-      try{W.localStorage.setItem(SO_CHATS,JSON.stringify({c:SO.chats,u:SO.unread}));}catch(_){}
+      try{W.localStorage.setItem(key,JSON.stringify({c:SO.chats,u:SO.unread}));}catch(_){}
     },800);
   }
   function soLastAt(id){var l=SO.chats[id];return l&&l.length?l[l.length-1].at||0:0;}
@@ -139,8 +185,9 @@
       ws.onopen=function(){
         if(SO.ws!==ws)return;
         var s=soActivity();
-        SO.lastS=JSON.stringify(s);SO.lastName=soName();SO.lastListed=!!S.socialListed;SO.lastShare=!!S.socialShare;
-        soSend({t:'hello',key:SO.key,name:SO.lastName,hide:!S.socialListed,share:!!S.socialShare,s:s});
+        SO.lastS=JSON.stringify(s);SO.lastListed=!!S.socialListed;SO.lastShare=!!S.socialShare;
+        // (the name is what a new account is offered: the profile name)
+        soSend({t:'hello',key:SO.key,name:soName(),hide:!S.socialListed,share:!!S.socialShare,s:s});
         SO.pinged=SO.heard=now();
       };
       ws.onmessage=function(e){
@@ -154,6 +201,21 @@
         if(SO.ws!==ws)return;
         SO.ws=null;
         soUnsure();
+        SO.authBusy=SO.acctBusy=false;
+        if(SO.reset){
+          // signed out (logged out here, or a new password on another device): this browser
+          // starts again as a new device, and the account's name and password sign it in
+          var why=SO.reset;SO.reset='';
+          soNewKey();
+          if(SO.saveT){W.clearTimeout(SO.saveT);SO.saveT=0;}
+          SO.me=null;SO.friends={};SO.reqIn=[];SO.reqOut=[];SO.blocked=[];SO.online=null;SO.sel='';
+          SO.chats={};SO.unread={};SO.chatKey='';SO.acctOpen=false;SO.acctPw=false;
+          SO.authMode='login';SO.authOk=why==='logged out';
+          SO.authMsg=why==='logged out'?'You logged out of Thunder Friends on this device.':'You were logged out: the password was changed on another device. Log in again.';
+          SO.retry=0;SO.retryAt=now();soSet('retry','');
+          soLog(why);
+          return;
+        }
         if(SO.fatal){soSet('error',SO.fatal);return;}
         if(!S.socialOn){soSet('off','');return;}
         soRetry(SO.state==='on'?'the connection closed':'could not connect');
@@ -234,7 +296,24 @@
   function soDrop(list,id){for(var i=list.length-1;i>=0;i--)if(list[i].id===id)list.splice(i,1);}
   function soOn(m){
     switch(m.t){
+      case 'auth':
+        // not signed in on this device: make an account, or log in to one
+        SO.auth={name:m.name||'',taken:!!m.taken,old:!!m.old};SO.retry=0;SO.authBusy=false;
+        // (a device from before accounts makes its account: another name if its own is taken)
+        if(!SO.authMode)SO.authMode=m.taken&&!m.old?'login':'register';
+        soSet('auth','');
+        // (once, and not when the forms are on screen or it just logged out)
+        if(!SO.authToast&&S.socialToasts&&!SO.authMsg&&!(menuOpen&&currentCat==='friends')){
+          SO.authToast=true;
+          soToast({kind:'info',title:'Thunder Friends',open:true,text:m.old?'Choose a password to keep your account and friends: Right Shift \u2192 Friends.':'Make your account (a name and a password), or log in: Right Shift \u2192 Friends.'});
+        }
+        return;
+      case 'pwok':
+        SO.acctBusy=false;SO.acctPw=false;SO.acctOk=true;SO.acctMsg='Password changed. Your other devices were logged out.';
+        soChanged();return;
       case 'welcome':{
+        soUseChats(m.me.id);
+        SO.auth=null;SO.authMode='';SO.authMsg='';SO.authBusy=false;
         SO.me=m.me;SO.friends={};SO.retry=0;
         (m.friends||[]).forEach(function(f){SO.friends[f.id]=f;});
         SO.reqIn=m.reqIn||[];SO.reqOut=m.reqOut||[];SO.blocked=m.blocked||[];
@@ -306,10 +385,13 @@
         return;
       case 'err':
         if(m.fatal){
+          if(m.why==='signed out'||m.why==='logged out'){SO.reset=m.why;return;}
           if(m.why==='wrong key'||m.why==='bad key')SO.fatal='this browser\'s Thunder Friends key was refused';
           else if(m.why==='opened in another tab')SO.fatal='Thunder Friends is open in other tabs; reload this one to use it here';
           return;
         }
+        if(m.op==='auth'){SO.authBusy=false;SO.authMsg=m.why;SO.authOk=false;soChanged();return;}
+        if(m.op==='passwd'){SO.acctBusy=false;SO.acctMsg=m.why;SO.acctOk=false;soChanged();return;}
         if(m.op==='add'){SO.addMsg=m.why;SO.addOk=false;soChanged();return;}
         if((m.op==='msg'||m.op==='invite')&&m.to){
           // the message it is about (by its id; else the newest one still sending)
@@ -333,11 +415,57 @@
   }
   function soAddFriend(who){
     who=String(who||'').trim();
-    if(!who){SO.addMsg='Type their name and tag, like Steve#1234.';SO.addOk=false;soChanged();return;}
+    if(!who){SO.addMsg='Type their Thunder Friends name.';SO.addOk=false;soChanged();return;}
     if(!soSend({t:'add',who:who})){SO.addMsg='Thunder Friends is not connected right now.';SO.addOk=false;soChanged();return;}
     SO.addMsg='';soChanged();
   }
   function soAct(t,id){if(/^[0-9a-f]{24}$/.test(id||''))soSend({t:t,id:id});}
+
+  // ---- your account --------------------------------------------------------------------------
+  var SO_NAME_RE=/^[A-Za-z0-9_]{3,16}$/;
+  function soPwProblem(pw,pw2){
+    pw=String(pw||'');
+    return pw.length<6?'Use a password of at least 6 characters.':pw.length>64?'That password is too long (64 characters at most).':
+      pw2!==undefined&&pw!==pw2?'The two passwords are different.':'';
+  }
+  function soAuthFail(why){SO.authBusy=false;SO.authMsg=why;SO.authOk=false;soChanged();}
+  function soAuthSend(t,name,pw){
+    if(SO.state!=='auth'||!SO.ws){soAuthFail('Thunder Friends is not connected right now. Try again in a moment.');return;}
+    SO.authBusy=true;SO.authMsg='';soChanged();
+    soPwKey(name,pw).then(function(k){
+      if(!soSend({t:t,name:name,pw:k}))soAuthFail('Thunder Friends is not connected right now. Try again in a moment.');
+    },function(){soAuthFail('This browser could not use that password.');});
+  }
+  // a new account: this name (one account per name) and a password
+  function soRegister(name,pw,pw2){
+    name=String(name||'').trim();
+    var why=!SO_NAME_RE.test(name)?'A name is 3 to 16 letters, numbers or _.':soPwProblem(pw,pw2);
+    if(why){soAuthFail(why);return;}
+    soAuthSend('register',name,pw);
+  }
+  function soLogin(name,pw){
+    name=String(name||'').trim();
+    if(!SO_NAME_RE.test(name)||!pw){soAuthFail('Type your account\'s name and password.');return;}
+    soAuthSend('login',name,pw);
+  }
+  function soAcctFail(why){SO.acctBusy=false;SO.acctMsg=why;SO.acctOk=false;soChanged();}
+  // a new password (the old one is needed); the account's other devices are logged out
+  function soPasswd(old,pw,pw2){
+    var why=!old?'Type your old password.':soPwProblem(pw,pw2);
+    if(why){soAcctFail(why);return;}
+    if(!soReady()||!SO.me){soAcctFail('Thunder Friends is not connected right now.');return;}
+    SO.acctBusy=true;SO.acctMsg='';soChanged();
+    var n=SO.me.name;
+    Promise.all([soPwKey(n,old),soPwKey(n,pw)]).then(function(k){
+      if(!soSend({t:'passwd',old:k[0],pw:k[1]}))soAcctFail('Thunder Friends is not connected right now.');
+    },function(){soAcctFail('This browser could not use that password.');});
+  }
+  // this device logs out (and this account's chats leave this browser)
+  function soLogout(){
+    if(!soReady())return;
+    soDropChats();
+    soSend({t:'logout'});
+  }
   // an invite carries the code (so an invited friend joins with one click, even when others need it)
   function soInvite(id){
     if(!(LH.state==='open'&&LH.code)){soSys(id,'Open your world to friends first (Esc \u2192 Open to Friends).');return;}
@@ -410,7 +538,7 @@
         soRetry('the friends hub did not answer');
         return;
       }
-      if(!soReady())return;
+      if(!SO.ws||(SO.state!=='on'&&SO.state!=='auth'))return;
       // a connection that died without closing (a network change, a sleeping laptop): the hub
       // answers every ping, so a ping left unanswered for 30 s means it is gone
       if(SO.pinged>SO.heard&&now()-SO.pinged>30000){
@@ -421,8 +549,7 @@
         return;
       }
       if(SO.pinged<=SO.heard&&now()-SO.pinged>25000){SO.pinged=now();try{SO.ws.send('ping');}catch(_){}}
-      var nm=soName();
-      if(nm!==SO.lastName){SO.lastName=nm;soSend({t:'name',name:nm});if(SO.me){SO.me.name=nm;soChanged();}}
+      if(!soReady())return;
       if(!!S.socialListed!==SO.lastListed){SO.lastListed=!!S.socialListed;soSend({t:'hide',v:!S.socialListed});}
       if(!!S.socialShare!==SO.lastShare){SO.lastShare=!!S.socialShare;soSend({t:'share',v:!!S.socialShare});}
       soStatusNow();
@@ -477,6 +604,16 @@
     '.tcs-m.tcs-sys .tcs-btn{margin-top:4px}',
     '.tcs-send{display:flex;gap:6px;padding:7px;border-top:1px solid rgba(110,140,160,.14)}',
     '.tcs-empty{margin:auto;text-align:center;color:#7c95a8;font-size:12px;line-height:1.6;padding:18px}',
+    // making an account / logging in, and the account page
+    '.tcs-auth{max-width:380px;margin:6px auto 2px;display:flex;flex-direction:column;gap:7px;padding:12px 14px;border-radius:12px;background:rgba(3,7,12,.45);border:1px solid rgba(110,140,160,.18)}',
+    '.tcs-auth-t{font-size:13px;color:#fff}',
+    '.tcs-auth input,.tcs-acct input{height:30px;padding:0 10px;border-radius:8px;border:1px solid rgba(120,150,175,.28);background:rgba(3,7,12,.55);color:#eafaff;font:600 12px system-ui,sans-serif;outline:0}',
+    '.tcs-auth input:focus,.tcs-acct input:focus{border-color:rgba(79,209,255,.65);box-shadow:0 0 0 3px rgba(79,209,255,.12)}',
+    '.tcs-auth .tcs-btn.tcs-go{height:30px}.tcs-auth .tcs-btn:disabled,.tcs-acct .tcs-btn:disabled{opacity:.55;cursor:default}',
+    '.tcs-auth-sw .tcs-btn{margin-left:4px;padding:1px 8px}.tcs-auth-fine{font-size:10.5px;color:#7c95a8}',
+    '.tcs-acct{flex:1;display:flex;flex-direction:column;gap:8px;padding:12px;overflow-y:auto;min-height:0}',
+    '.tcs-acct-row{display:flex;gap:6px;flex-wrap:wrap}.tcs-acct-pw{display:flex;flex-direction:column;gap:6px;max-width:300px}',
+    '.tcs-main-acct>*:not(.tcs-acct){display:none!important}',
     '.tcs-more{display:flex;gap:6px;flex-wrap:wrap;padding:6px 9px;border-bottom:1px solid rgba(110,140,160,.14)}',
     '.tcs-who{padding:4px 9px;font-size:11px;color:#9fd8f0;border-bottom:1px solid rgba(110,140,160,.14);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
     '.tcs-ask{align-items:center}.tcs-ask .tcs-note{flex:1 0 100%}.tcs-ask .tcs-btn:disabled{opacity:.5;cursor:default}',
@@ -505,7 +642,7 @@
     return b;
   }
   var soToastBox=null;
-  // o: {kind, title, text, id (a friend: click opens the chat), code (an invite: Join), req (a
+  // o: {kind, title, text, id (a friend: click opens the chat; open: the card), code (an invite: Join), req (a
   // request: Accept / Decline), quiet (shorter), tag (replaces an earlier pop-up with that tag)}
   function soToast(o){
     if(!D.body)return;
@@ -514,7 +651,7 @@
     if(soToastBox.nextSibling||soToastBox.parentNode!==D.body)D.body.appendChild(soToastBox);   // last, so above the menu
     if(o.tag)[].slice.call(soToastBox.children).forEach(function(c){if(c.getAttribute('data-tag')===o.tag)soToastBox.removeChild(c);});
     while(soToastBox.children.length>=4)soToastBox.removeChild(soToastBox.firstChild);
-    var t=el('div','tct'+(o.id?' tct-click':''));
+    var t=el('div','tct'+(o.id||o.open?' tct-click':''));
     if(o.tag)t.setAttribute('data-tag',o.tag);
     t.appendChild(el('b',null,o.title||''));
     if(o.text)t.appendChild(el('p',null,o.text));
@@ -528,7 +665,7 @@
     if(act)t.appendChild(act);
     // in a world the mouse belongs to the game: say which key opens the chat
     if(HEN&&HEN.X&&HEN.cm===null&&!menuOpen&&o.kind!=='info'&&S.socialOn)t.appendChild(el('i',null,'Press '+keyLabel(S.socialKey||'KeyO')+' to open the chat'));
-    if(o.id)t.addEventListener('click',function(){soShowChat(o.id);gone();});
+    if(o.id||o.open)t.addEventListener('click',function(){soShowChat(o.id||'');gone();});
     soToastBox.appendChild(t);
     var left=o.quiet?4500:(o.code||o.req?12000:7000),timer=0,start=now();
     function gone(){W.clearTimeout(timer);if(t.parentNode)t.parentNode.removeChild(t);}
@@ -563,6 +700,7 @@
   function soStatusLine(){
     switch(SO.state){
       case 'on':return ['tcm-ok','Online',soTagged(SO.me)+(S.socialListed?'':' \u2022 hidden from On Thunder now')];
+      case 'auth':return ['tcm-warn','Log in',SO.auth&&SO.auth.old?'choose a password to keep your account':'make your account, or log in'];
       case 'connecting':return ['tcm-warn','Connecting',''];
       case 'retry':return ['tcm-warn','Offline',(SO.msg?SO.msg+'; ':'')+'trying again in '+Math.max(1,Math.ceil((SO.retryAt-now())/1000))+' s'];
       case 'none':return ['','Not on this site',SO.msg||''];
@@ -585,6 +723,48 @@
     soCss();lanCss();
     var wrap=el('div','tcs-chat'),side=el('div','tcs-side'),main=el('div','tcs-main');
     wrap.appendChild(side);wrap.appendChild(main);box.appendChild(wrap);
+    // not signed in on this device: make an account, or log in (the rest of the card waits)
+    var auth=el('div','tcs-auth'),aTitle=el('b','tcs-auth-t'),aIntro=el('div','tcs-note');
+    var aName=el('input'),aPw=el('input'),aPw2=el('input'),aMsg=el('div','tcs-note'),aSwitch=el('div','tcs-note tcs-auth-sw');
+    aName.type='text';aName.maxLength=16;aName.spellcheck=false;aName.autocomplete='username';aName.placeholder='Name';
+    aPw.type='password';aPw.maxLength=64;aPw.placeholder='Password';
+    aPw2.type='password';aPw2.maxLength=64;aPw2.placeholder='Password again';aPw2.autocomplete='new-password';
+    var aGo=soBtn('',function(){doAuth();},true),aFilled='',aAuto='';
+    var aSwB=soBtn('',function(){
+      SO.authMode=SO.authMode==='login'?'register':'login';SO.authMsg='';aPw.value=aPw2.value='';aFilled='';paintAuth();
+      W.setTimeout(function(){try{(aName.value?aPw:aName).focus();}catch(_){}},0);
+    });
+    var aFine=el('div','tcs-note tcs-auth-fine','A forgotten password cannot be reset (Thunder has no email for you), so keep it safe, and do not use a password from another site.');
+    function doAuth(){if(SO.authBusy)return;if(SO.authMode==='login')soLogin(aName.value,aPw.value);else soRegister(aName.value,aPw.value,aPw2.value);}
+    [aName,aPw,aPw2].forEach(function(i){
+      soKeepKeys(i,doAuth);
+      i.addEventListener('input',function(){if(SO.authMsg&&!SO.authOk){SO.authMsg='';paintAuth();}});
+    });
+    [aTitle,aIntro,aName,aPw,aPw2,aGo,aMsg,aSwitch,aFine].forEach(function(n){auth.appendChild(n);});
+    box.insertBefore(auth,wrap);
+    function paintAuth(){
+      var a=SO.auth||{},reg=SO.authMode!=='login';
+      aTitle.textContent=reg?(a.old?'Choose a password for Thunder Friends':'Make your Thunder Friends account'):'Log in to Thunder Friends';
+      aIntro.textContent=reg?(a.old?'Thunder Friends now has accounts, so nobody else can use your name. Pick your name and a password: your friends stay.':
+        'A name that is only yours, and a password. Log in with them on your other devices too.'):'Your account\'s name and password.';
+      // the name offered: the profile name (unless someone else has it); what was typed stays
+      var key=SO.authMode+'|'+(a.name||'')+'|'+a.taken;
+      if(aFilled!==key){
+        aFilled=key;
+        if(!aName.value||aName.value===aAuto){aName.value=reg?(a.taken?'':a.name||''):(a.taken?a.name||'':'');aAuto=aName.value;}
+      }
+      aPw.autocomplete=reg?'new-password':'current-password';
+      aPw2.style.display=reg?'':'none';
+      aGo.textContent=SO.authBusy?(reg?'Making your account\u2026':'Logging in\u2026'):(reg?'Create account':'Log in');
+      aGo.disabled=aName.disabled=aPw.disabled=aPw2.disabled=!!SO.authBusy;
+      var note=SO.authMsg||(reg&&a.taken&&a.name?a.name+' already has an account. If it is yours, log in; if not, pick another name.':'');
+      aMsg.textContent=note;aMsg.style.display=note?'':'none';
+      aMsg.className='tcs-note'+(SO.authMsg?(SO.authOk?' tcs-ok':' tcs-bad'):'');
+      while(aSwitch.firstChild)aSwitch.removeChild(aSwitch.firstChild);
+      aSwitch.appendChild(D.createTextNode(reg?'Already have an account?':'New to Thunder Friends?'));
+      aSwB.textContent=reg?'Log in':'Make an account';aSwitch.appendChild(aSwB);
+      aFine.style.display=reg?'':'none';
+    }
     // you, and whether Thunder Friends is connected
     var me=el('div','tcs-me'),meDot=el('span','tcm-dot'),meTxt=el('span','tcs-me-t');
     me.appendChild(meDot);
@@ -592,10 +772,11 @@
       function said(t){copy.textContent=t;W.setTimeout(function(){copy.textContent='Copy';},1200);}
       try{W.navigator.clipboard.writeText(soTagged(SO.me)).then(function(){said('Copied');},function(){said('Not copied');});}catch(_){said('Not copied');}
     });
-    me.appendChild(meTxt);me.appendChild(copy);side.appendChild(me);
+    var acctB=soBtn('Account',function(){SO.acctOpen=!SO.acctOpen;SO.acctMsg='';SO.acctPw=false;soChanged();});
+    me.appendChild(meTxt);me.appendChild(copy);me.appendChild(acctB);side.appendChild(me);
     // add a friend
     var addRow=el('div','tcs-in'),addIn=el('input'),addB=soBtn('Add',function(){soAddFriend(addIn.value);},true);
-    addIn.type='text';addIn.placeholder='Friend\'s Name#1234';addIn.maxLength=40;addIn.spellcheck=false;addIn.autocomplete='off';
+    addIn.type='text';addIn.placeholder='Friend\'s name';addIn.maxLength=40;addIn.spellcheck=false;addIn.autocomplete='off';
     soKeepKeys(addIn,function(){soAddFriend(addIn.value);});
     addRow.appendChild(addIn);addRow.appendChild(addB);side.appendChild(addRow);
     var addNote=el('div','tcs-note');side.appendChild(addNote);
@@ -629,10 +810,11 @@
       if(SO.state==='on'&&SO.me){meTxt.appendChild(D.createTextNode('You are '));meTxt.appendChild(el('em',null,soTagged(SO.me)));}
       else meTxt.textContent=st[1]+(st[2]?' \u2022 '+st[2]:'');
       meTxt.title=meTxt.textContent;
-      copy.style.display=SO.state==='on'&&SO.me?'':'none';
+      copy.style.display=acctB.style.display=SO.state==='on'&&SO.me?'':'none';
+      acctB.textContent=SO.acctOpen?'Chats':'Account';
       if(SO.addClear){SO.addClear=false;addIn.value='';}
       addIn.disabled=addB.disabled=!soReady();
-      addNote.textContent=SO.addMsg||(SO.me?'Friends add you with '+soTagged(SO.me)+'.':'');
+      addNote.textContent=SO.addMsg||(SO.me?'Friends add you by your name, '+SO.me.name+'.':'');
       addNote.className='tcs-note'+(SO.addMsg?(SO.addOk?' tcs-ok':' tcs-bad'):'');
       while(list.firstChild)list.removeChild(list.firstChild);
       if(SO.reqIn.length){list.appendChild(el('div','tcs-sec','Requests'));SO.reqIn.forEach(function(p){list.appendChild(reqRow(p,true));});}
@@ -673,6 +855,33 @@
     soKeepKeys(say,doSend);
     send.appendChild(say);send.appendChild(sayB);
     main.appendChild(head);main.appendChild(who);main.appendChild(ask);main.appendChild(more);main.appendChild(msgs);main.appendChild(send);
+    // your account (the Account button): a new password, or log out
+    var acct=el('div','tcs-acct'),acTitle=el('b','tcs-auth-t'),acInfo=el('div','tcs-note'),acMsg=el('div','tcs-note');
+    var acOld=el('input'),acNew=el('input'),acNew2=el('input'),acPwBox=el('div','tcs-acct-pw'),acRow=el('div','tcs-acct-row');
+    var acSave=soBtn('Save new password',function(){doPw();},true);
+    [acOld,acNew,acNew2].forEach(function(i,n){
+      i.type='password';i.maxLength=64;i.autocomplete=n?'new-password':'current-password';
+      i.placeholder=['Old password','New password','New password again'][n];
+      soKeepKeys(i,doPw);
+      acPwBox.appendChild(i);
+    });
+    acPwBox.appendChild(acSave);
+    function doPw(){if(!SO.acctBusy)soPasswd(acOld.value,acNew.value,acNew2.value);}
+    acRow.appendChild(soBtn('Change password',function(){SO.acctPw=!SO.acctPw;SO.acctMsg='';paintAcct();}));
+    acRow.appendChild(armBtn('Log out','Click again to log out',function(){soLogout();},'logout'));
+    acRow.appendChild(soBtn('Back to chats',function(){SO.acctOpen=false;soChanged();}));
+    [acTitle,acInfo,acRow,acPwBox,acMsg].forEach(function(n){acct.appendChild(n);});
+    main.appendChild(acct);
+    function paintAcct(){
+      acTitle.textContent='Your account: '+soTagged(SO.me);
+      acInfo.textContent='Log in with your name and password on any device. A new password logs out your other devices. Logging out removes this account\'s chats from this browser.';
+      acPwBox.style.display=SO.acctPw?'':'none';
+      if(!SO.acctPw)acOld.value=acNew.value=acNew2.value='';
+      acSave.textContent=SO.acctBusy?'Saving\u2026':'Save new password';
+      acSave.disabled=acOld.disabled=acNew.disabled=acNew2.disabled=!!SO.acctBusy;
+      acMsg.textContent=SO.acctMsg;acMsg.style.display=SO.acctMsg?'':'none';
+      acMsg.className='tcs-note'+(SO.acctMsg?(SO.acctOk?' tcs-ok':' tcs-bad'):'');
+    }
     var moreOpen=false,chatVer=-1,chatSel=null,chatReady=null;
     function paintHead(){
       while(head.firstChild)head.removeChild(head.firstChild);
@@ -701,10 +910,18 @@
     function ids0(){return Object.keys(SO.friends).length>0;}
     // a button that asks for a second click
     // (the list is rebuilt when anything changes: the armed state is kept by key meanwhile)
+    // (the second click counts for 4 seconds; not reset when the mouse leaves, because the wider
+    // "Click again" text can move the button out from under the mouse)
     function armBtn(label,armed,fn,key){
-      var b=soBtn(label,function(){if(!SO.arm[key]){SO.arm[key]=1;b.textContent=armed;return;}delete SO.arm[key];fn();});
+      var b=soBtn(label,function(){
+        if(!SO.arm[key]){
+          var t=SO.arm[key]=now();b.textContent=armed;
+          W.setTimeout(function(){if(SO.arm[key]===t){delete SO.arm[key];b.textContent=label;soChanged();}},4000);
+          return;
+        }
+        delete SO.arm[key];fn();
+      });
       if(SO.arm[key])b.textContent=armed;
-      b.addEventListener('mouseleave',function(){delete SO.arm[key];b.textContent=label;});
       return b;
     }
     function msgEl(m){
@@ -737,8 +954,12 @@
     addLive(function(){
       if(SO.sel&&!SO.friends[SO.sel])SO.sel='';
       if(SO.sel&&SO.unread[SO.sel]){delete SO.unread[SO.sel];soSaveChats();}
+      // not signed in: only the account forms; the account page instead of the chat
+      var authing=SO.state==='auth',acctOn=SO.acctOpen&&soReady()&&!!SO.me;
+      auth.style.display=authing?'':'none';wrap.style.display=authing?'none':'';
+      acct.style.display=acctOn?'':'none';main.className='tcs-main'+(acctOn?' tcs-main-acct':'');
       // rebuilt only when something changed, so clicks and typing are never lost
-      if(listVer!==SO.ver||listSel!==SO.sel||SO.state==='retry'){listVer=SO.ver;listSel=SO.sel;paintSide();paintHead();}
+      if(listVer!==SO.ver||listSel!==SO.sel||SO.state==='retry'){listVer=SO.ver;listSel=SO.sel;paintSide();paintHead();paintAuth();paintAcct();}
       // the chat itself only when its lines changed (so reading older lines never jumps)
       var rd=soReady()&&!!SO.friends[SO.sel];
       if(chatVer!==SO.cver||chatSel!==SO.sel||chatReady!==rd){paintChat();chatVer=SO.cver;chatSel=SO.sel;chatReady=rd;}
@@ -774,7 +995,7 @@
       ver=v;
       while(rows.firstChild)rows.removeChild(rows.firstChild);
       var o=SO.online;
-      if(!soReady()){info.textContent='Thunder Friends is not connected.';return;}
+      if(!soReady()){info.textContent=SO.state==='auth'?'Log in to Thunder Friends (above) to see who is on Thunder.':'Thunder Friends is not connected.';return;}
       if(!o){info.textContent='Looking\u2026';return;}
       var hidden=o.total-o.list.length;
       info.textContent=o.total?o.total+(o.total===1?' other player':' other players')+' on Thunder now'+(hidden>0?' ('+hidden+' not shown: hidden or blocked)':'')+'.':'Nobody else is on Thunder right now.';
@@ -851,11 +1072,11 @@
 
   // ---- the cards -----------------------------------------------------------------------------
   var SO_MOD_CHAT={cat:'friends',id:null,name:'Thunder Friends',wide:true,special:'socialchat',
-      desc:'Add friends by name and tag, chat, see what they are playing and join worlds they open. The chat key (O) opens this in a world.'},
+      desc:'Add friends by name, chat, see what they are playing and join worlds they open. The chat key (O) opens this in a world.'},
     SO_MOD_ONLINE={cat:'friends',id:null,name:'On Thunder now',wide:true,special:'socialonline',
       desc:'Everyone on Thunder Client right now who shows in this list. Add them as friends.'},
     SO_MOD_SET={cat:'friends',id:'socialOn',name:'Thunder Friends settings',wide:true,always:true,
-      desc:'Connects to this site\'s friends hub. Who you are is a secret key kept in this browser, and your chats stay in it too.',
+      desc:'Connects to this site\'s friends hub with your Thunder Friends account (a name and a password). Your chats stay in this browser.',
       onChange:function(v){if(v){SO.fatal='';SO.retry=0;soSet('off','');soConnect();}else soDisconnect();},
       opts:[{id:'socialListed',name:'Show me in On Thunder now'},
         {id:'socialShare',name:'Show friends what I am playing (and the code of a world I open)'},
@@ -870,7 +1091,7 @@
     MODULES.splice(Math.min(i,j),0,SO_MOD_CHAT);
   })();
 
-  soLoadChats();
   // for tests and the console
   TC.social={state:SO,connect:soConnect,disconnect:soDisconnect,add:soAddFriend,msg:soMsg,act:soAct,invite:soInvite,
-    join:soJoin,joinFriend:soJoinFriend,online:soAskOnline,show:soShowChat,toast:soToast,activity:soActivity,who:soWho};
+    join:soJoin,joinFriend:soJoinFriend,online:soAskOnline,show:soShowChat,toast:soToast,activity:soActivity,who:soWho,
+    register:soRegister,login:soLogin,passwd:soPasswd,logout:soLogout};

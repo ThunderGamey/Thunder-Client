@@ -279,7 +279,8 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   computer left on loads and shares one world by itself, and shares it again when the connection
   drops). How to use it, how to switch the relays on, how it works, what was tested and the
   limits: [NETWORKING.md](NETWORKING.md).
-- `thunder-social.js` - Thunder Friends: friends list across Thunder Client (add by `Name#tag`),
+- `thunder-social.js` - Thunder Friends: accounts (a name only you can use and a password; create,
+  log in, change password, log out), a friends list across Thunder Client (add by name),
   who is on Thunder now, chat (O opens it), pop-ups for messages, requests, invites and friends
   coming online, and friends' open worlds with who is playing and Join (in the list, the chat and
   on the Singleplayer / Multiplayer screens), with the host's choice of one-click Join or the code
