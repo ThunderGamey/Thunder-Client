@@ -92,7 +92,15 @@
   // opened from a folder sends Origin "null").
   var SITE_HOME='https://thunderclient.pages.dev/';
   function siteFile(){return !/^https?:/i.test(String(W.location.href));}
+  // a website address you set by hand (Right Shift > Friends > Connection test): Thunder uses its
+  // relay, TURN and Friends. For when the built-in one moved or is not set up, above all in the
+  // offline file. Must be https://host/ .
+  function siteOverride(){
+    try{var o=String(W.localStorage.getItem('thunderSiteOverride')||'');return /^https:\/\/[^\/]+\/?$/.test(o)?o.replace(/\/?$/,'/'):'';}catch(_){return '';}
+  }
   function siteBase(){
+    var ov=siteOverride();
+    if(ov)return ov;
     if(!siteFile())return String(W.location.href);
     if(W.thunderSite)return String(W.thunderSite);
     return W.__thunderOffline?SITE_HOME:'';
@@ -135,6 +143,15 @@
     return out.length?out:LAN_RELAYS.slice();
   }
   function lanRelayName(url){return lanIsSite(url)?'the Thunder relay':String(url).split('?')[0].replace(/^wss?:\/\//i,'').replace(/\/+$/,'');}
+  // a world opened or joined on a public relay instead of Thunder's own: it hands out shorter
+  // codes and does not work on networks that block the public relays. This says so, when Thunder's
+  // relay should have been there (a site is set) but was not reached.
+  function lanOnPublic(relay){return !!(relay&&lanSiteRelay()&&!lanIsSite(relay));}
+  function lanPublicWarn(){
+    if(!lanSiteRelay())return '';
+    return 'Thunder\'s own relay could not be reached (' + (LAN_SITE.state==='none' ? 'it is not set up on ' + siteName() : siteName() + ' did not answer') +
+      '), so this uses a public relay with a shorter code that may not work on all networks. Fix it, or set another site, in the Connection test.';
+  }
 
   // ---- relay packets (EaglerSPRelay protocol 1): 1 byte id, then fields; strings are 8-bit
   // characters with a 1-byte (ASCII8) or 2-byte big-endian (ASCII16) length
@@ -1256,6 +1273,7 @@
   // Menu: Right Shift > Friends
   // =====================================================================================
   var LAN_CSS=[
+    '.tcm-warn-note{color:#ffd99a;background:rgba(255,195,92,.08);border:1px solid rgba(255,195,92,.35);border-radius:8px;padding:6px 9px;margin-top:8px}',
     '.tcl-code{display:flex;align-items:center;gap:12px;margin-top:10px;padding:12px 14px;border-radius:10px;',
       'background:linear-gradient(135deg,rgba(79,209,255,.12),rgba(79,209,255,.03));border:1px solid rgba(79,209,255,.35)}',
     '.tcl-code b{font:700 26px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.14em;color:#eafaff;text-shadow:0 0 12px rgba(79,209,255,.5)}',
@@ -1318,10 +1336,20 @@
         return why?['','Not now',why]:['','Ready','type your friend\'s code'+(me?' (you play as '+me+')':'')];
     }
   }
+  // a world on a public relay (not Thunder's) gives shorter codes and fails on some networks: warn
+  function lanWarnRow(box,active){
+    var w=el('div','tcm-note tcm-warn-note');w.style.display='none';box.appendChild(w);
+    addLive(function(){
+      var show=active()&&lanOnPublic(active()===true?LH.relay:LJ.relay);
+      w.textContent=show?lanPublicWarn():'';
+      w.style.display=show?'':'none';
+    });
+  }
   SPECIALS.lanhost=function(box){
     lanCss();
     lanTurn();lanSiteCheck();
     lanStatusRow(box,lanHostStatus);
+    lanWarnRow(box,function(){return (LH.state==='open'||LH.state==='relaylost')?true:false;});
     var codeBox=el('div','tcl-code'),codeText=el('b'),codeHint=el('span','','Friends type this code in Right Shift \u2192 Friends \u2192 Join');
     var copy=lanBtn('Copy',function(){try{W.navigator.clipboard.writeText(LH.code);copy.textContent='Copied';W.setTimeout(function(){copy.textContent='Copy';},1200);}catch(_){}});
     codeBox.appendChild(codeText);codeBox.appendChild(codeHint);codeBox.appendChild(copy);
@@ -1402,8 +1430,10 @@
   };
   SPECIALS.lanjoin=function(box){
     lanCss();
+    lanSiteCheck();
     lanTurn();lanSiteCheck();
     lanStatusRow(box,lanJoinStatus);
+    lanWarnRow(box,function(){return (LJ.active||LJ.state==='playing'||LJ.state==='joining')?'join':false;});
     var row=el('div','tcl-row'),input=el('input');
     input.type='text';input.placeholder='Join code';input.maxLength=32;input.spellcheck=false;input.autocomplete='off';
     input.value=LJ.code||'';
@@ -1437,6 +1467,24 @@
     var info=el('div','tcl-list'),act=el('div','tcm-actions');
     var go=lanBtn('Test connection',function(){lanSelfTest();runLive();});
     box.appendChild(info);act.appendChild(go);box.appendChild(act);
+    // the website Thunder uses for its relay, TURN and Friends: set another if the built-in one
+    // moved or is not set up (mainly for the offline file). Blank = the built-in one.
+    var siteRow=el('div','tcm-row'),siteIn=el('input'),siteSave=lanBtn('Use this site',function(){
+      var v=String(siteIn.value||'').trim();
+      if(v&&!/^https:\/\//i.test(v))v='https://'+v;
+      if(v&&!/\/$/.test(v))v+='/';
+      try{if(v)W.localStorage.setItem('thunderSiteOverride',v);else W.localStorage.removeItem('thunderSiteOverride');}catch(_){}
+      LAN_SITE.state='';LAN_SITE.promise=null;LAN_TURN.state='';LAN_TURN.promise=null;
+      lanSiteCheck().then(function(){if(menuOpen)runLive();});lanTurn().then(function(){if(menuOpen)runLive();});
+      runLive();
+    });
+    var siteClear=lanBtn('Default',function(){siteIn.value='';try{W.localStorage.removeItem('thunderSiteOverride');}catch(_){}LAN_SITE.state='';LAN_SITE.promise=null;lanSiteCheck().then(function(){if(menuOpen)runLive();});runLive();});
+    siteIn.type='text';siteIn.placeholder='https://your-site.pages.dev/';siteIn.spellcheck=false;siteIn.autocomplete='off';siteIn.value=siteOverride();
+    siteIn.style.cssText='flex:1;min-width:120px;height:28px;padding:0 9px;border-radius:8px;border:1px solid rgba(120,150,175,.28);background:rgba(3,7,12,.55);color:#eafaff;font:600 12px system-ui,sans-serif;outline:0';
+    ['keydown','keypress','keyup'].forEach(function(t){siteIn.addEventListener(t,function(e){e.stopPropagation();if(t==='keydown'&&e.key==='Enter')siteSave.click();});});
+    var siteLab=el('span',null,'Site');siteLab.style.cssText='min-width:30px';
+    siteRow.appendChild(siteLab);siteRow.appendChild(siteIn);siteRow.appendChild(siteSave);siteRow.appendChild(siteClear);
+    var siteNote=el('div','tcm-note');box.appendChild(siteRow);box.appendChild(siteNote);
     lanTurn().then(function(){if(menuOpen)runLive();});
     lanSiteCheck().then(function(){if(menuOpen)runLive();});
     addLive(function(){
@@ -1445,6 +1493,8 @@
         '. The test shows what this network lets through (about 8 seconds).');
       go.style.display=LAN_TEST.state==='running'?'none':'';
       go.textContent=LAN_TEST.state==='done'?'Test again':'Test connection';
+      siteNote.textContent=siteOverride()?'Using the site you set. Clear it with Default to use the built-in one.':
+        'If friends can only get a short code that will not connect, Thunder\'s relay is not reachable here: set your working site address above (for example your own https://name.pages.dev/).';
     });
   };
   ICONS.friends='<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="17" cy="9" r="2.6"/><path d="M15.4 13.6c2.6-.4 4.7 1 5.1 4.4"/>';
