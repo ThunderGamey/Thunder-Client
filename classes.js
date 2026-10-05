@@ -52229,16 +52229,21 @@ c.PK;})();
     ctx.fillStyle=fill;ctx.strokeStyle='rgba(3,8,14,.9)';ctx.lineWidth=1.5;ctx.fill();ctx.stroke();
     ctx.restore();
   }
-  function mmPlayers(ctx,w,h,x,z,scale,self,clip){
-    var list=HEN.X&&HEN.X.e4,n=list?EH(list):0,i,e;
+  // other players: white dots with a dark edge and a soft glow (r: radius in page pixels; the
+  // canvas is in device pixels, dpr of them per page pixel)
+  function mmPlayers(ctx,w,h,x,z,scale,self,clip,r,dpr){
+    var list=HEN.X&&HEN.X.e4,n=list?EH(list):0,i,e,rad=r*dpr;
+    ctx.save();
+    ctx.fillStyle='#ffffff';ctx.strokeStyle='rgba(3,8,14,.95)';ctx.lineWidth=1.6*dpr;
+    ctx.shadowColor='rgba(255,255,255,.55)';ctx.shadowBlur=4*dpr;
     for(i=0;i<n;i++){
       e=Bm(list,i);
       if(!e||e===self)continue;
       var px=w/2+(e.b-x)*scale,py=h/2+(e.c-z)*scale;
-      if(clip&&(px<3||py<3||px>w-3||py>h-3))continue;
-      ctx.fillStyle='#eaf6ff';ctx.strokeStyle='rgba(3,8,14,.9)';ctx.lineWidth=1.5;
-      ctx.beginPath();ctx.arc(px,py,3,0,Math.PI*2);ctx.fill();ctx.stroke();
+      if(clip&&(px<rad||py<rad||px>w-rad||py>h-rad))continue;
+      ctx.beginPath();ctx.arc(px,py,rad,0,Math.PI*2);ctx.fill();ctx.stroke();
     }
+    ctx.restore();
   }
 
   // ---- minimap (DOM canvas over the game) ------------------------------------------------------
@@ -52305,7 +52310,7 @@ c.PK;})();
     ctx.save();
     if(S.minimapRound){ctx.beginPath();ctx.arc(wpx/2,wpx/2,wpx/2,0,Math.PI*2);ctx.clip();}
     mmPaint(ctx,wpx,wpx,p.b,p.c,scale);
-    mmPlayers(ctx,wpx,wpx,p.b,p.c,scale,p,true);
+    mmPlayers(ctx,wpx,wpx,p.b,p.c,scale,p,true,5,dpr);
     ctx.restore();
     wptMapMarkers(ctx,wpx,wpx,p.b,p.c,scale,true,dpr);        // waypoints (thunder-waypoints.js)
     mmArrow(ctx,wpx/2,wpx/2,p.C,6*dpr,'#5fd7ff');
@@ -52377,7 +52382,7 @@ c.PK;})();
     var ctx=B.ctx,W2=B.cv.width,H2=B.cv.height,sc=MM.view.scale*dpr,p=HEN.v;
     ctx.fillStyle='#05090f';ctx.fillRect(0,0,W2,H2);
     mmPaint(ctx,W2,H2,MM.view.x,MM.view.z,sc);
-    mmPlayers(ctx,W2,H2,MM.view.x,MM.view.z,sc,p,false);
+    mmPlayers(ctx,W2,H2,MM.view.x,MM.view.z,sc,p,false,7,dpr);
     wptMapMarkers(ctx,W2,H2,MM.view.x,MM.view.z,sc,false,dpr);
     mmArrow(ctx,W2/2+(p.b-MM.view.x)*sc,H2/2+(p.c-MM.view.z)*sc,p.C,8*dpr,'#5fd7ff');
     ctx.fillStyle='#cfeeff';ctx.font=(12*dpr)+'px sans-serif';ctx.textAlign='left';ctx.textBaseline='bottom';
