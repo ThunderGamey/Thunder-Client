@@ -89,7 +89,12 @@ Thunder relay (see below): nothing else to set up.
   as you. A device stays logged in until you **Log out** (**Account** in the card), and you can
   log in on any other device, with all your friends there. **Account** also changes the password
   (the old one is needed), which logs out all your other devices. After 8 wrong passwords a name
-  waits 15 minutes. A forgotten password cannot be reset (Thunder has no email for anyone).
+  waits 15 minutes. Thunder has no email for anyone, so a forgotten password is reset with a
+  **recovery code**: **Account -> Make a recovery code** shows 20 letters and numbers once (copy
+  them or **Save as file**; a new code replaces the old one), and **Log in -> Forgot your
+  password?** takes your name, the code and a new password. That logs out all your other devices
+  and uses the code up (make a new one). Wrong codes count like wrong passwords. Until an account
+  has a code, the friends list reminds you to make one.
   Players from before accounts choose a password once and keep their friends.
 - **You** are `Name#1234`: your account's name and a 4-digit tag that never changes.
   **Right Shift -> Friends -> Thunder Friends** shows it with a Copy button.
@@ -332,7 +337,10 @@ EaglercraftX's LAN framing on them. The browser half was never compiled in, and 
   device key, which must hash to that id). A device not logged in gets `auth` and can then only
   `register` or `login` (with the key the browser made from the password); a logged-in one is
   signed in to its account at once. A new password (`passwd`, with the old one) unlinks the
-  account's other devices, and `logout` unlinks this one; a device whose own account it left
+  account's other devices, and `logout` unlinks this one. A recovery code is sent as a key made
+  from it (`recovery`; kept like a password, one per account, `recok` to all its devices);
+  `recover` (name, that key, a new password) from a device that is not signed in sets the
+  password, unlinks every device of the account, signs this one in and deletes the code; a device whose own account it left
   makes a new device key. The hub sleeps between messages
   (keepalives are answered by Cloudflare) and tells friends about changes: online, offline, what
   you are doing. What you are doing is `{w}`: menu, sp, server (and which), join (and
@@ -571,8 +579,9 @@ network lets through still depends on each network.
 - Friends already in keep playing if the relay connection drops; new friends can join again once
   the host presses **Reopen** (or at once with Always open), with the same code through the
   Thunder relay.
-- Thunder Friends accounts have no email, so a forgotten password cannot be reset: the account is
-  lost (its devices that are still logged in keep working until they log out). A message
+- Thunder Friends accounts have no email: a forgotten password can only be reset with the
+  account's recovery code. Without one the account is lost (its devices that are still logged in
+  keep working until they log out, and can make a code). A message
   sent while a friend's connection is silently dying (a laptop closing) can be lost: the hub only
   keeps messages for friends it knows are offline (their game notices within about 30 s and
   connects again).

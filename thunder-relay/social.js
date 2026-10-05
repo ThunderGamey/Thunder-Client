@@ -16,7 +16,11 @@
 // passwords a name waits 15 minutes, and wrong passwords and new accounts are also limited per
 // network address. An account is shown as its name and a 4-digit tag from its id (Steve#0427);
 // a device that had Thunder Friends before accounts keeps its friends when it registers (the
-// account takes the device's id). There is no password reset (the hub has no email for anyone).
+// account takes the device's id). The hub has no email for anyone, so a forgotten password is reset
+// with a recovery code: the browser makes a random code, shows it to the player once and sends only
+// a key made from it, which the hub keeps like a password (salted SHA-256), one per account. The
+// name, the code and a new password set the new password, sign every other device out, sign this
+// one in and use the code up; wrong codes count like wrong passwords.
 //
 // Safety: messages and invites only go between two players who both accepted each other as
 // friends. Anyone can send a friend request (by Name#tag or from the Online list); a player who
@@ -37,7 +41,8 @@
 //
 // Protocol (JSON text frames; "ping" is answered "pong" without waking the object):
 //   client -> hub: hello {key, name, hide, share, s}, then (a device not signed in, told "auth")
-//     register {name, pw} | login {name, pw}; signed in: passwd {old, pw} | logout
+//     register {name, pw} | login {name, pw} | recover {name, code, pw}; signed in: passwd {old, pw}
+//     | recovery {code} (a new recovery code: recok {at} to all the account's devices) | logout
 //     | status {s} | hide {v} | share {v}
 //     | online | add {who} | accept {id} | decline {id} | cancel {id} | remove {id} | block {id}
 //     | unblock {id} | msg {to, text, id} | invite {to, code} | ack {n} | sync {set: [[key, value, when]]}
@@ -138,6 +143,8 @@ export class ThunderSocial {
     q('CREATE TABLE IF NOT EXISTS claim (lname TEXT PRIMARY KEY, aid TEXT NOT NULL UNIQUE, name TEXT NOT NULL, salt TEXT NOT NULL, hash TEXT NOT NULL, at INTEGER NOT NULL, fails INTEGER NOT NULL DEFAULT 0, failat INTEGER NOT NULL DEFAULT 0)');
     q('CREATE TABLE IF NOT EXISTS dev (did TEXT PRIMARY KEY, aid TEXT NOT NULL, at INTEGER NOT NULL)');
     q('CREATE INDEX IF NOT EXISTS dev_aid ON dev (aid)');
+    // recovery codes: what is kept of the key the browser made from the code, one per account
+    q('CREATE TABLE IF NOT EXISTS recov (aid TEXT PRIMARY KEY, salt TEXT NOT NULL, hash TEXT NOT NULL, at INTEGER NOT NULL)');
     // settings that follow an account: key, value and when it was changed
     q('CREATE TABLE IF NOT EXISTS sync (aid TEXT NOT NULL, k TEXT NOT NULL, v TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (aid, k))');
   }
@@ -208,7 +215,7 @@ export class ThunderSocial {
     let r = this.rate.get(ws);
     if (!r || now - r.t > 10000) { r = { t: now, n: 0, m: 0 }; this.rate.set(ws, r); }
     r.n++;
-    if (t === 'msg' || t === 'invite' || t === 'add' || t === 'register' || t === 'login' || t === 'passwd') r.m++;
+    if (t === 'msg' || t === 'invite' || t === 'add' || t === 'register' || t === 'login' || t === 'passwd' || t === 'recover' || t === 'recovery') r.m++;
     if (r.n > 120) { try { ws.close(1008, 'too many messages'); } catch (e) { /* closed */ } return false; }
     return r.n <= 40 && r.m <= 12;
   }
@@ -223,9 +230,9 @@ export class ThunderSocial {
     if (!a.id) {
       if (m.t === 'hello' && !a.did) return this.hello(ws, a, m);
       // a device that said hello but is not signed in: only an account's name and password
-      if (a.did && (m.t === 'register' || m.t === 'login')) {
+      if (a.did && (m.t === 'register' || m.t === 'login' || m.t === 'recover')) {
         if (!this.allow(ws, m.t)) return sendTo(ws, { t: 'err', op: 'auth', why: 'Slow down a little.' });
-        return m.t === 'register' ? this.register(ws, a, m) : this.login(ws, a, m);
+        return m.t === 'register' ? this.register(ws, a, m) : m.t === 'login' ? this.login(ws, a, m) : this.recover(ws, a, m);
       }
       return this.bye(ws, 'say hello first');
     }
@@ -236,6 +243,7 @@ export class ThunderSocial {
       case 'status': return this.status(ws, a, m);
       case 'name': return;                 // (an account keeps its name)
       case 'passwd': return this.passwd(ws, a, m);
+      case 'recovery': return this.setRecovery(ws, a, m);
       case 'logout': return this.logout(ws, a);
       case 'hide': return this.setFlag(ws, a, 'hidden', !!m.v);
       case 'share': return this.setFlag(ws, a, 'share', m.v !== false);
@@ -301,7 +309,8 @@ export class ThunderSocial {
     const blocked = this.rows('SELECT a.id, a.name, a.tag FROM block b JOIN acct a ON a.id = b.b WHERE b.a = ?', aid);
     const mail = this.rows('SELECT m.n, m.frm AS id, a.name, a.tag, m.text, m.at FROM mail m LEFT JOIN acct a ON a.id = m.frm WHERE m.too = ? ORDER BY m.n LIMIT 200', aid)
       .map((r) => ({ n: r.n, from: { id: r.id, name: r.name || 'Player', tag: r.tag || '0000' }, text: r.text, at: r.at }));
-    sendTo(ws, { t: 'welcome', me: { id: aid, name, tag, hidden: !!hidden }, friends, reqIn, reqOut, blocked, mail, sync: this.syncOf(aid), now });
+    const rec = this.one('SELECT at FROM recov WHERE aid = ?', aid);
+    sendTo(ws, { t: 'welcome', me: { id: aid, name, tag, hidden: !!hidden, rec: rec ? rec.at : 0 }, friends, reqIn, reqOut, blocked, mail, sync: this.syncOf(aid), now });
     if (!wasOnline || hi.s) this.tellFriends(aid);
   }
 
@@ -394,6 +403,46 @@ export class ThunderSocial {
     this.sql.exec('DELETE FROM dev WHERE aid = ? AND did <> ?', a.id, a.did);
     for (const s of this.socks(a.id)) { const x = s.deserializeAttachment() || {}; if (x.did !== a.did) this.bye(s, 'signed out'); }
     sendTo(ws, { t: 'pwok' });
+  }
+  // a new recovery code for the account (an older one stops working)
+  async setRecovery(ws, a, m) {
+    const code = String(m.code || '');
+    if (!KEY_RE.test(code)) return sendTo(ws, { t: 'err', op: 'recovery', why: 'That code did not arrive right. Try again.' });
+    const salt = hex(crypto.getRandomValues(new Uint8Array(16))), hash = await pwHash(salt, code), now = Date.now();
+    if (!this.one('SELECT 1 AS x FROM claim WHERE aid = ?', a.id)) return this.bye(ws, 'signed out');
+    this.sql.exec('INSERT OR REPLACE INTO recov (aid, salt, hash, at) VALUES (?, ?, ?, ?)', a.id, salt, hash, now);
+    this.push(a.id, { t: 'recok', at: now });
+  }
+  // a forgotten password: the name, the account's recovery code and a new password. The code is
+  // used up, every device of the account is signed out, and this one is signed in
+  async recover(ws, a, m) {
+    const lname = String(m.name || '').toLowerCase(), code = String(m.code || ''), pw = String(m.pw || '');
+    const err = (why) => sendTo(ws, { t: 'err', op: 'auth', why });
+    if (!ACCT_RE.test(lname) || !KEY_RE.test(code) || !KEY_RE.test(pw)) return err('Wrong name or recovery code.');
+    const c = this.one('SELECT * FROM claim WHERE lname = ?', lname);
+    if (!c) return err('No account is called ' + String(m.name) + '.');
+    const now = Date.now(), left = LOCK_MS - (now - c.failat);
+    if (c.fails >= MAX_FAILS && left > 0) return err('Too many wrong tries for ' + c.name + '. Try again in ' + Math.ceil(left / 60000) + ' min.');
+    if (a.iph) { const e = this.ips.get(a.iph); if (e && now - e.t <= IP_SPAN && e.fails >= IP_FAILS) return err('Too many wrong tries from your network. Try again in a few minutes.'); }
+    const r = this.one('SELECT * FROM recov WHERE aid = ?', c.aid);
+    if (!r) return err(c.name + ' has no recovery code, so its password cannot be reset.');
+    const h = await pwHash(r.salt, code), salt = hex(crypto.getRandomValues(new Uint8Array(16))), hash = await pwHash(salt, pw);
+    // (checked again after the wait)
+    if ((ws.deserializeAttachment() || {}).id) return;
+    const c2 = this.one('SELECT * FROM claim WHERE lname = ?', lname), r2 = c2 ? this.one('SELECT * FROM recov WHERE aid = ?', c2.aid) : null;
+    if (!c2) return err('Wrong name or recovery code.');
+    if (!r2 || !same(h, r2.hash)) {
+      const f = (now - c2.failat < LOCK_MS ? c2.fails : 0) + 1;
+      this.sql.exec('UPDATE claim SET fails = ?, failat = ? WHERE lname = ?', f, now, lname);
+      if (a.iph) this.ipAllow(a.iph, 'fails', IP_FAILS);
+      return err('That recovery code is not right for ' + c2.name + '.' + (f >= MAX_FAILS - 3 && f < MAX_FAILS ? ' ' + (MAX_FAILS - f) + ' more tries before a 15-minute wait.' : f >= MAX_FAILS ? ' Try again in 15 min.' : ''));
+    }
+    this.sql.exec('UPDATE claim SET salt = ?, hash = ?, fails = 0, failat = 0 WHERE lname = ?', salt, hash, lname);
+    this.sql.exec('DELETE FROM recov WHERE aid = ?', c2.aid);
+    this.sql.exec('DELETE FROM dev WHERE aid = ?', c2.aid);
+    for (const s of this.socks(c2.aid)) this.bye(s, 'signed out');
+    this.sql.exec('INSERT OR REPLACE INTO dev (did, aid, at) VALUES (?, ?, ?)', a.did, c2.aid, now);
+    return this.signIn(ws, a, c2.aid);
   }
   // this device (all its tabs) signs out of the account
   logout(ws, a) {

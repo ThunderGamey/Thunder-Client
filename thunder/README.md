@@ -348,7 +348,13 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   drops). How to use it, how to switch the relays on, how it works, what was tested and the
   limits: [NETWORKING.md](NETWORKING.md).
 - `thunder-social.js` - Thunder Friends: accounts (a name only you can use and a password; create,
-  log in, change password, log out), a friends list across Thunder Client (add by name),
+  log in, change password, log out, and a recovery code for a forgotten password: 20 letters and
+  digits without I, L, O, 0 or 1, made in the browser and shown once with Copy and Save as file;
+  the hub gets only SHA-256 of `thunder-recovery:<name>:<code>` and keeps a salted hash of that;
+  using it sets a new password, logs out every other device and uses the code up. Tested in two
+  browsers: made, saved as a file, used from the other browser with lowercase and spaces, which
+  logged out the first; a used or mistyped code, and the old password, were refused; 17 hub
+  checks), a friends list across Thunder Client (add by name),
   who is on Thunder now, chat (O opens it), pop-ups for messages, requests, invites and friends
   coming online, and friends' open worlds with who is playing and Join (in the list, the chat and
   on the Singleplayer / Multiplayer screens), with the host's choice of one-click Join or the code

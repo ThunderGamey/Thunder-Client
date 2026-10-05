@@ -56519,7 +56519,8 @@ c.PK;})();
     online:null,onlineAt:0,chats:{},unread:{},sel:'',retry:0,retryAt:0,connAt:0,pinged:0,heard:0,seq:Date.now(),lastS:'',chatKey:'',
     lastListed:null,lastShare:null,addMsg:'',addOk:false,ver:0,cver:0,over:0,saveT:0,probe:null,fatal:'',connecting:false,arm:{},onToast:{},ask:'',askErr:'',via:null,joining:null,
     auth:null,authMode:'',authMsg:'',authOk:false,authBusy:false,authToast:false,reset:'',
-    acctOpen:false,acctPw:false,acctMsg:'',acctOk:false,acctBusy:false};
+    acctOpen:false,acctPw:false,acctMsg:'',acctOk:false,acctBusy:false,
+    recCode:'',recPending:'',recPendingKey:'',recBusy:false,recMsg:'',recovering:false};
   function soLog(m){lanLog('Thunder Friends: '+m);}
   function soChanged(){SO.ver++;if(menuOpen)runLive();soWorlds();}
   function soSet(state,msg){SO.state=state;SO.msg=msg||'';soChanged();}
@@ -56702,6 +56703,7 @@ c.PK;})();
           if(SO.saveT){W.clearTimeout(SO.saveT);SO.saveT=0;}
           SO.me=null;SO.friends={};SO.reqIn=[];SO.reqOut=[];SO.blocked=[];SO.online=null;SO.sel='';
           SO.chats={};SO.unread={};SO.chatKey='';SO.acctOpen=false;SO.acctPw=false;
+          SO.recCode=SO.recPending=SO.recPendingKey='';SO.recBusy=false;
           SO.authMode='login';SO.authOk=why==='logged out';
           SO.authMsg=why==='logged out'?'You logged out of Thunder Friends on this device.':'You were logged out: the password was changed on another device. Log in again.';
           SO.retry=0;SO.retryAt=now();soSet('retry','');
@@ -56825,6 +56827,10 @@ c.PK;})();
         SO.acctBusy=false;SO.acctPw=false;SO.acctOk=true;SO.acctMsg='Password changed. Your other devices were logged out.';
         soChanged();return;
       case 'welcome':{
+        var wasReg=SO.authMode==='register',wasRec=SO.recovering;
+        // (a code on screen, or one being made, stays when the same account comes back)
+        if(!SO.me||SO.me.id!==m.me.id)SO.recCode=SO.recPending=SO.recPendingKey='';
+        SO.recovering=false;SO.recBusy=false;SO.recMsg='';
         soUseChats(m.me.id);
         SO.auth=null;SO.authMode='';SO.authMsg='';SO.authBusy=false;
         SO.me=m.me;SO.friends={};SO.retry=0;
@@ -56839,12 +56845,24 @@ c.PK;})();
         if(last)soSend({t:'ack',n:last});
         soSet('on','');
         soLog('signed in as '+soTagged(SO.me));
+        // a code being made when the connection dropped is sent again, so the one shown is kept
+        if(SO.recPending&&SO.recPendingKey){SO.recBusy=true;soSend({t:'recovery',code:SO.recPendingKey});}
         syWelcome(m.sync);       // settings that follow the account (thunder-sync.js)
         if(mail.length&&S.socialToasts)soToast({kind:'msg',title:mail.length===1?mail[0].from.name:mail.length+' messages',
           text:mail.length===1?mail[0].text:'from '+Object.keys(who).join(', ')+' while you were away',id:mail.length===1?mail[0].from.id:''});
         if(SO.reqIn.length&&S.socialToasts)soToast({kind:'req',title:'Friend requests',text:SO.reqIn.length+' waiting in Right Shift \u2192 Friends'});
+        // a password reset with the recovery code (which is now used up), or a new account: a
+        // recovery code is what gets a forgotten password back
+        if(wasRec){SO.acctOpen=true;soChanged();soToast({kind:'info',title:'Password changed',text:'You are signed in with your new password, and your other devices were logged out. Your recovery code is used up: make a new one in Account.'});}
+        else if(wasReg&&!m.me.rec)soToast({kind:'info',title:'Account made',text:'Make a recovery code now (Right Shift \u2192 Friends \u2192 Account): without it a forgotten password cannot be reset.'});
         return;
       }
+      case 'recok':
+        // a new recovery code (made here: shown once; made on another device: noted)
+        if(SO.me)SO.me.rec=m.at;
+        if(SO.recPending){SO.recCode=SO.recPending;SO.recPending=SO.recPendingKey='';}
+        SO.recBusy=false;SO.recMsg='';soChanged();
+        return;
       case 'presence':{
         var f=SO.friends[m.id];
         if(!f)return;
@@ -56907,7 +56925,8 @@ c.PK;})();
           else if(m.why==='opened in another tab')SO.fatal='Thunder Friends is open in other tabs; reload this one to use it here';
           return;
         }
-        if(m.op==='auth'){SO.authBusy=false;SO.authMsg=m.why;SO.authOk=false;soChanged();return;}
+        if(m.op==='auth'){SO.authBusy=false;SO.recovering=false;SO.authMsg=m.why;SO.authOk=false;soChanged();return;}
+        if(m.op==='recovery'){SO.recBusy=false;SO.recPending=SO.recPendingKey='';SO.recMsg=m.why;soChanged();return;}
         if(m.op==='passwd'){SO.acctBusy=false;SO.acctMsg=m.why;SO.acctOk=false;soChanged();return;}
         if(m.op==='sync'){SY.msg=m.why;soChanged();return;}
         if(m.op==='add'){SO.addMsg=m.why;SO.addOk=false;soChanged();return;}
@@ -56977,6 +56996,52 @@ c.PK;})();
     Promise.all([soPwKey(n,old),soPwKey(n,pw)]).then(function(k){
       if(!soSend({t:'passwd',old:k[0],pw:k[1]}))soAcctFail('Thunder Friends is not connected right now.');
     },function(){soAcctFail('This browser could not use that password.');});
+  }
+  // ---- recovery codes: what gets a forgotten password back ----
+  // A code is 20 letters and digits that cannot be mixed up (no I, L, O, 0, 1), about 99 bits,
+  // made in this browser and shown once. The hub only gets a key made from it and the account's
+  // name, and keeps that like a password.
+  var SO_REC_CHARS='ABCDEFGHJKMNPQRSTUVWXYZ23456789',SO_REC_RE=/^[A-HJKMNP-Z2-9]{20}$/;
+  function soRecClean(c){return String(c||'').toUpperCase().replace(/[^A-Z0-9]/g,'');}
+  function soRecShow(c){return c.replace(/(.{5})(?=.)/g,'$1-');}
+  function soRecKey(name,code){
+    var cs=W.crypto&&W.crypto.subtle;
+    if(!cs||!W.TextEncoder)return Promise.reject(new Error('no crypto'));
+    return cs.digest('SHA-256',new W.TextEncoder().encode('thunder-recovery:'+String(name).toLowerCase()+':'+code)).then(function(b){
+      return Array.prototype.map.call(new Uint8Array(b),function(x){return ('0'+x.toString(16)).slice(-2);}).join('');
+    });
+  }
+  function soMakeRecovery(){
+    if(!soReady()||!SO.me||SO.recBusy)return;
+    var code=lanRandom(SO_REC_CHARS,20);
+    SO.recBusy=true;SO.recMsg='';SO.recCode='';soChanged();
+    soRecKey(SO.me.name,code).then(function(k){
+      SO.recPending=code;SO.recPendingKey=k;
+      if(!soSend({t:'recovery',code:k})){SO.recBusy=false;SO.recPending=SO.recPendingKey='';SO.recMsg='Thunder Friends is not connected right now.';soChanged();}
+    },function(){SO.recBusy=false;SO.recMsg='This browser could not make a code.';soChanged();});
+  }
+  // the code as a small text file (the account's name is in it too: both are needed)
+  function soRecFile(){
+    if(!SO.recCode||!SO.me)return;
+    var t='Thunder Friends recovery code\r\n\r\nAccount: '+soTagged(SO.me)+'\r\nCode: '+soRecShow(SO.recCode)+'\r\nMade: '+new Date().toLocaleString()+
+      '\r\n\r\nForgot your password? Right Shift > Friends > Log in > Forgot your password?, then type your name, this code and a new password.'+
+      '\r\nThe code works once. Anyone who has it can take your account: keep it private.\r\n';
+    var url=W.URL.createObjectURL(new W.Blob([t],{type:'text/plain'})),a=D.createElement('a');
+    a.href=url;a.download='thunder-recovery-'+SO.me.name+'.txt';a.style.display='none';D.body.appendChild(a);a.click();
+    W.setTimeout(function(){try{W.URL.revokeObjectURL(url);if(a.parentNode)a.parentNode.removeChild(a);}catch(_){}},30000);
+  }
+  // a forgotten password: the name, the recovery code and a new password
+  function soRecover(name,code,pw,pw2){
+    name=String(name||'').trim();code=soRecClean(code);
+    var why=!SO_NAME_RE.test(name)?'Type your account\'s name.':
+      !SO_REC_RE.test(code)?'A recovery code is 20 letters and numbers, like ABCDE-FGHJK-MNPQR-STUVW.':soPwProblem(pw,pw2);
+    if(why){soAuthFail(why);return;}
+    if(SO.state!=='auth'||!SO.ws){soAuthFail('Thunder Friends is not connected right now. Try again in a moment.');return;}
+    SO.authBusy=true;SO.authMsg='';soChanged();
+    Promise.all([soRecKey(name,code),soPwKey(name,pw)]).then(function(k){
+      SO.recovering=true;
+      if(!soSend({t:'recover',name:name,code:k[0],pw:k[1]})){SO.recovering=false;soAuthFail('Thunder Friends is not connected right now. Try again in a moment.');}
+    },function(){soAuthFail('This browser could not use that code.');});
   }
   // this device logs out (and this account's chats leave this browser)
   function soLogout(){
@@ -57161,6 +57226,12 @@ c.PK;})();
     '.tcs-acct{flex:1;display:flex;flex-direction:column;gap:8px;padding:12px;overflow-y:auto;min-height:0}',
     '.tcs-acct-row{display:flex;gap:6px;flex-wrap:wrap}.tcs-acct-pw{display:flex;flex-direction:column;gap:6px;max-width:300px}',
     '.tcs-main-acct>*:not(.tcs-acct){display:none!important}',
+    '.tcs-rec{display:flex;flex-direction:column;gap:6px;padding:9px 11px;border-radius:10px;background:rgba(3,7,12,.42);border:1px solid rgba(110,140,160,.16)}',
+    '.tcs-rec-code{font:700 15px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.04em;color:#f3fbff;text-align:center;padding:9px 4px;',
+      'border-radius:8px;border:1px dashed rgba(79,209,255,.55);background:rgba(79,209,255,.07);user-select:all;-webkit-user-select:all}',
+    '.tcs-recnudge{display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:8px;background:rgba(255,195,92,.08);',
+      'border:1px solid rgba(255,195,92,.35);color:#ffd99a;font-size:11px}.tcs-recnudge span{flex:1}',
+    '.tcs-auth input.tcs-code{font:700 13px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.08em;text-transform:uppercase}',
     '.tcs-more{display:flex;gap:6px;flex-wrap:wrap;padding:6px 9px;border-bottom:1px solid rgba(110,140,160,.14)}',
     '.tcs-who{padding:4px 9px;font-size:11px;color:#9fd8f0;border-bottom:1px solid rgba(110,140,160,.14);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
     '.tcs-ask{align-items:center}.tcs-ask .tcs-note{flex:1 0 100%}.tcs-ask .tcs-btn:disabled{opacity:.5;cursor:default}',
@@ -57273,45 +57344,62 @@ c.PK;})();
     wrap.appendChild(side);wrap.appendChild(main);box.appendChild(wrap);
     // not signed in on this device: make an account, or log in (the rest of the card waits)
     var auth=el('div','tcs-auth'),aTitle=el('b','tcs-auth-t'),aIntro=el('div','tcs-note');
-    var aName=el('input'),aPw=el('input'),aPw2=el('input'),aMsg=el('div','tcs-note'),aSwitch=el('div','tcs-note tcs-auth-sw');
+    var aName=el('input'),aCode=el('input'),aPw=el('input'),aPw2=el('input'),aMsg=el('div','tcs-note'),aSwitch=el('div','tcs-note tcs-auth-sw');
+    aCode.type='text';aCode.maxLength=29;aCode.spellcheck=false;aCode.autocomplete='off';aCode.placeholder='Recovery code';aCode.className='tcs-code';
     aName.type='text';aName.maxLength=16;aName.spellcheck=false;aName.autocomplete='username';aName.placeholder='Name';
     aPw.type='password';aPw.maxLength=64;aPw.placeholder='Password';
     aPw2.type='password';aPw2.maxLength=64;aPw2.placeholder='Password again';aPw2.autocomplete='new-password';
     var aGo=soBtn('',function(){doAuth();},true),aFilled='',aAuto='';
-    var aSwB=soBtn('',function(){
-      SO.authMode=SO.authMode==='login'?'register':'login';SO.authMsg='';aPw.value=aPw2.value='';aFilled='';paintAuth();
-      W.setTimeout(function(){try{(aName.value?aPw:aName).focus();}catch(_){}},0);
-    });
-    var aFine=el('div','tcs-note tcs-auth-fine','A forgotten password cannot be reset (Thunder has no email for you), so keep it safe, and do not use a password from another site.');
-    function doAuth(){if(SO.authBusy)return;if(SO.authMode==='login')soLogin(aName.value,aPw.value);else soRegister(aName.value,aPw.value,aPw2.value);}
-    [aName,aPw,aPw2].forEach(function(i){
+    function aMode(mode){
+      SO.authMode=mode;SO.authMsg='';aPw.value=aPw2.value=aCode.value='';aFilled='';paintAuth();
+      W.setTimeout(function(){try{(aName.value?(mode==='recover'?aCode:aPw):aName).focus();}catch(_){}},0);
+    }
+    var aSwB=soBtn('',function(){aMode(SO.authMode==='register'?'login':'register');});
+    var aForgot=soBtn('Forgot your password?',function(){aMode('recover');});
+    var aFine=el('div','tcs-note tcs-auth-fine','');
+    function doAuth(){
+      if(SO.authBusy)return;
+      if(SO.authMode==='login')soLogin(aName.value,aPw.value);
+      else if(SO.authMode==='recover')soRecover(aName.value,aCode.value,aPw.value,aPw2.value);
+      else soRegister(aName.value,aPw.value,aPw2.value);
+    }
+    [aName,aCode,aPw,aPw2].forEach(function(i){
       soKeepKeys(i,doAuth);
       i.addEventListener('input',function(){if(SO.authMsg&&!SO.authOk){SO.authMsg='';paintAuth();}});
     });
-    [aTitle,aIntro,aName,aPw,aPw2,aGo,aMsg,aSwitch,aFine].forEach(function(n){auth.appendChild(n);});
+    [aTitle,aIntro,aName,aCode,aPw,aPw2,aGo,aMsg,aSwitch,aFine].forEach(function(n){auth.appendChild(n);});
     box.insertBefore(auth,wrap);
     function paintAuth(){
-      var a=SO.auth||{},reg=SO.authMode!=='login';
-      aTitle.textContent=reg?(a.old?'Choose a password for Thunder Friends':'Make your Thunder Friends account'):'Log in to Thunder Friends';
-      aIntro.textContent=reg?(a.old?'Thunder Friends now has accounts, so nobody else can use your name. Pick your name and a password: your friends stay.':
+      var a=SO.auth||{},rec=SO.authMode==='recover',reg=!rec&&SO.authMode!=='login';
+      aTitle.textContent=rec?'Reset your password':reg?(a.old?'Choose a password for Thunder Friends':'Make your Thunder Friends account'):'Log in to Thunder Friends';
+      aIntro.textContent=rec?'Your account\'s name, its recovery code and a new password. Your other devices will be logged out, and the code is used up.':
+        reg?(a.old?'Thunder Friends now has accounts, so nobody else can use your name. Pick your name and a password: your friends stay.':
         'A name that is only yours, and a password. Log in with them on your other devices too.'):'Your account\'s name and password.';
+      aCode.style.display=rec?'':'none';
+      aPw.placeholder=rec?'New password':'Password';aPw2.placeholder=rec?'New password again':'Password again';
       // the name offered: the profile name (unless someone else has it); what was typed stays
       var key=SO.authMode+'|'+(a.name||'')+'|'+a.taken;
       if(aFilled!==key){
         aFilled=key;
         if(!aName.value||aName.value===aAuto){aName.value=reg?(a.taken?'':a.name||''):(a.taken?a.name||'':'');aAuto=aName.value;}
       }
-      aPw.autocomplete=reg?'new-password':'current-password';
-      aPw2.style.display=reg?'':'none';
-      aGo.textContent=SO.authBusy?(reg?'Making your account\u2026':'Logging in\u2026'):(reg?'Create account':'Log in');
-      aGo.disabled=aName.disabled=aPw.disabled=aPw2.disabled=!!SO.authBusy;
+      aPw.autocomplete=reg||rec?'new-password':'current-password';
+      aPw2.style.display=reg||rec?'':'none';
+      aGo.textContent=SO.authBusy?(rec?'Checking\u2026':reg?'Making your account\u2026':'Logging in\u2026'):(rec?'Set new password':reg?'Create account':'Log in');
+      aGo.disabled=aName.disabled=aCode.disabled=aPw.disabled=aPw2.disabled=!!SO.authBusy;
       var note=SO.authMsg||(reg&&a.taken&&a.name?a.name+' already has an account. If it is yours, log in; if not, pick another name.':'');
       aMsg.textContent=note;aMsg.style.display=note?'':'none';
       aMsg.className='tcs-note'+(SO.authMsg?(SO.authOk?' tcs-ok':' tcs-bad'):'');
       while(aSwitch.firstChild)aSwitch.removeChild(aSwitch.firstChild);
-      aSwitch.appendChild(D.createTextNode(reg?'Already have an account?':'New to Thunder Friends?'));
-      aSwB.textContent=reg?'Log in':'Make an account';aSwitch.appendChild(aSwB);
-      aFine.style.display=reg?'':'none';
+      if(rec){aSwB.textContent='Back to log in';aSwitch.appendChild(aSwB);}
+      else{
+        aSwitch.appendChild(D.createTextNode(reg?'Already have an account?':'New to Thunder Friends?'));
+        aSwB.textContent=reg?'Log in':'Make an account';aSwitch.appendChild(aSwB);
+        if(!reg)aSwitch.appendChild(aForgot);
+      }
+      aFine.textContent=rec?'Without the recovery code a forgotten password cannot be reset: Thunder has no email for you.':
+        'If you forget your password, only a recovery code can reset it (Thunder has no email for you): make one in Account once you are in. Do not use a password from another site.';
+      aFine.style.display=reg||rec?'':'none';
     }
     // you, and whether Thunder Friends is connected
     var me=el('div','tcs-me'),meDot=el('span','tcm-dot'),meTxt=el('span','tcs-me-t');
@@ -57322,6 +57410,11 @@ c.PK;})();
     });
     var acctB=soBtn('Account',function(){SO.acctOpen=!SO.acctOpen;SO.acctMsg='';SO.acctPw=false;soChanged();});
     me.appendChild(meTxt);me.appendChild(copy);me.appendChild(acctB);side.appendChild(me);
+    // (an account without a recovery code is reminded here)
+    var nudge=el('div','tcs-recnudge');
+    nudge.appendChild(el('span',null,'No recovery code yet. Make one so a forgotten password can be reset.'));
+    nudge.appendChild(soBtn('Make one',function(){SO.acctOpen=true;SO.acctMsg='';SO.acctPw=false;soChanged();},true));
+    side.appendChild(nudge);
     // add a friend
     var addRow=el('div','tcs-in'),addIn=el('input'),addB=soBtn('Add',function(){soAddFriend(addIn.value);},true);
     addIn.type='text';addIn.placeholder='Friend\'s name';addIn.maxLength=40;addIn.spellcheck=false;addIn.autocomplete='off';
@@ -57359,6 +57452,7 @@ c.PK;})();
       else meTxt.textContent=st[1]+(st[2]?' \u2022 '+st[2]:'');
       meTxt.title=meTxt.textContent;
       copy.style.display=acctB.style.display=SO.state==='on'&&SO.me?'':'none';
+      nudge.style.display=SO.state==='on'&&SO.me&&!SO.me.rec&&!SO.acctOpen?'':'none';
       acctB.textContent=SO.acctOpen?'Chats':'Account';
       if(SO.addClear){SO.addClear=false;addIn.value='';}
       addIn.disabled=addB.disabled=!soReady();
@@ -57418,7 +57512,24 @@ c.PK;})();
     acRow.appendChild(soBtn('Change password',function(){SO.acctPw=!SO.acctPw;SO.acctMsg='';paintAcct();}));
     acRow.appendChild(armBtn('Log out','Click again to log out',function(){soLogout();},'logout'));
     acRow.appendChild(soBtn('Back to chats',function(){SO.acctOpen=false;soChanged();}));
-    [acTitle,acInfo,acRow,acPwBox,acMsg].forEach(function(n){acct.appendChild(n);});
+    // the recovery code: made here, shown once (copy it, or save it as a file)
+    var rec=el('div','tcs-rec'),recT=el('b','tcs-auth-t','Recovery code'),recInfo=el('div','tcs-note'),recRow=el('div','tcs-acct-row');
+    var recMake=soBtn('Make a recovery code',function(){soMakeRecovery();},true);
+    var recNew=armBtn('Make a new recovery code','Click again: the old code stops working',function(){soMakeRecovery();},'recnew');
+    recRow.appendChild(recMake);recRow.appendChild(recNew);
+    var recShow=el('div','tcs-rec'),recCode=el('div','tcs-rec-code'),recWarn=el('div','tcs-note'),recAct=el('div','tcs-acct-row');
+    recWarn.textContent='Write it down, or save the file somewhere outside this browser (Google Drive, a USB stick). It is shown only now. With your name and this code you can set a new password if you forget yours. Anyone who has it can take your account, so keep it private.';
+    var recCopy=soBtn('Copy',function(){
+      function said(t){recCopy.textContent=t;W.setTimeout(function(){recCopy.textContent='Copy';},1200);}
+      try{W.navigator.clipboard.writeText(soTagged(SO.me)+'  '+soRecShow(SO.recCode)).then(function(){said('Copied');},function(){said('Not copied');});}catch(_){said('Not copied');}
+    });
+    recAct.appendChild(recCopy);
+    recAct.appendChild(soBtn('Save as file',function(){soRecFile();}));
+    recAct.appendChild(soBtn('I saved it',function(){SO.recCode='';soChanged();},true));
+    [recCode,recWarn,recAct].forEach(function(n){recShow.appendChild(n);});
+    var recMsg=el('div','tcs-note tcs-bad');
+    [recT,recInfo,recRow,recShow,recMsg].forEach(function(n){rec.appendChild(n);});
+    [acTitle,acInfo,acRow,acPwBox,acMsg,rec].forEach(function(n){acct.appendChild(n);});
     main.appendChild(acct);
     function paintAcct(){
       acTitle.textContent='Your account: '+soTagged(SO.me);
@@ -57429,6 +57540,17 @@ c.PK;})();
       acSave.disabled=acOld.disabled=acNew.disabled=acNew2.disabled=!!SO.acctBusy;
       acMsg.textContent=SO.acctMsg;acMsg.style.display=SO.acctMsg?'':'none';
       acMsg.className='tcs-note'+(SO.acctMsg?(SO.acctOk?' tcs-ok':' tcs-bad'):'');
+      var at=SO.me&&SO.me.rec;
+      recInfo.textContent=SO.recCode?'Your new recovery code (any older one no longer works):':
+        at?'You have a recovery code (made '+new Date(at).toLocaleDateString()+'). If you forget your password: Log in \u2192 Forgot your password?':
+        'No recovery code yet. Without one, a forgotten password cannot be reset (Thunder has no email for you).';
+      recMake.style.display=!at&&!SO.recCode?'':'none';
+      recNew.style.display=at&&!SO.recCode?'':'none';
+      recMake.textContent=SO.recBusy?'Making\u2026':'Make a recovery code';
+      recMake.disabled=recNew.disabled=!!SO.recBusy;
+      recShow.style.display=SO.recCode?'':'none';
+      recCode.textContent=SO.recCode?soRecShow(SO.recCode):'';
+      recMsg.textContent=SO.recMsg;recMsg.style.display=SO.recMsg?'':'none';
     }
     var moreOpen=false,chatVer=-1,chatSel=null,chatReady=null;
     function paintHead(){
@@ -57667,7 +57789,7 @@ c.PK;})();
   // for tests and the console
   TC.social={state:SO,connect:soConnect,disconnect:soDisconnect,add:soAddFriend,msg:soMsg,act:soAct,invite:soInvite,
     join:soJoin,joinFriend:soJoinFriend,online:soAskOnline,show:soShowChat,toast:soToast,activity:soActivity,who:soWho,
-    register:soRegister,login:soLogin,passwd:soPasswd,logout:soLogout};
+    register:soRegister,login:soLogin,passwd:soPasswd,logout:soLogout,makeRecovery:soMakeRecovery,recover:soRecover};
 
   // Chat Tools: name highlight, merged repeats, the time, Auto GG
   /* -------------------------------------------------------------------------------------------
