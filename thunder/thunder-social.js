@@ -335,6 +335,7 @@
       case 'auth':
         // not signed in on this device: make an account, or log in to one
         SO.auth={name:m.name||'',taken:!!m.taken,old:!!m.old};SO.retry=0;SO.authBusy=false;
+        ptWelcome('');           // (no party without an account: thunder-party.js)
         // (a device from before accounts makes its account: another name if its own is taken)
         if(!SO.authMode)SO.authMode=m.taken&&!m.old?'login':'register';
         soSet('auth','');
@@ -353,6 +354,7 @@
         if(!SO.me||SO.me.id!==m.me.id)SO.recCode=SO.recPending=SO.recPendingKey='';
         SO.recovering=false;SO.recBusy=false;SO.recMsg='';
         soUseChats(m.me.id);
+        ptWelcome(m.me.id);      // the party and its invites come next (thunder-party.js)
         SO.auth=null;SO.authMode='';SO.authMsg='';SO.authBusy=false;
         SO.me=m.me;SO.friends={};SO.retry=0;
         SO.skew=typeof m.now==='number'?m.now-Date.now():0;
@@ -438,6 +440,7 @@
         SO.cver++;soSaveChats();soChanged();return;
       }
       case 'sync':syRemote(m.set);return;
+      case 'party':case 'pinvited':case 'pmsg':case 'pwarp':ptOn(m);return;     // thunder-party.js
       case 'cosma':cosAnswer(m);return;
       case 'syncall':syWelcome(m.sync);soChanged();return;
       case 'invite':
@@ -455,6 +458,7 @@
         if(m.op==='recovery'){SO.recBusy=false;SO.recPending=SO.recPendingKey='';SO.recMsg=m.why;soChanged();return;}
         if(m.op==='passwd'){SO.acctBusy=false;SO.acctMsg=m.why;SO.acctOk=false;soChanged();return;}
         if(m.op==='sync'){SY.msg=m.why;soChanged();return;}
+        if(m.op==='party'){ptErr(m.why);return;}
         if(m.op==='add'){SO.addMsg=m.why;SO.addOk=false;soChanged();return;}
         if((m.op==='msg'||m.op==='invite')&&m.to){
           // the message it is about (by its id; else the newest one still sending)
@@ -794,8 +798,9 @@
     return b;
   }
   var soToastBox=null;
-  // o: {kind, title, text, id (a friend: click opens the chat; open: the card), code (an invite: Join), req (a
-  // request: Accept / Decline), quiet (shorter), tag (replaces an earlier pop-up with that tag)}
+  // o: {kind, title, text, id (a friend: click opens the chat; open: the card; party: the party), code (an
+  // invite: Join), req (a request: Accept / Decline), btns ([{label, fn, go}]: fn returning false keeps
+  // the pop-up), quiet (shorter), tag (replaces an earlier pop-up with that tag)}
   function soToast(o){
     if(!D.body)return;
     soCss();
@@ -803,7 +808,7 @@
     if(soToastBox.nextSibling||soToastBox.parentNode!==D.body)D.body.appendChild(soToastBox);   // last, so above the menu
     if(o.tag)[].slice.call(soToastBox.children).forEach(function(c){if(c.getAttribute('data-tag')===o.tag)soToastBox.removeChild(c);});
     while(soToastBox.children.length>=4)soToastBox.removeChild(soToastBox.firstChild);
-    var t=el('div','tct'+(o.id||o.open?' tct-click':''));
+    var t=el('div','tct'+(o.id||o.open||o.party?' tct-click':''));
     if(o.tag)t.setAttribute('data-tag',o.tag);
     t.appendChild(el('b',null,o.title||''));
     if(o.text)t.appendChild(el('p',null,o.text));
@@ -815,12 +820,16 @@
       act.appendChild(soBtn('Accept',function(){soAct('accept',o.req);gone();},true));
       act.appendChild(soBtn('Decline',function(){soAct('decline',o.req);gone();}));
     }
+    if(o.btns){
+      act=el('div','tct-act');
+      o.btns.forEach(function(b){act.appendChild(soBtn(b.label,function(){if(b.fn()!==false)gone();},b.go));});
+    }
     if(act)t.appendChild(act);
     // in a world the mouse belongs to the game: say which key opens the chat
     if(HEN&&HEN.X&&HEN.cm===null&&!menuOpen&&o.kind!=='info'&&S.socialOn)t.appendChild(el('i',null,'Press '+keyLabel(S.socialKey||'KeyO')+' to open the chat'));
-    if(o.id||o.open)t.addEventListener('click',function(){soShowChat(o.id||'');gone();});
+    if(o.id||o.open||o.party)t.addEventListener('click',function(){if(o.party)ptShow();else soShowChat(o.id||'');gone();});
     soToastBox.appendChild(t);
-    var left=o.quiet?4500:(o.code||o.req||o.wp?12000:7000),timer=0,start=now();
+    var left=o.quiet?4500:(o.code||o.req||o.wp||o.btns?12000:7000),timer=0,start=now();
     function gone(){W.clearTimeout(timer);if(t.parentNode)t.parentNode.removeChild(t);}
     function arm(ms){timer=W.setTimeout(gone,ms);start=now();left=ms;}
     t.addEventListener('mouseenter',function(){W.clearTimeout(timer);left=Math.max(1500,left-(now()-start));});

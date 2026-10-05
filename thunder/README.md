@@ -393,6 +393,26 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   (a switch it adds to the Open to Friends card). It talks to the friends hub in the relay Worker
   (`thunder-relay/social.js`, one Durable Object for everyone) at `/social`
   (`functions/social.js`). Details: [NETWORKING.md](NETWORKING.md).
+- `thunder-party.js` - Parties (Right Shift > Friends > Party, after the chat): up to 8 Thunder
+  Friends players. The leader makes the party and invites friends (a pop-up with **Join party** /
+  **No**; an invite stays open 15 minutes and waits for a friend who is offline). Every second
+  the leader's game works out where it is (a world it opened: its code; a friend's world it is
+  in: that code; a server: its address; otherwise the menus) and tells the party when that has
+  changed and stayed so for 1.5 s. A member's game with **Follow the leader** on (the default)
+  goes there at once from the menus (the same join as Join in Thunder Friends); from inside a
+  world it says where the leader went and follows within 3 minutes of being back at the menus.
+  Members get the world's code even when friends need it (like an Invite). The card shows the
+  members (who leads, online, roughly what they are doing), where the leader is with **Join**,
+  Invite for the leader's friends, Remove (leader), Leave, and the party chat (pop-ups while you
+  play). Leaving hands the lead to the next member; the last one out ends the party. Tested: 42
+  hub checks (friends-only invites, leader-only invites, warps and removal, at most 8, the invite
+  given again at sign-in, decline, the lead passing on, chat cleaned and never echoed); in two
+  browsers: an invite accepted with a real click on the pop-up, chat both ways, the leader
+  opening a world while the member sat on the title screen (the member's game joined it by itself,
+  through the relay's tunnel, logged in and played), Join on the card (a direct connection), a
+  move while the member was in the world (the pop-up, then the game followed two seconds after
+  Disconnect), Remove, the leader leaving (the other got the lead and a pop-up), the last one
+  leaving, and the party coming back after a reload.
 
 - `offline.js` and `offline-loader.js` - the offline file, `thunder-offline.html`: the site in one
   HTML file that runs from a folder (`node thunder/offline.js`; the GitHub Action

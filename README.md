@@ -61,8 +61,11 @@ in Right Shift > Utility > Readme.
   while you play), join the worlds they open (and see who is playing in them) and the servers they
   are on, from the list, an invite or the Singleplayer / Multiplayer screens; the host picks
   one-click Join or friends needing the code. A recovery code (made once in Account) resets a
-  forgotten password. **Thunder Cosmetics** (Right Shift > Cosmetics): free Thunder capes and wings
-  that everyone on Thunder Client sees on you. With **Settings Sync** your settings follow your
+  forgotten password. **Parties** (Right Shift > Friends > Party): play together with up to 7
+  friends; where the party leader goes (a world they open, a friend's world, a server), everyone's
+  game follows, and the party has its own chat. **Thunder Cosmetics** (Right Shift > Cosmetics): free
+  Thunder capes and wings that everyone on Thunder Client sees on you. With **Settings Sync** your
+  settings follow your
   account: Thunder's settings, HUD layout, key bindings, mouse, sound and chat options, server list
   and server waypoints are the same on every computer you sign in on (shaders and video settings
   stay per computer).

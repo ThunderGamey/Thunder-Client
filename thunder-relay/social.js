@@ -32,6 +32,11 @@
 // Messages to a friend who is offline wait here (at most 100 per player, 30 days) until they come
 // online and are deleted once delivered.
 //
+// Parties: a player makes a party and, as its leader, invites friends (at most 8 players; an invite
+// stays open 15 minutes, and waits for a friend who is offline). Members have a party chat, see
+// each other, and get "pwarp" when the leader opens a world, joins one or goes to a server, so
+// their game can follow. Leaving hands the lead to the next member; the last one ends the party.
+//
 // Thunder cosmetics: an account picks a cape and wings (ids of Thunder's own designs) and says its
 // in-game name; any signed-in Thunder player asks for the cosmetics of the players around them by
 // in-game name (at most 64 at a time) and draws them. Only accounts that picked something are kept,
@@ -49,6 +54,10 @@
 //     register {name, pw} | login {name, pw} | recover {name, code, pw}; signed in: passwd {old, pw}
 //     | recovery {code} (a new recovery code: recok {at} to all the account's devices) | logout
 //     | cosm {name, cape, wings} | cosmq {names} (answered cosma {set: [[name, cape, wings]]})
+//     | pnew | pinv {to} | pacc {pid} | pdec {pid} | pleave | pkick {id} | pmsg {text}
+//     | pwarp {w: host | join (code) | server (server) | menu}
+//   party (to members: party {id, leader, members, invites, warp}, id null when out of it)
+//     | pinvited {pid, from, members, at} | pmsg {from, text, at} | pwarp {from, w, code | server, at}
 //     | status {s} | hide {v} | share {v}
 //     | online | add {who} | accept {id} | decline {id} | cancel {id} | remove {id} | block {id}
 //     | unblock {id} | msg {to, text, id} | invite {to, code} | ack {n} | sync {set: [[key, value, when]]}
@@ -69,6 +78,8 @@ const SYNC_BYTES = 400000;       // all of an account's synced settings together
 const SYNC_KEY_RE = /^[a-z]\.[A-Za-z0-9_.:@,\/\-]{1,160}$/;
 const COSM_RE = /^[a-z0-9]{1,24}$/;   // a cosmetic's id ("none": nothing)
 const COSM_ASK = 64;                  // in-game names in one question
+const PARTY_MAX = 8;                  // players in a party
+const PINV_MS = 15 * 60000;           // how long a party invite stays open
 const MAX_TEXT = 300;            // characters in a chat message
 const MAX_FRIENDS = 300;
 const MAX_OUT = 30;              // friend requests one player has waiting
@@ -156,6 +167,12 @@ export class ThunderSocial {
     // cosmetics: an account's cape and wings, and the in-game name they are shown on
     q('CREATE TABLE IF NOT EXISTS cosm (aid TEXT PRIMARY KEY, lname TEXT NOT NULL, cape TEXT NOT NULL, wings TEXT NOT NULL, at INTEGER NOT NULL)');
     q('CREATE INDEX IF NOT EXISTS cosm_name ON cosm (lname)');
+    // parties: who leads (and where the leader went last), who is in one (one party each), open invites
+    q('CREATE TABLE IF NOT EXISTS party (pid TEXT PRIMARY KEY, leader TEXT NOT NULL, at INTEGER NOT NULL, warp TEXT)');
+    q('CREATE TABLE IF NOT EXISTS pmem (aid TEXT PRIMARY KEY, pid TEXT NOT NULL, at INTEGER NOT NULL)');
+    q('CREATE INDEX IF NOT EXISTS pmem_pid ON pmem (pid)');
+    q('CREATE TABLE IF NOT EXISTS pinv (pid TEXT NOT NULL, aid TEXT NOT NULL, frm TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (pid, aid))');
+    q('CREATE INDEX IF NOT EXISTS pinv_aid ON pinv (aid)');
     // settings that follow an account: key, value and when it was changed
     q('CREATE TABLE IF NOT EXISTS sync (aid TEXT NOT NULL, k TEXT NOT NULL, v TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (aid, k))');
   }
@@ -226,7 +243,7 @@ export class ThunderSocial {
     let r = this.rate.get(ws);
     if (!r || now - r.t > 10000) { r = { t: now, n: 0, m: 0 }; this.rate.set(ws, r); }
     r.n++;
-    if (t === 'msg' || t === 'invite' || t === 'add' || t === 'register' || t === 'login' || t === 'passwd' || t === 'recover' || t === 'recovery') r.m++;
+    if (t === 'msg' || t === 'invite' || t === 'add' || t === 'register' || t === 'login' || t === 'passwd' || t === 'recover' || t === 'recovery' || t === 'pmsg' || t === 'pinv') r.m++;
     if (r.n > 120) { try { ws.close(1008, 'too many messages'); } catch (e) { /* closed */ } return false; }
     return r.n <= 40 && r.m <= 12;
   }
@@ -248,7 +265,7 @@ export class ThunderSocial {
       return this.bye(ws, 'say hello first');
     }
     // (a refused message, invite or request says which one, so the client can mark it)
-    if (!this.allow(ws, m.t)) return sendTo(ws, { t: 'err', why: 'Slow down a little.', op: ['msg', 'invite', 'add'].includes(m.t) ? m.t : undefined, to: ID_RE.test(String(m.to || '')) ? m.to : undefined, id: msgId(m) });
+    if (!this.allow(ws, m.t)) return sendTo(ws, { t: 'err', why: 'Slow down a little.', op: ['msg', 'invite', 'add'].includes(m.t) ? m.t : m.t === 'pmsg' || m.t === 'pinv' ? 'party' : undefined, to: ID_RE.test(String(m.to || '')) ? m.to : undefined, id: msgId(m) });
     const me = a.id;
     switch (m.t) {
       case 'status': return this.status(ws, a, m);
@@ -257,6 +274,14 @@ export class ThunderSocial {
       case 'recovery': return this.setRecovery(ws, a, m);
       case 'cosm': return this.setCosm(a, m);
       case 'cosmq': return this.askCosm(ws, m);
+      case 'pnew': return this.pNew(me);
+      case 'pinv': return this.pInvite(ws, a, m);
+      case 'pacc': return this.pAccept(ws, me, String(m.pid || ''));
+      case 'pdec': return this.pDecline(me, String(m.pid || ''));
+      case 'pleave': return this.pLeave(me, 'left');
+      case 'pkick': return this.pKick(ws, me, String(m.id || ''));
+      case 'pmsg': return this.pMsg(ws, a, m);
+      case 'pwarp': return this.pWarp(a, m);
       case 'logout': return this.logout(ws, a);
       case 'hide': return this.setFlag(ws, a, 'hidden', !!m.v);
       case 'share': return this.setFlag(ws, a, 'share', m.v !== false);
@@ -325,6 +350,9 @@ export class ThunderSocial {
     const rec = this.one('SELECT at FROM recov WHERE aid = ?', aid);
     sendTo(ws, { t: 'welcome', me: { id: aid, name, tag, hidden: !!hidden, rec: rec ? rec.at : 0 }, friends, reqIn, reqOut, blocked, mail, sync: this.syncOf(aid), now });
     if (!wasOnline || hi.s) this.tellFriends(aid);
+    const pid = this.partyOf(aid);
+    if (pid) { if (wasOnline) sendTo(ws, this.partyState(pid)); else this.tellParty(pid); }
+    for (const inv of this.rows('SELECT pid, frm, at FROM pinv WHERE aid = ? AND at > ?', aid, now - PINV_MS)) this.sendInvite(ws, inv.pid, inv.frm, inv.at);
   }
 
   syncOf(aid) { return this.rows('SELECT k, v, at FROM sync WHERE aid = ?', aid).map((r) => [r.k, r.v, r.at]); }
@@ -437,6 +465,124 @@ export class ThunderSocial {
     }
     sendTo(ws, { t: 'cosma', set, asked: [...seen] });
   }
+  // ---- parties ----
+  partyOf(aid) { const r = this.one('SELECT pid FROM pmem WHERE aid = ?', aid); return r ? r.pid : null; }
+  // members need not be friends of each other, so they see only roughly what the others are doing
+  // (no world codes or server addresses); where the leader went last is for all of them
+  partyState(pid) {
+    const p = this.one('SELECT pid, leader, warp FROM party WHERE pid = ?', pid);
+    if (!p) return { t: 'party', id: null };
+    const members = this.rows('SELECT a.id, a.name, a.tag, a.seen FROM pmem m JOIN acct a ON a.id = m.aid WHERE m.pid = ? ORDER BY m.at', pid).map((r) => {
+      const c = this.card(r.id, r);
+      c.s = c.s ? { w: c.s.w } : null;
+      return c;
+    });
+    const invites = this.rows('SELECT a.id, a.name, a.tag FROM pinv i JOIN acct a ON a.id = i.aid WHERE i.pid = ? AND i.at > ?', pid, Date.now() - PINV_MS);
+    let warp = null;
+    try { warp = p.warp ? JSON.parse(p.warp) : null; } catch (e) { warp = null; }
+    return { t: 'party', id: pid, leader: p.leader, members, invites, warp };
+  }
+  tellParty(pid) {
+    const st = this.partyState(pid);
+    for (const r of this.rows('SELECT aid FROM pmem WHERE pid = ?', pid)) this.push(r.aid, st);
+  }
+  sendInvite(ws, pid, frm, at) {
+    const f = this.one('SELECT id, name, tag FROM acct WHERE id = ?', frm);
+    if (!f || !this.one('SELECT 1 AS x FROM party WHERE pid = ?', pid)) return;
+    const members = this.rows('SELECT a.name FROM pmem m JOIN acct a ON a.id = m.aid WHERE m.pid = ? ORDER BY m.at', pid).map((r) => r.name);
+    const out = { t: 'pinvited', pid, from: { id: f.id, name: f.name, tag: f.tag }, members, at };
+    if (ws) sendTo(ws, out); else return out;
+  }
+  pNew(me) {
+    let pid = this.partyOf(me);
+    if (!pid) {
+      pid = hex(crypto.getRandomValues(new Uint8Array(8)));
+      const now = Date.now();
+      this.sql.exec('INSERT INTO party (pid, leader, at) VALUES (?, ?, ?)', pid, me, now);
+      this.sql.exec('INSERT INTO pmem (aid, pid, at) VALUES (?, ?, ?)', me, pid, now);
+    }
+    this.tellParty(pid);
+  }
+  // the leader invites a friend
+  pInvite(ws, a, m) {
+    const me = a.id, to = String(m.to || ''), err = (why) => sendTo(ws, { t: 'err', op: 'party', why });
+    const pid = this.partyOf(me);
+    if (!pid) return err('Make a party first.');
+    const p = this.one('SELECT leader FROM party WHERE pid = ?', pid);
+    if (!p || p.leader !== me) return err('Only the party leader invites players.');
+    if (!ID_RE.test(to) || to === me || !this.isFriend(me, to) || this.blocked(me, to)) return err('You can invite your friends.');
+    if (this.partyOf(to) === pid) return err('They are in the party already.');
+    if (this.one('SELECT COUNT(*) AS n FROM pmem WHERE pid = ?', pid).n >= PARTY_MAX) return err('A party has at most ' + PARTY_MAX + ' players.');
+    const now = Date.now();
+    this.sql.exec('DELETE FROM pinv WHERE at < ?', now - PINV_MS);
+    this.sql.exec('INSERT OR REPLACE INTO pinv (pid, aid, frm, at) VALUES (?, ?, ?, ?)', pid, to, me, now);
+    const out = this.sendInvite(null, pid, me, now);
+    if (out) this.push(to, out);
+    this.tellParty(pid);
+  }
+  pAccept(ws, me, pid) {
+    const err = (why) => sendTo(ws, { t: 'err', op: 'party', why });
+    const inv = this.one('SELECT at FROM pinv WHERE pid = ? AND aid = ?', pid, me);
+    if (!inv || Date.now() - inv.at > PINV_MS || !this.one('SELECT 1 AS x FROM party WHERE pid = ?', pid)) {
+      this.sql.exec('DELETE FROM pinv WHERE pid = ? AND aid = ?', pid, me);
+      return err('That party invite is no longer open.');
+    }
+    if (this.one('SELECT COUNT(*) AS n FROM pmem WHERE pid = ?', pid).n >= PARTY_MAX) return err('That party is full.');
+    const old = this.partyOf(me);
+    if (old && old !== pid) this.pLeave(me, 'left');
+    this.sql.exec('DELETE FROM pinv WHERE pid = ? AND aid = ?', pid, me);
+    this.sql.exec('INSERT OR REPLACE INTO pmem (aid, pid, at) VALUES (?, ?, ?)', me, pid, Date.now());
+    this.tellParty(pid);
+  }
+  pDecline(me, pid) {
+    if (!this.one('SELECT 1 AS x FROM pinv WHERE pid = ? AND aid = ?', pid, me)) return;
+    this.sql.exec('DELETE FROM pinv WHERE pid = ? AND aid = ?', pid, me);
+    if (this.one('SELECT 1 AS x FROM party WHERE pid = ?', pid)) this.tellParty(pid);
+  }
+  // out of the party (left or removed); the lead goes to the member who joined first after
+  pLeave(me, why) {
+    const pid = this.partyOf(me);
+    if (!pid) return;
+    const p = this.one('SELECT leader FROM party WHERE pid = ?', pid);
+    this.sql.exec('DELETE FROM pmem WHERE aid = ?', me);
+    const next = this.one('SELECT aid FROM pmem WHERE pid = ? ORDER BY at LIMIT 1', pid);
+    if (!next) { this.sql.exec('DELETE FROM party WHERE pid = ?', pid); this.sql.exec('DELETE FROM pinv WHERE pid = ?', pid); }
+    else if (p && p.leader === me) this.sql.exec('UPDATE party SET leader = ?, warp = NULL WHERE pid = ?', next.aid, pid);
+    this.push(me, { t: 'party', id: null, why });
+    if (next) this.tellParty(pid);
+  }
+  pKick(ws, me, id) {
+    const pid = this.partyOf(me), p = pid ? this.one('SELECT leader FROM party WHERE pid = ?', pid) : null;
+    if (!p || p.leader !== me) return sendTo(ws, { t: 'err', op: 'party', why: 'Only the party leader removes players.' });
+    if (!ID_RE.test(id) || id === me || this.partyOf(id) !== pid) return;
+    this.pLeave(id, 'removed');
+  }
+  pMsg(ws, a, m) {
+    const pid = this.partyOf(a.id);
+    if (!pid) return sendTo(ws, { t: 'err', op: 'party', why: 'You are not in a party.' });
+    const text = cleanText(m.text);
+    if (!text) return;
+    const out = { t: 'pmsg', from: { id: a.id, name: a.name, tag: a.tag }, text, at: Date.now() };
+    for (const r of this.rows('SELECT aid FROM pmem WHERE pid = ?', pid)) if (r.aid === a.id || !this.blocked(r.aid, a.id)) this.push(r.aid, out, ws);
+  }
+  // where the leader went (a world by its code, or a server; "menu": back out of it): the members'
+  // games follow
+  pWarp(a, m) {
+    const pid = this.partyOf(a.id), p = pid ? this.one('SELECT leader FROM party WHERE pid = ?', pid) : null;
+    if (!p || p.leader !== a.id) return;
+    const at = Date.now();
+    let to = null;
+    if ((m.w === 'host' || m.w === 'join') && CODE_RE.test(String(m.code || ''))) to = { w: m.w, code: String(m.code), at };
+    else if (m.w === 'server') {
+      const sv = String(m.server || '').replace(/[^A-Za-z0-9.:_\-\/]/g, '').slice(0, 80);
+      if (sv) to = { w: 'server', server: sv, at };
+    } else if (m.w === 'menu') to = { w: 'menu', at };
+    if (!to) return;
+    this.sql.exec('UPDATE party SET warp = ? WHERE pid = ?', to.w === 'menu' ? null : JSON.stringify(to), pid);
+    const out = Object.assign({ t: 'pwarp', from: { id: a.id, name: a.name, tag: a.tag } }, to);
+    for (const r of this.rows('SELECT aid FROM pmem WHERE pid = ?', pid)) if (r.aid !== a.id) this.push(r.aid, out);
+  }
+
   // a new recovery code for the account (an older one stops working)
   async setRecovery(ws, a, m) {
     const code = String(m.code || '');
@@ -484,11 +630,13 @@ export class ThunderSocial {
   }
 
   status(ws, a, m) {
-    const s = cleanStatus(m.s);
+    const s = cleanStatus(m.s), was = a.s ? a.s.w : null;
     if (JSON.stringify(s) === JSON.stringify(a.s || null)) return;
     a.s = s;
     this.keep(ws, a);
     if (a.share !== false) this.tellFriends(a.id);
+    const pid = (s ? s.w : null) !== was && a.share !== false ? this.partyOf(a.id) : null;
+    if (pid) this.tellParty(pid);
   }
   setFlag(ws, a, k, v) {
     for (const s of this.socks(a.id)) { const x = s.deserializeAttachment(); x[k] = v; this.keep(s, x); }
@@ -642,6 +790,8 @@ export class ThunderSocial {
     this.keep(ws, a);
     this.sql.exec('UPDATE acct SET seen = ? WHERE id = ?', Date.now(), id);
     this.tellFriends(id);
+    const pid = this.partyOf(id);
+    if (pid && !this.online(id)) this.tellParty(pid);
     try { ws.close(1000, 'bye'); } catch (e) { /* closed */ }
   }
 }

@@ -138,6 +138,15 @@ Thunder relay (see below): nothing else to set up.
   waypoints for that server or world.
 - **More** (in a chat): **Remove friend** or **Block** (click twice). Blocked players cannot ask you
   or see you online; **Blocked** in the list has **Unblock**.
+- **Party** (the card after the chat): **Make a party**, then invite friends (they get a pop-up
+  with **Join party**; an invite to a friend who is offline waits for 15 minutes). Up to 8 players.
+  Where the leader goes, everyone follows: when the leader opens their world to friends, joins a
+  friend's world or goes to a server, each member's game goes there too (at once from the menus;
+  from inside a world after you leave it, with a pop-up saying where). **Follow the leader** turns
+  that off (a pop-up with **Join** instead). Party members get the world's code like an Invite,
+  even when friends need the code. The card has the members, where the leader is (with **Join**),
+  the party chat, **Leave**, and for the leader **Invite** and **Remove**. When the leader leaves,
+  the member who joined next leads.
 - **Thunder Friends settings**: the card's switch (off = you are offline to everyone), **Show me in
   On Thunder now**, **Show friends what I am playing** (and your open world: its code and who is
   in it), the pop-ups, one-click Join, and the chat key.
@@ -358,6 +367,15 @@ EaglercraftX's LAN framing on them. The browser half was never compiled in, and 
   Thunder Cosmetics use it too: `cosm {name, cape, wings}` keeps an account's picks with its
   in-game name (nothing picked: forgotten), and `cosmq {names}` (at most 64 in-game names) is
   answered `cosma {set: [[name, cape, wings]], asked}` with only the ids, never the account.
+  Parties use it too: `pnew` makes a party (the maker leads), `pinv {to}` (leader, friends only,
+  at most 8 players; kept 15 minutes, given again when the friend signs in) reaches the friend as
+  `pinvited {pid, from, members}`, `pacc`/`pdec {pid}` answer it, `pleave`, `pkick {id}` (leader),
+  `pmsg {text}` (to the other members, cleaned like messages) and `pwarp {w: host|join + code,
+  server + address, or menu}` (leader only: where the members' games go; the hub keeps the last
+  one for members who join later). Every change sends `party {id, leader, members, invites,
+  warp}` to each member; members see each other's status only as `{w}` (no codes or servers,
+  as members need not be friends), and `id: null` (with `why`: left, removed) to someone who is
+  out of it. Parties are kept by the hub (one per player) until the last member leaves.
   Settings Sync uses the same connection: `welcome` carries the account's settings as
   `[key, value, when]` (keys like `s.zoomKey`, `g.key_key.jump`, `h.fps`, `w.mp:<server>@0`,
   `x.servers`), a device sends what it changed as `sync {set}` (frames of up to 16 KB; values of at
