@@ -100,11 +100,20 @@ Thunder relay (see below): nothing else to set up.
 - **The friends list** shows who is online and what they are doing: in the menus, playing
   singleplayer, has a world open (with its code, or "code needed", and how many are playing), in
   a friend's world (whose, when they joined it through Thunder Friends; "In your world" when it
-  is yours), or on a server (and which). A friend's chat shows who is playing in their world
-  ("Playing: Steve, Alex, you"). A friend with a world open has **Join**; with your own world
-  open, **Invite** sends a friend a pop-up with **Join**. The Singleplayer and Multiplayer screens
-  also list friends' open worlds at the top left, next to the screen's title, with who is playing
-  and **Join** (two at most; with more, **See** opens the list).
+  is yours), or on a server (and which). Offline friends show when they were last online ("Last
+  online 2 hours ago", from the hub's clock, so a computer whose clock is off still shows it
+  right); they are listed after the online ones, the most recently online first. A friend's chat
+  shows who is playing in their world ("Playing: Steve, Alex, you"). A friend with a world open
+  has **Join**; with your own world open, **Invite** sends a friend a pop-up with **Join**. The
+  Singleplayer and Multiplayer screens also list friends' open worlds at the top left, next to the
+  screen's title, with who is playing and **Join** (two at most; with more, **See** opens the list).
+- **Join a friend's server**: a friend on a server ("On play.zelz.net") has **Join** in their chat,
+  and the Multiplayer screen lists the servers friends are on at the top left ("Sam and Alex on
+  play.zelz.net" **Join**, friends on the same server on one line). **Join** connects to that
+  server the way the Multiplayer screen does when it is picked from its list (the screen opens
+  first if another one is up, so leaving the server lands there); from a world, it asks you to
+  leave it first. The address is the one the friend's game connected to (`ws://` or `wss://`
+  included; one from an older Thunder without it is `wss://`).
 - **One-click Join, or the code** (a switch on the **Open to Friends** card, and in **Thunder
   Friends settings**): on, friends join your world with one click. Off, they see that it is open
   (and who is playing), but **Join** asks for the code you give them: the code is not sent to the

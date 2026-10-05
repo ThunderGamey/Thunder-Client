@@ -51,9 +51,10 @@ in Right Shift > Utility > Readme.
   by itself whenever Thunder starts there and is shared again whenever the connection drops.
   **Thunder Friends** (with an account: a name only you can use and a password, like the logins of
   Eaglercraft servers): add friends by name, see who is on Thunder and what your friends are
-  playing, chat with them (O in a world, with pop-ups while you play), and join the worlds they
-  open (and see who is playing in them), from the list, an invite or the Singleplayer /
-  Multiplayer screens; the host picks one-click Join or friends needing the code.
+  playing (and when offline friends were last online), chat with them (O in a world, with pop-ups
+  while you play), join the worlds they open (and see who is playing in them) and the servers they
+  are on, from the list, an invite or the Singleplayer / Multiplayer screens; the host picks
+  one-click Join or friends needing the code.
   Source and build: [`thunder/`](thunder/README.md), shaders:
   [`thunder/SHADERS.md`](thunder/SHADERS.md), Friends: [`thunder/NETWORKING.md`](thunder/NETWORKING.md).
 - **`thunder-offline.html`** ([download](https://github.com/ThunderGamey/Thunder-Client/releases/download/offline/thunder-offline.html))

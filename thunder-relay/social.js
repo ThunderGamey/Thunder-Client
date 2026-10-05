@@ -38,6 +38,8 @@
 //     | host (code, or lock: friends need the code; players: who joined)}
 //   hub -> client: auth | welcome | pwok | presence | request | friend | unfriend | reqgone
 //     | blocked | online | added | msg | msgout | sent | invite | err
+//   a friend (welcome, presence, friend): {id, name, tag, online, s, seen (offline: when they were
+//     last online)}
 
 const MAX_FRAME = 4096;          // bytes in one message from a client
 const MAX_TEXT = 300;            // characters in a chat message
@@ -164,14 +166,17 @@ export class ThunderSocial {
   }
   push(id, obj, except) { for (const ws of this.socks(id, except)) sendTo(ws, obj); }
   online(id) { return this.socks(id).length > 0; }
-  // what friends see of a player: name, tag, online and (if they share it) what they are doing
+  // what friends see of a player: name, tag, online and (if they share it) what they are doing;
+  // offline, when they were last online
   card(id, acct) {
-    const a = acct || this.one('SELECT id, name, tag FROM acct WHERE id = ?', id);
+    const a = acct || this.one('SELECT id, name, tag, seen FROM acct WHERE id = ?', id);
     if (!a) return null;
     const s = this.socks(id);
     let st = null;
     for (const ws of s) { const at = ws.deserializeAttachment(); if (at && at.share !== false && at.s) st = at.s; }
-    return { id, name: a.name, tag: a.tag, online: s.length > 0, s: st };
+    const c = { id, name: a.name, tag: a.tag, online: s.length > 0, s: st };
+    if (!c.online && a.seen) c.seen = a.seen;
+    return c;
   }
   friendsOf(id) { return this.rows('SELECT b FROM friend WHERE a = ?', id).map((r) => r.b); }
   tellFriends(id) {
@@ -272,7 +277,7 @@ export class ThunderSocial {
     this.keep(ws, { claim: a.claim, did: a.did, iph: a.iph || '', id: aid, name, tag, hidden: !!hidden, share: hi.share !== false, s: hi.s || null, since: now });
     this.sql.exec('UPDATE dev SET at = ? WHERE did = ?', now, a.did);
     this.sql.exec('DELETE FROM mail WHERE too = ? AND at < ?', aid, now - MAIL_DAYS * 86400000);
-    const friends = this.rows('SELECT a.id, a.name, a.tag FROM friend f JOIN acct a ON a.id = f.b WHERE f.a = ?', aid).map((r) => this.card(r.id, r));
+    const friends = this.rows('SELECT a.id, a.name, a.tag, a.seen FROM friend f JOIN acct a ON a.id = f.b WHERE f.a = ?', aid).map((r) => this.card(r.id, r));
     const reqIn = this.rows('SELECT a.id, a.name, a.tag, r.at FROM req r JOIN acct a ON a.id = r.frm WHERE r.too = ? ORDER BY r.at', aid);
     const reqOut = this.rows('SELECT a.id, a.name, a.tag, r.at FROM req r JOIN acct a ON a.id = r.too WHERE r.frm = ? ORDER BY r.at', aid);
     const blocked = this.rows('SELECT a.id, a.name, a.tag FROM block b JOIN acct a ON a.id = b.b WHERE b.a = ?', aid);

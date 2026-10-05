@@ -56468,9 +56468,16 @@ c.PK;})();
      Classes it uses (which screen is open):
      @class A_3 net.minecraft.client.gui.GuiWorldSelection
      @class OG net.minecraft.client.gui.GuiMultiplayer
+     @class AHe net.minecraft.client.multiplayer.GuiConnecting
      (GuiMainMenu Hj is declared as a class in thunder-title.js.)
      Instance fields (the size of those screens, for the friends' worlds list at the top):
      @field q net.minecraft.client.gui.GuiScreen.drawBackground GuiScreen.width
+     Joining a friend's server: the Multiplayer screen's own connect, as if it were picked from
+     its list (a server entry, the Multiplayer screen when another screen is open, then connect):
+     @class US net.minecraft.client.multiplayer.ServerData
+     @use B5M net.minecraft.client.multiplayer.ServerData.<init>
+     @use BGO net.minecraft.client.gui.GuiMultiplayer.<init>
+     @use E_Y net.minecraft.client.gui.GuiMultiplayer.connectToServer
   ------------------------------------------------------------------------------------------- */
   var SO_STORE='thunderSocial_v1',SO_CHATS='thunderSocialChats_v1';
   var SO_KEEP=60,SO_CONVOS=40;          // messages kept per friend, friends with a chat kept
@@ -56713,7 +56720,8 @@ c.PK;})();
       if(HEN&&HEN.X){
         if(lanWorldRunning())return {w:'sp'};
         var nm=HEN.v&&HEN.v.d9&&HEN.v.d9.qf,addr=nm&&nm.bR3?String($rt_ustr(nm.bR3)):'';
-        if(addr&&addr.indexOf('~!')!==0)return {w:'server',server:addr.replace(/^wss?:\/\//i,'').replace(/\/+$/,'').slice(0,80)};
+        // (with ws:// or wss://, so friends can join it; shown without)
+        if(addr&&addr.indexOf('~!')!==0)return {w:'server',server:addr.replace(/\/+$/,'').slice(0,80)};
         return {w:'server'};
       }
     }catch(_){}
@@ -56726,7 +56734,7 @@ c.PK;})();
     return a.sort().slice(0,16);
   }
   function soDoing(f){
-    if(!f||!f.online)return 'Offline';
+    if(!f||!f.online)return f&&f.seen?'Last online '+soAgo(f.seen):'Offline';
     var s=f.s;
     if(!s)return 'Online';
     switch(s.w){
@@ -56735,17 +56743,32 @@ c.PK;})();
         return 'Has a world open'+(s.code?' \u2022 '+s.code:s.lock?' \u2022 code needed':'')+(n?' \u2022 '+(n+1)+' playing':'');
       case 'sp':return 'Playing singleplayer';
       case 'join':return !s.host?'In a friend\'s world':SO.me&&s.host===SO.me.name?'In your world':'In '+s.host+'\'s world';
-      case 'server':return s.server?'On '+s.server:'On a server';
+      case 'server':return s.server?'On '+soServerName(s.server):'On a server';
       default:return 'In the menus';
     }
   }
   function soHosting(f){return !!(f&&f.online&&f.s&&f.s.w==='host'&&(f.s.code||f.s.lock));}
+  // how long ago a time on the hub's clock was (the hub said its time at sign-in: this computer's
+  // clock may be off)
+  function soAgo(at){
+    var m=Math.floor((Date.now()+(SO.skew||0)-at)/60000),h=Math.floor(m/60),d=Math.floor(h/24);
+    function n(x,u){return x+' '+u+(x===1?'':'s')+' ago';}
+    return m<1?'just now':m<60?n(m,'minute'):h<24?n(h,'hour'):d<2?'yesterday':d<30?n(d,'day'):d<365?n(Math.floor(d/30)||1,'month'):'over a year ago';
+  }
   // who is playing in a friend's open world: the friend, then everyone who joined ("you" for you)
   function soWho(f){
     if(!soHosting(f))return '';
     var me=SO.me&&SO.me.name;
     return [f.name].concat(f.s.players||[]).map(function(n){return me&&n===me?'you':n;}).join(', ');
   }
+  // the server a friend is on, as the game connects to it (an address without ws:// or wss:// is
+  // wss://: Thunder sent it like that before)
+  function soServerAddr(f){
+    var a=f&&f.online&&f.s&&f.s.w==='server'?String(f.s.server||''):'';
+    if(!a||a.indexOf('~!')===0||!/^(wss?:\/\/)?[A-Za-z0-9.\-_]+(:\d{1,5})?(\/[A-Za-z0-9.:_\-\/]*)?$/i.test(a))return '';
+    return /^wss?:\/\//i.test(a)?a:'wss://'+a;
+  }
+  function soServerName(a){return String(a||'').replace(/^wss?:\/\//i,'').replace(/\/+$/,'');}
 
   // ---- what the hub says ---------------------------------------------------------------------
   function soDrop(list,id){for(var i=list.length-1;i>=0;i--)if(list[i].id===id)list.splice(i,1);}
@@ -56770,6 +56793,7 @@ c.PK;})();
         soUseChats(m.me.id);
         SO.auth=null;SO.authMode='';SO.authMsg='';SO.authBusy=false;
         SO.me=m.me;SO.friends={};SO.retry=0;
+        SO.skew=typeof m.now==='number'?m.now-Date.now():0;
         (m.friends||[]).forEach(function(f){SO.friends[f.id]=f;});
         SO.reqIn=m.reqIn||[];SO.reqOut=m.reqOut||[];SO.blocked=m.blocked||[];
         var mail=m.mail||[],last=0,who={};
@@ -56789,7 +56813,7 @@ c.PK;})();
         var f=SO.friends[m.id];
         if(!f)return;
         var was=f.online;
-        f.online=!!m.online;f.s=m.s||null;f.name=m.name;f.tag=m.tag;
+        f.online=!!m.online;f.s=m.s||null;f.name=m.name;f.tag=m.tag;f.seen=m.seen||f.seen;
         // (once in 5 minutes per friend: a friend whose connection drops and comes back is not news)
         if(!was&&f.online&&S.socialOnlineToasts&&!(now()-(SO.onToast[f.id]||-1e9)<300000)){
           SO.onToast[f.id]=now();
@@ -56972,6 +56996,33 @@ c.PK;})();
     soShowChat(f.id);
     return false;
   }
+  // Join on a friend's server: the Multiplayer screen connects to it as if it were picked from its
+  // list (it opens first when another screen is up). From the menus only: a world is left first.
+  // Each step runs on the game's thread; a step that waits is called again to carry on, so what
+  // it decides is decided once, in the step before.
+  var SV={sd:null,gm:null,from:null,show:false,at:0};
+  function soJoinServer(f){
+    var addr=soServerAddr(f),why='';
+    if(!addr)return false;
+    if(!HEN||(!HEN.X&&!HEN.cm))why='the game is still starting';
+    else if(HEN.X||LJ.active)why='leave the world you are in first (Esc \u2192 Disconnect, or Save and Quit), then press Join again';
+    else if(HEN.cm instanceof AHe||now()-SV.at<4000)why='it is already connecting to a server';
+    if(why){soToast({kind:'info',title:'Cannot join yet',text:why.charAt(0).toUpperCase()+why.slice(1)+'.',quiet:true,tag:'join'});return false;}
+    SV.at=now();SV.sd=SV.gm=SV.from=null;
+    var name=String(f.name||'A friend')+'\'s server';
+    runOnGame([
+      function(){SV.from=HEN.cm;SV.show=!(SV.from instanceof OG);if(!SV.show)SV.gm=SV.from;},
+      function(){if(!SV.sd)SV.sd=new US();B5M(SV.sd,$rt_str(name),$rt_str(addr),0);},
+      function(){if(SV.show){if(!SV.gm)SV.gm=new OG();BGO(SV.gm,SV.from);}},
+      function(){if(SV.show)GGs(HEN,SV.gm);},
+      function(){E_Y(SV.gm,SV.sd);},
+      function(){SV.sd=SV.gm=SV.from=null;SV.at=0;}
+    ]);
+    soLog('joining '+(f.name||'a friend')+' on '+addr);
+    if(menuOpen)hideMenu();
+    soToast({kind:'info',title:'Joining '+soServerName(addr),text:(f.name?f.name+'\'s server. ':'')+'Connecting\u2026',quiet:true,tag:'join'});
+    return true;
+  }
   function soStatusNow(){
     if(!soReady())return;
     var s=soActivity(),js=JSON.stringify(s);
@@ -57005,6 +57056,8 @@ c.PK;})();
       }
       if(SO.pinged<=SO.heard&&now()-SO.pinged>25000){SO.pinged=now();try{SO.ws.send('ping');}catch(_){}}
       if(!soReady())return;
+      // ("Last online 5 minutes ago" keeps up while the friends list is on screen)
+      if(menuOpen&&currentCat==='friends'&&now()-(SO.agoAt||0)>60000){SO.agoAt=now();soChanged();}
       if(!!S.socialListed!==SO.lastListed){SO.lastListed=!!S.socialListed;soSend({t:'hide',v:!S.socialListed});}
       if(!!S.socialShare!==SO.lastShare){SO.lastShare=!!S.socialShare;soSend({t:'share',v:!!S.socialShare});}
       soStatusNow();
@@ -57171,7 +57224,7 @@ c.PK;})();
   function soFriendIds(){
     return Object.keys(SO.friends).sort(function(a,b){
       var fa=SO.friends[a],fb=SO.friends[b];
-      return (fb.online-fa.online)||((SO.unread[b]|0)-(SO.unread[a]|0))||String(fa.name).localeCompare(String(fb.name));
+      return (fb.online-fa.online)||((SO.unread[b]|0)-(SO.unread[a]|0))||(!fa.online&&((fb.seen||0)-(fa.seen||0)))||String(fa.name).localeCompare(String(fb.name));
     });
   }
   // the chat card: you, add a friend, requests, friends (left); the chat with one friend (right)
@@ -57358,6 +57411,7 @@ c.PK;})();
       head.appendChild(el('span','tcs-dot'+(soHosting(f)?' tcs-host':f.online?' tcs-on':'')));
       var fn=el('div','tcs-fn');fn.appendChild(el('b',null,soTagged(f)));fn.appendChild(el('i',null,soDoing(f)));head.appendChild(fn);
       if(soHosting(f)&&!asking)head.appendChild(soBtn('Join',function(){if(!soJoinFriend(f))paintHead();W.setTimeout(function(){var i=D.getElementById('tcs-code');if(i&&i.offsetParent)i.focus();},0);},true));
+      if(soServerAddr(f))head.appendChild(soBtn('Join',function(){soJoinServer(f);},true));
       if(LH.state==='open'&&LH.code&&f.online)head.appendChild(soBtn('Invite',function(){soInvite(f.id);}));
       head.appendChild(soBtn(moreOpen?'Less':'More',function(){moreOpen=!moreOpen;paintHead();}));
       more.appendChild(armBtn('Remove friend','Click again to remove',function(){soAct('remove',f.id);},'remove:'+f.id));
@@ -57463,9 +57517,19 @@ c.PK;})();
   // In the empty strip above the screen's list and left of its title (so it never covers either):
   // one line per open world with who is playing and Join, two lines at most (then "... more").
   var soWorldsBox=null,soWorldsKey='';
+  // (the Multiplayer screen also lists the servers friends are on: friends on the same one share a line)
   function soWorlds(){
-    var scr=HEN&&HEN.cm,show=!!(scr&&(scr instanceof A_3||scr instanceof OG))&&!menuOpen&&soReady(),list=[];
-    if(show){for(var id in SO.friends)if(soHosting(SO.friends[id]))list.push(SO.friends[id]);}
+    var scr=HEN&&HEN.cm,mp=scr instanceof OG,show=!!(scr&&(scr instanceof A_3||mp))&&!menuOpen&&soReady(),list=[],by={};
+    if(show){
+      for(var id in SO.friends){
+        var f=SO.friends[id],a;
+        if(soHosting(f))list.push({f:f,n:String(f.name)});
+        else if(mp&&(a=soServerAddr(f))){
+          var k=soServerName(a).toLowerCase();
+          if(by[k])by[k].fs.push(f);else list.push(by[k]={addr:a,fs:[f],n:String(f.name)});
+        }
+      }
+    }
     if(!list.length)show=false;
     if(!show){if(soWorldsBox)soWorldsBox.style.display='none';soWorldsKey='';return;}
     soCss();
@@ -57474,23 +57538,37 @@ c.PK;})();
     // the screen's width in its own units (GuiScreen.width) and one unit on the page: its title is
     // centred at the top and its list starts 32 units down
     var gw=scr.q|0,px=gw>0?W.innerWidth/gw:2,room=Math.max(120,Math.floor((gw/2-56)*px)-6),lines=32*px>=62?2:1;
-    list.sort(function(a,b){return String(a.name).localeCompare(String(b.name));});
-    var key=room+'/'+lines+'/'+list.map(function(f){return f.id+(f.s.code||'-')+f.name+(f.s.players||[]).join(',');}).join('|');
+    list.forEach(function(e){if(e.fs)e.fs.sort(function(x,y){return String(x.name).localeCompare(String(y.name));});});
+    list.sort(function(x,y){return (!!x.fs-!!y.fs)||x.n.localeCompare(y.n);});
+    var key=room+'/'+lines+'/'+list.map(function(e){
+      if(e.fs)return 's'+e.addr+':'+e.fs.map(function(f){return f.id+f.name;}).join(',');
+      var f=e.f;return f.id+(f.s.code||'-')+f.name+(f.s.players||[]).join(',');
+    }).join('|');
     if(key===soWorldsKey)return;
     soWorldsKey=key;
     while(soWorldsBox.firstChild)soWorldsBox.removeChild(soWorldsBox.firstChild);
     soWorldsBox.style.maxWidth=room+'px';
     var shown=list.length>lines?lines-1:list.length;
-    list.slice(0,shown).forEach(function(f){
-      var r=el('div','tcs-wl'),w=soWho(f),t=el('span',null,f.name+'\'s world'+(w.indexOf(',')>0?': '+w:' is open'));
-      t.title=w?'Playing: '+w:'';
-      r.appendChild(t);
-      r.appendChild(soBtn(f.s.code?'Join':'Join (code)',function(){soJoinFriend(f);},true));
+    list.slice(0,shown).forEach(function(e){
+      var r=el('div','tcs-wl'),t;
+      if(e.fs){
+        var names=e.fs.map(function(f){return f.name;}),srv=soServerName(e.addr);
+        t=el('span',null,(names.length>2?names[0]+' and '+(names.length-1)+' more':names.join(' and '))+' on '+srv);
+        t.title=names.join(', ')+' '+(names.length>1?'are':'is')+' on '+srv;
+        r.appendChild(t);
+        r.appendChild(soBtn('Join',function(){soJoinServer(e.fs[0]);},true));
+      }else{
+        var f=e.f,w=soWho(f);
+        t=el('span',null,f.name+'\'s world'+(w.indexOf(',')>0?': '+w:' is open'));
+        t.title=w?'Playing: '+w:'';
+        r.appendChild(t);
+        r.appendChild(soBtn(f.s.code?'Join':'Join (code)',function(){soJoinFriend(f);},true));
+      }
       soWorldsBox.appendChild(r);
     });
     if(shown<list.length){
-      var rest=list.length-shown,r2=el('div','tcs-wl');
-      r2.appendChild(el('span',null,shown?rest+' more open':rest+' friends\' worlds are open'));
+      var rest=list.length-shown,r2=el('div','tcs-wl'),srvs=list.slice(shown).filter(function(e){return !!e.fs;}).length;
+      r2.appendChild(el('span',null,shown?rest+' more':srvs===rest?rest+' friends\' servers':srvs?rest+' friends\' worlds and servers':rest+' friends\' worlds are open'));
       r2.appendChild(soBtn('See',function(){soShowChat('');},true));
       soWorldsBox.appendChild(r2);
     }
