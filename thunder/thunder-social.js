@@ -423,7 +423,11 @@
         var f2=SO.friends[m.from.id];
         if(f2){f2.name=m.from.name;f2.tag=m.from.tag;}
         soAdd(m.from.id,{w:'in',text:m.text,at:m.at,name:m.from.name});
-        if(S.socialToasts&&!(menuOpen&&currentCat==='friends'&&SO.sel===m.from.id))soToast({kind:'msg',title:m.from.name,text:m.text,id:m.from.id});
+        var swp=wptParseShare(m.text);
+        if(S.socialToasts&&!(menuOpen&&currentCat==='friends'&&SO.sel===m.from.id)){
+          if(swp)soToast({kind:'msg',title:m.from.name+' shared a waypoint',text:soWptLine(swp),id:m.from.id,wp:wptHasShared(swp)?null:swp});
+          else soToast({kind:'msg',title:m.from.name,text:m.text,id:m.from.id});
+        }
         return;
       }
       case 'msgout':soAdd(m.to,{w:'out',text:m.text,at:m.at,st:'sent'});return;
@@ -462,6 +466,14 @@
   }
 
   // ---- things you do -------------------------------------------------------------------------
+  // a shared waypoint in a few words, and adding one (see thunder-waypoints.js)
+  function soWptLine(p){return p.n+' at '+p.x+', '+p.y+', '+p.z+' ('+({'-1':'Nether','1':'End'}[p.dim]||'Overworld')+', '+p.place+')';}
+  function soAddWaypoint(p){
+    var ok=wptAddShared(p);
+    SO.cver++;soChanged();
+    soToast({kind:'info',quiet:true,title:ok?'Waypoint added':'Already in your waypoints',
+      text:ok?p.n+' shows on your maps and in the world when you are '+(p.key.indexOf('mp:')===0?'on '+p.place:'in that world')+'.':p.n+' is there already.'});
+  }
   function soMsg(id,text){
     text=String(text||'').replace(/\s+/g,' ').trim().slice(0,300);
     if(!text||!SO.friends[id])return false;
@@ -742,7 +754,7 @@
     '.tcs-auth-t{font-size:13px;color:#fff}',
     '.tcs-auth input,.tcs-acct input{height:30px;padding:0 10px;border-radius:8px;border:1px solid rgba(120,150,175,.28);background:rgba(3,7,12,.55);color:#eafaff;font:600 12px system-ui,sans-serif;outline:0}',
     '.tcs-auth input:focus,.tcs-acct input:focus{border-color:rgba(79,209,255,.65);box-shadow:0 0 0 3px rgba(79,209,255,.12)}',
-    '.tcs-auth .tcs-btn.tcs-go{height:30px}.tcs-auth .tcs-btn:disabled,.tcs-acct .tcs-btn:disabled{opacity:.55;cursor:default}',
+    '.tcs-auth .tcs-btn.tcs-go{height:30px}.tcs-auth .tcs-btn:disabled,.tcs-acct .tcs-btn:disabled,.tcs-m .tcs-btn:disabled{opacity:.55;cursor:default}',
     '.tcs-auth-sw .tcs-btn{margin-left:4px;padding:1px 8px}.tcs-auth-fine{font-size:10.5px;color:#7c95a8}',
     '.tcs-acct{flex:1;display:flex;flex-direction:column;gap:8px;padding:12px;overflow-y:auto;min-height:0}',
     '.tcs-acct-row{display:flex;gap:6px;flex-wrap:wrap}.tcs-acct-pw{display:flex;flex-direction:column;gap:6px;max-width:300px}',
@@ -796,6 +808,7 @@
     if(o.text)t.appendChild(el('p',null,o.text));
     var act=null;
     if(o.code){act=el('div','tct-act');act.appendChild(soBtn('Join',function(){if(soJoin(o.code,SO.friends[o.id]))gone();},true));}
+    if(o.wp){act=el('div','tct-act');act.appendChild(soBtn('Add',function(){soAddWaypoint(o.wp);gone();},true));}
     if(o.req){
       act=el('div','tct-act');
       act.appendChild(soBtn('Accept',function(){soAct('accept',o.req);gone();},true));
@@ -806,7 +819,7 @@
     if(HEN&&HEN.X&&HEN.cm===null&&!menuOpen&&o.kind!=='info'&&S.socialOn)t.appendChild(el('i',null,'Press '+keyLabel(S.socialKey||'KeyO')+' to open the chat'));
     if(o.id||o.open)t.addEventListener('click',function(){soShowChat(o.id||'');gone();});
     soToastBox.appendChild(t);
-    var left=o.quiet?4500:(o.code||o.req?12000:7000),timer=0,start=now();
+    var left=o.quiet?4500:(o.code||o.req||o.wp?12000:7000),timer=0,start=now();
     function gone(){W.clearTimeout(timer);if(t.parentNode)t.parentNode.removeChild(t);}
     function arm(ms){timer=W.setTimeout(gone,ms);start=now();left=ms;}
     t.addEventListener('mouseenter',function(){W.clearTimeout(timer);left=Math.max(1500,left-(now()-start));});
@@ -1122,6 +1135,12 @@
       if(m.w==='sys'&&m.code){
         var jb=soBtn('Join',function(){soJoin(m.code,SO.friends[SO.sel]);},true);
         d.appendChild(el('br'));d.appendChild(jb);
+      }
+      var swp=m.w==='in'?wptParseShare(m.text):null;
+      if(swp){
+        var had=wptHasShared(swp),wb=soBtn(had?'In your waypoints':'Add waypoint',function(){soAddWaypoint(swp);},!had);
+        wb.disabled=had;
+        d.appendChild(el('br'));d.appendChild(wb);
       }
       if(m.w!=='sys'){
         var st=m.w==='out'?(m.st==='sending'?' \u2022 sending':m.st==='waiting'?' \u2022 sent while they were offline':m.st==='failed'?' \u2022 not sent':m.st==='unsure'?' \u2022 may not have been sent':''):'';

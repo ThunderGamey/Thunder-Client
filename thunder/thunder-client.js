@@ -620,6 +620,8 @@
     '.tcm-wpt-info{flex:0 0 auto;color:#8aa1b3;font-size:11px;font-variant-numeric:tabular-nums}',
     '.tcm-wpt-btn{flex:0 0 auto;padding:3px 8px;border-radius:6px;border:1px solid rgba(110,140,160,.3);background:rgba(3,7,12,.5);color:#cfe8f8;font:600 11px inherit;cursor:pointer}',
     '.tcm-wpt-del{color:#ff8a8a}',
+    '.tcm-wpt-share{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin:-2px 0 2px 22px;font-size:11px;color:#9db4c6}',
+    '.tcm-wpt-btn.tcm-wpt-on{border-color:rgba(79,209,255,.55);color:#e9f9ff}',
     '.tcm-key{margin-left:auto;min-width:84px;padding:4px 10px;border-radius:7px;border:1px solid rgba(110,140,160,.35);background:rgba(3,7,12,.6);color:#dff3ff;font:600 11px/1.3 inherit;cursor:pointer}',
     '.tcm-key:hover{border-color:rgba(79,209,255,.6)}.tcm-key.tcm-on{border-color:#4fd1ff;box-shadow:0 0 10px rgba(79,209,255,.45);color:#4fd1ff}',
     '.tcm-swatches button{width:19px;height:19px;padding:0;border-radius:6px;border:2px solid rgba(3,7,12,.8);cursor:pointer;',

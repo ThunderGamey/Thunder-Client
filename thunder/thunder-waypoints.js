@@ -213,8 +213,29 @@
         eye.addEventListener('click',function(){wp.s=!wp.s;wptSave();eye.textContent=wp.s?'Shown':'Hidden';});
         var del=el('button','tcm-wpt-btn tcm-wpt-del','\u00d7');del.type='button';del.title='Delete';
         del.addEventListener('click',function(){wptRemove(wp);paint();});
-        row.appendChild(dot);row.appendChild(name);row.appendChild(info);row.appendChild(eye);row.appendChild(del);
-        list.appendChild(row);
+        // Share: pick a Thunder Friends friend; they get it as a message with Add
+        var shareB=el('button','tcm-wpt-btn','Share');shareB.type='button';shareB.title='Send it to a friend';
+        var pick=el('div','tcm-wpt-share');pick.style.display='none';
+        shareB.addEventListener('click',function(){
+          if(pick.style.display!=='none'){pick.style.display='none';return;}
+          pick.innerHTML='';pick.style.display='';
+          var text=wptShareText(wp,WPT.wk,WPT.dim);
+          if(!text){pick.appendChild(el('span',null,'This waypoint cannot be shared from here.'));return;}
+          if(!soReady()||!SO.me){pick.appendChild(el('span',null,'Sign in to Thunder Friends (Right Shift \u2192 Friends) to share waypoints.'));return;}
+          var ids=soFriendIds();
+          if(!ids.length){pick.appendChild(el('span',null,'Add friends in Right Shift \u2192 Friends first.'));return;}
+          pick.appendChild(el('span',null,'Send to:'));
+          ids.slice(0,24).forEach(function(id){
+            var f=SO.friends[id],b=el('button','tcm-wpt-btn'+(f.online?' tcm-wpt-on':''),f.name);b.type='button';
+            b.title=soTagged(f)+(f.online?' (online)':' (gets it when they come online)');
+            b.addEventListener('click',function(){
+              if(soMsg(id,text)){pick.innerHTML='';pick.appendChild(el('span',null,'Sent to '+f.name+'.'));W.setTimeout(function(){pick.style.display='none';},2000);}
+            });
+            pick.appendChild(b);
+          });
+        });
+        row.appendChild(dot);row.appendChild(name);row.appendChild(info);row.appendChild(eye);row.appendChild(shareB);row.appendChild(del);
+        list.appendChild(row);list.appendChild(pick);
       });
     }
     paint();
@@ -223,8 +244,49 @@
       if(WPT.key!==shownKey||(l?l.length:-1)!==shownLen){if(!(D.activeElement&&D.activeElement.className==='tcm-wpt-name'))paint();}
     });
   };
+  // ---- sharing a waypoint with a Thunder Friends friend ------------------------------------------
+  // A shared waypoint is an ordinary chat message that people can read and Thunder can add:
+  //   Waypoint: Base | 120, 64, -300 | the Overworld | wss://play.example.net
+  // The last part is the server, or "a world (spawn 438, -499)" for a singleplayer or friend's world,
+  // told apart by its spawn point like the waypoints themselves (a friend in your world has the
+  // same one). Adding it puts it in that world's list, shown whenever you are there.
+  var WPT_DIMS={'0':'the Overworld','-1':'the Nether','1':'the End'};
+  var WPT_SHARE_RE=/^Waypoint: (.{1,32}) \| (-?\d{1,8}), (-?\d{1,4}), (-?\d{1,8}) \| (the Overworld|the Nether|the End) \| (.{1,140})$/;
+  function wptShareText(wp,key,dim){
+    var sp=/^sp:(-?\d{1,8}),(-?\d{1,8})$/.exec(key||''),place=null;
+    if(sp)place='a world (spawn '+sp[1]+', '+sp[2]+')';
+    else if(/^mp:[A-Za-z0-9.:\/_\-]{1,140}$/.test(key||''))place=key.slice(3);
+    if(!place||!Object.prototype.hasOwnProperty.call(WPT_DIMS,String(dim)))return null;
+    var n=String(wp.n||'').replace(/[|\u0000-\u001f\u00a7]/g,'/').replace(/\s+/g,' ').trim().slice(0,32)||'Waypoint';
+    return 'Waypoint: '+n+' | '+wp.x+', '+wp.y+', '+wp.z+' | '+WPT_DIMS[dim]+' | '+place;
+  }
+  // a chat message that is a shared waypoint: {n, x, y, z, dim, key, place}, else null
+  function wptParseShare(text){
+    var m=WPT_SHARE_RE.exec(String(text||''));
+    if(!m)return null;
+    var dim=m[5]==='the Nether'?-1:m[5]==='the End'?1:0,place=m[6],sp=/^a world \(spawn (-?\d{1,8}), (-?\d{1,8})\)$/.exec(place),key;
+    if(sp)key='sp:'+sp[1]+','+sp[2];
+    else if(/^[A-Za-z0-9.:\/_\-]{1,140}$/.test(place))key='mp:'+place.toLowerCase();
+    else return null;
+    return {n:m[1].trim()||'Waypoint',x:+m[2],y:+m[3],z:+m[4],dim:dim,key:key,place:sp?'that world':place.replace(/^wss?:\/\//i,'')};
+  }
+  function wptHasShared(p){
+    var l=wptLoad()[p.key+'@'+p.dim]||[];
+    for(var i=0;i<l.length;i++)if(l[i].x===p.x&&l[i].y===p.y&&l[i].z===p.z)return true;
+    return false;
+  }
+  // true: added; false: it is there already (or that world has 200)
+  function wptAddShared(p){
+    var all=wptLoad(),full=p.key+'@'+p.dim,list=all[full]||(all[full]=[]),n=0;
+    if(wptHasShared(p)||list.length>=200)return false;
+    for(var j=0;j<list.length;j++)if(!list[j].death)n++;
+    list.push({n:p.n,x:p.x,y:p.y,z:p.z,c:n%WPT_COLORS.length,s:true,death:false});
+    wptSave();
+    return true;
+  }
   TC.waypoints={list:function(){var l=wptList();return l?JSON.parse(JSON.stringify(l)):null;},key:function(){wptList();return WPT.key;},
-    add:function(n,x,y,z){return !!wptAdd(n,x,y,z);},drawn:function(){return WPT.drawn;}};
+    add:function(n,x,y,z){return !!wptAdd(n,x,y,z);},drawn:function(){return WPT.drawn;},
+    shareText:wptShareText,parseShare:wptParseShare,addShared:wptAddShared};
   MODULES.push({cat:'utility',id:'waypoints',name:'Waypoints',wide:true,special:'waypoints',
     desc:'Mark places and find them again: press B (or your own key) to add one where you stand, or right-click the World Map. They show on the minimap, the World Map and in the world with the distance. A Death point marks where you last died.',
     opts:[{id:'waypointKey',name:'Waypoint key',key:true,mouse:false},

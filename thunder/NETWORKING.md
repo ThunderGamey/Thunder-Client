@@ -132,6 +132,10 @@ Thunder relay (see below): nothing else to set up.
 - **Pop-ups** at the top right, over the game and the Right Shift menu: messages, friend requests,
   invites and friends coming online (once in 5 minutes per friend, so a friend whose connection
   drops and comes back is not news). In a world they say which key opens the chat.
+- **Share a waypoint**: **Share** on a waypoint (Right Shift -> Utility -> Waypoints) sends it to a
+  friend as a message they can read (`Waypoint: Base | 120, 64, -300 | the Overworld | <server or
+  world>`); Thunder shows **Add** in their pop-up and under the message, which puts it in their
+  waypoints for that server or world.
 - **More** (in a chat): **Remove friend** or **Block** (click twice). Blocked players cannot ask you
   or see you online; **Blocked** in the list has **Unblock**.
 - **Thunder Friends settings**: the card's switch (off = you are offline to everyone), **Show me in

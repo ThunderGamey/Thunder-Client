@@ -33,7 +33,8 @@ in Right Shift > Utility > Readme.
   (x2), the time before each line, Auto GG), World Backup (one file with all your singleplayer
   worlds and settings, to keep or move to another computer; Load backup brings them back, and a
   world whose save was cut off by a closed tab is repaired by itself), Minimap and World Map
-  (M), Waypoints (B, or right-click the World Map; shown in the world with the distance), Shulker Preview, Toggle Sneak, Clear Chat, Password Hider, Show Own Name Tag, Crystal
+  (M), Waypoints (B, or right-click the World Map; shown in the world with the distance; Share sends
+  one to a Thunder Friends friend, who adds it with one click), Shulker Preview, Toggle Sneak, Clear Chat, Password Hider, Show Own Name Tag, Crystal
   Optimizer, Crystal Tap, Modern Swimming (swim and crawl like 1.21.11: sprint underwater to swim
   where you look, through one-block gaps, in singleplayer, Friends worlds and on servers), Offhand Swap (F over a totem in your inventory puts it in your off hand, like
   1.16+), Spears like 1.21.11 (the jab with its full reach and the charge work on

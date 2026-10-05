@@ -127,6 +127,17 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   that list was open), reloads sent nothing, and signing in to another account brought that
   account's settings back. Hub: 18 protocol checks (newest wins, pushes, privacy between accounts,
   frame and size limits).
+- Waypoint sharing (`thunder-waypoints.js` and `thunder-social.js`): **Share** on a waypoint in
+  Right Shift > Utility > Waypoints lists your Thunder Friends friends (online ones first) and sends
+  it as an ordinary chat message that reads well on its own:
+  `Waypoint: Base | 120, 64, -300 | the Overworld | wss://play.example.net` (the last part is the
+  server, or `a world (spawn 8, 8)` for a singleplayer or friend's world, which waypoints tell apart
+  by the spawn point, so a friend in your world has the same one). The friend gets a pop-up with
+  **Add** (12 s) and an **Add waypoint** button under the message in the chat ("In your
+  waypoints" once it is there); a friend who is offline gets it with their messages. No change to
+  the hub. Tested: shared from the Waypoints card in a world, added from the pop-up and from the
+  chat (a Nether one into the Nether list), and the friend who then joined the world saw it there
+  (same world key); 12 checks of the text format (names with `|`, other dimensions, bad places).
 - `thunder-backup.js` - World Backup (Utility). Save backup reads every world in the game's
   `worlds_list.txt` straight from its IndexedDB store (`..._PlatformFilesystem_1_12_2_`, records
   `{path, data}` keyed by `[path]`) and downloads one `.thunderbackup` file: gzip of
