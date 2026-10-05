@@ -1753,6 +1753,9 @@
   // Freelook: hold X to look around your player
   // @include thunder-freelook.js
 
+  // World Backup: all singleplayer worlds and settings in one file, and repair of cut-off saves
+  // @include thunder-backup.js
+
   // Title screen: animated Thunder storm background with mouse parallax, and the Thunder logo
   // @include thunder-title.js
 

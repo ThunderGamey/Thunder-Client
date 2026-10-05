@@ -102,6 +102,25 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   /say three times merged into "(x3)", the time on each line, Auto GG answering
   `/say Winner: Steve` with gg, the text box saving its text; unit tests for the name rules (15
   lines) and the game-over rules (17 lines).
+- `thunder-backup.js` - World Backup (Utility). Save backup reads every world in the game's
+  `worlds_list.txt` straight from its IndexedDB store (`..._PlatformFilesystem_1_12_2_`, records
+  `{path, data}` keyed by `[path]`) and downloads one `.thunderbackup` file: gzip of
+  `THUNDERBKP1\n`, a JSON header (worlds, settings) and every file as length-prefixed path and data.
+  The settings are the game's options, profile and server list (`_eaglercraft_1.12.g/p/s`) and
+  Thunder's own keys; never the server cookies (`.c`), the Thunder Friends key and chats, the
+  worlds' code keys, Always open, relay/TURN lists, shader auto quality or the built-in packs, so a
+  file can be given to a friend. Load backup checks the whole file first (magic, format, no path
+  outside `eaglercraft/worlds/<folder>/`, no `.`/`..`, not cut off), then Restore writes each world
+  to a folder nobody uses (`World (2)`, `World (3)`...), 400 files per transaction, adds it to
+  `worlds_list.txt` in one read-and-write transaction, adds the waypoints to the ones here, puts
+  the server list back only if there is none, and reloads the page. Only at the menus; if a world
+  starts meanwhile, or the browser refuses to save, what was written is removed again. World
+  rescue: a world without `level.dat` (the tab closed between the game's two renames while saving)
+  gets it back from `level.dat_new`, else `level.dat_old`, when the game reaches its menus and
+  when the Singleplayer screen opens, with a pop-up. Tested: save (821 files, 52 KB) and restore
+  as `New World (2)`, which opened at the same spot; settings in the file checked (no cookie, no
+  Friends key); waypoints merged; five broken or tampered files refused through the file picker;
+  a restore stopped halfway cleaned up; both rescue paths repaired a world that then opened.
 - `thunder-qol.js` - Toggle Sneak (`MovementInputFromOptions.updatePlayerMoveState`), Clear Chat
   (black boxes left out while `GuiNewChat.drawChat` runs), Password Hider (the chat box draws
   `/login ****`; the text itself is unchanged), Show Own Name Tag (the `canRenderName` prototype

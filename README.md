@@ -30,7 +30,9 @@ in Right Shift > Utility > Readme.
   Crosshair, Shield Status colours, Zoom (hold C or your own key, scroll to zoom further), Freelook
   (hold X to look around your player in third person while you keep going straight), Chat Tools
   (lines that say your name in gold with a soft ding, repeated messages merged into one line with
-  (x2), the time before each line, Auto GG), Minimap and World Map
+  (x2), the time before each line, Auto GG), World Backup (one file with all your singleplayer
+  worlds and settings, to keep or move to another computer; Load backup brings them back, and a
+  world whose save was cut off by a closed tab is repaired by itself), Minimap and World Map
   (M), Waypoints (B, or right-click the World Map; shown in the world with the distance), Shulker Preview, Toggle Sneak, Clear Chat, Password Hider, Show Own Name Tag, Crystal
   Optimizer, Crystal Tap, Modern Swimming (swim and crawl like 1.21.11: sprint underwater to swim
   where you look, through one-block gaps, in singleplayer, Friends worlds and on servers), Offhand Swap (F over a totem in your inventory puts it in your off hand, like
