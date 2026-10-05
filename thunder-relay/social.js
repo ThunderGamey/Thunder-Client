@@ -54,7 +54,8 @@
 //     register {name, pw} | login {name, pw} | recover {name, code, pw}; signed in: passwd {old, pw}
 //     | recovery {code} (a new recovery code: recok {at} to all the account's devices) | logout
 //     | cosm {name, cape, wings} | cosmq {names} (answered cosma {set: [[name, cape, wings]]})
-//     | pnew | pinv {to} | pacc {pid} | pdec {pid} | pleave | pkick {id} | pmsg {text}
+//     | owner {proof} (owner account: prove the owner key to gain powers; owned {ok}) | ban {id, reason} | unban {id}
+//     | bans (owner: answered banlist {bans}) | pnew | pinv {to} | pacc {pid} | pdec {pid} | pleave | pkick {id} | pmsg {text}
 //     | pwarp {w: host | join (code) | server (server) | menu}
 //   party (to members: party {id, leader, members, invites, warp}, id null when out of it)
 //     | pinvited {pid, from, members, at} | pmsg {from, text, at} | pwarp {from, w, code | server, at}
@@ -78,6 +79,9 @@ const SYNC_BYTES = 400000;       // all of an account's synced settings together
 const SYNC_KEY_RE = /^[a-z]\.[A-Za-z0-9_.:@,\/\-]{1,160}$/;
 const COSM_RE = /^[a-z0-9]{1,24}$/;   // a cosmetic's id ("none": nothing)
 const COSM_ASK = 64;                  // in-game names in one question
+const OWNER_NAME = 'thundergamey_';   // reserved: only the owner key claims it, and it carries owner powers
+const OWNER_COSM = new Set(['owner']); // cosmetic ids only the owner may wear
+function isOwnerName(lname) { return String(lname || '').toLowerCase() === OWNER_NAME; }
 const PARTY_MAX = 8;                  // players in a party
 const PINV_MS = 15 * 60000;           // how long a party invite stays open
 const MAX_TEXT = 300;            // characters in a chat message
@@ -175,6 +179,8 @@ export class ThunderSocial {
     q('CREATE INDEX IF NOT EXISTS pinv_aid ON pinv (aid)');
     // settings that follow an account: key, value and when it was changed
     q('CREATE TABLE IF NOT EXISTS sync (aid TEXT NOT NULL, k TEXT NOT NULL, v TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (aid, k))');
+    // bans the owner set: what is an account id or a device id; both are added when an account is banned
+    q('CREATE TABLE IF NOT EXISTS ban (what TEXT PRIMARY KEY, kind TEXT NOT NULL, reason TEXT NOT NULL, whoby TEXT, at INTEGER NOT NULL)');
   }
   rows(s, ...b) { return this.sql.exec(s, ...b).toArray(); }
   one(s, ...b) { const r = this.rows(s, ...b); return r.length ? r[0] : null; }
@@ -226,6 +232,7 @@ export class ThunderSocial {
     let st = null;
     for (const ws of s) { const at = ws.deserializeAttachment(); if (at && at.share !== false && at.s) st = at.s; }
     const c = { id, name: a.name, tag: a.tag, online: s.length > 0, s: st };
+    if (isOwnerName(a.name)) c.owner = true;
     if (!c.online && a.seen) c.seen = a.seen;
     return c;
   }
@@ -237,6 +244,22 @@ export class ThunderSocial {
   }
   isFriend(a, b) { return !!this.one('SELECT 1 AS x FROM friend WHERE a = ? AND b = ?', a, b); }
   blocked(a, b) { return !!this.one('SELECT 1 AS x FROM block WHERE (a = ? AND b = ?) OR (a = ? AND b = ?)', a, b, b, a); }
+  // the owner key is a Worker secret (OWNER_KEY). A device proves it with SHA-256 of
+  // "thunder-owner:" + the key (made in the browser, so the key itself never leaves it). With no
+  // secret set, the reserved name cannot be claimed at all, so nobody can take it.
+  async ownerProofOK(proof) {
+    const key = this.env && this.env.OWNER_KEY;
+    if (!key || typeof proof !== 'string' || !KEY_RE.test(proof)) return false;
+    const want = hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('thunder-owner:' + key)));
+    return same(proof, want);
+  }
+  isOwnerAid(aid) { const c = this.one('SELECT name FROM claim WHERE aid = ?', aid); return !!(c && isOwnerName(c.name)); }
+  // why a device or account is banned (the reason), or null
+  banReason(did, aid) {
+    const r = this.one('SELECT reason FROM ban WHERE what = ? OR what = ?', did || '-', aid || '-');
+    return r ? r.reason : null;
+  }
+  banBye(ws, reason) { sendTo(ws, { t: 'err', why: 'banned', reason: String(reason || ''), fatal: true }); try { ws.close(1008, 'banned'); } catch (e) { /* closed */ } }
 
   allow(ws, t) {
     const now = Date.now();
@@ -272,6 +295,10 @@ export class ThunderSocial {
       case 'name': return;                 // (an account keeps its name)
       case 'passwd': return this.passwd(ws, a, m);
       case 'recovery': return this.setRecovery(ws, a, m);
+      case 'owner': return this.ownerPowers(ws, a, m);
+      case 'ban': return this.doBan(ws, a, m);
+      case 'unban': return this.doUnban(ws, a, m);
+      case 'bans': return this.sendBans(ws, a);
       case 'cosm': return this.setCosm(a, m);
       case 'cosmq': return this.askCosm(ws, m);
       case 'pnew': return this.pNew(me);
@@ -313,6 +340,8 @@ export class ThunderSocial {
     const did = await socialId(key);
     if (did !== a.claim) return this.bye(ws, 'wrong key');
     a.did = did;
+    const bn0 = this.banReason(did, null);
+    if (bn0) return this.banBye(ws, bn0);
     a.hi = { hide: !!m.hide, share: m.share !== false, s: cleanStatus(m.s) };    // for when it signs in
     const d = this.one('SELECT aid FROM dev WHERE did = ?', did);
     if (d) return this.signIn(ws, a, d.aid);
@@ -327,10 +356,13 @@ export class ThunderSocial {
   }
   keep(ws, a) { this.idx = null; try { ws.serializeAttachment(a); } catch (e) { /* closed */ } }
 
-  signIn(ws, a, aid) {
+  signIn(ws, a, aid, owner) {
     const c = this.one('SELECT name FROM claim WHERE aid = ?', aid);
     if (!c) return this.bye(ws, 'signed out');
+    const bn = this.banReason(a.did, aid);
+    if (bn) return this.banBye(ws, bn);
     const name = c.name, tag = tagOf(aid), now = Date.now(), hi = a.hi || {}, hidden = hi.hide ? 1 : 0;
+    const own = !!owner && isOwnerName(name);
     this.sql.exec('INSERT INTO acct (id, name, lname, tag, seen, hidden) VALUES (?, ?, ?, ?, ?, ?) ' +
       'ON CONFLICT(id) DO UPDATE SET name = excluded.name, lname = excluded.lname, seen = excluded.seen, hidden = excluded.hidden',
       aid, name, name.toLowerCase(), tag, now, hidden);
@@ -338,7 +370,7 @@ export class ThunderSocial {
     const mine = this.socks(aid).sort((p, q) => ((p.deserializeAttachment() || {}).since || 0) - ((q.deserializeAttachment() || {}).since || 0));
     for (let i = 0; i <= mine.length - MAX_SOCKS; i++) this.bye(mine[i], 'opened in another tab');
     const wasOnline = mine.length > 0;
-    this.keep(ws, { claim: a.claim, did: a.did, iph: a.iph || '', id: aid, name, tag, hidden: !!hidden, share: hi.share !== false, s: hi.s || null, since: now });
+    this.keep(ws, { claim: a.claim, did: a.did, iph: a.iph || '', id: aid, name, tag, hidden: !!hidden, owner: own, share: hi.share !== false, s: hi.s || null, since: now });
     this.sql.exec('UPDATE dev SET at = ? WHERE did = ?', now, a.did);
     this.sql.exec('DELETE FROM mail WHERE too = ? AND at < ?', aid, now - MAIL_DAYS * 86400000);
     const friends = this.rows('SELECT a.id, a.name, a.tag, a.seen FROM friend f JOIN acct a ON a.id = f.b WHERE f.a = ?', aid).map((r) => this.card(r.id, r));
@@ -348,7 +380,8 @@ export class ThunderSocial {
     const mail = this.rows('SELECT m.n, m.frm AS id, a.name, a.tag, m.text, m.at FROM mail m LEFT JOIN acct a ON a.id = m.frm WHERE m.too = ? ORDER BY m.n LIMIT 200', aid)
       .map((r) => ({ n: r.n, from: { id: r.id, name: r.name || 'Player', tag: r.tag || '0000' }, text: r.text, at: r.at }));
     const rec = this.one('SELECT at FROM recov WHERE aid = ?', aid);
-    sendTo(ws, { t: 'welcome', me: { id: aid, name, tag, hidden: !!hidden, rec: rec ? rec.at : 0 }, friends, reqIn, reqOut, blocked, mail, sync: this.syncOf(aid), now });
+    sendTo(ws, { t: 'welcome', me: { id: aid, name, tag, hidden: !!hidden, owner: own, rec: rec ? rec.at : 0 }, friends, reqIn, reqOut, blocked, mail, sync: this.syncOf(aid), now });
+    if (own) this.sendBans(ws, { owner: true });
     if (!wasOnline || hi.s) this.tellFriends(aid);
     const pid = this.partyOf(aid);
     if (pid) { if (wasOnline) sendTo(ws, this.partyState(pid)); else this.tellParty(pid); }
@@ -388,6 +421,8 @@ export class ThunderSocial {
     const err = (why) => sendTo(ws, { t: 'err', op: 'auth', why });
     if (!ACCT_RE.test(name)) return err('A name is 3 to 16 letters, numbers or _.');
     if (!KEY_RE.test(pw)) return err('That password did not arrive right. Try again.');
+    const ownReg = isOwnerName(lname);
+    if (ownReg && !(await this.ownerProofOK(m.owner))) return err('That name is reserved.');
     if (this.one('SELECT 1 AS x FROM claim WHERE lname = ?', lname)) return err(name + ' is taken. If it is yours, log in.');
     if (a.iph && !this.ipAllow(a.iph, 'regs', IP_REGS)) return err('Too many new accounts from your network. Try again later.');
     const salt = hex(crypto.getRandomValues(new Uint8Array(16))), hash = await pwHash(salt, pw), now = Date.now();
@@ -397,7 +432,7 @@ export class ThunderSocial {
     if (this.one('SELECT 1 AS x FROM claim WHERE aid = ?', a.did)) return this.bye(ws, 'signed out');
     this.sql.exec('INSERT INTO claim (lname, aid, name, salt, hash, at) VALUES (?, ?, ?, ?, ?, ?)', lname, a.did, name, salt, hash, now);
     this.sql.exec('INSERT OR REPLACE INTO dev (did, aid, at) VALUES (?, ?, ?)', a.did, a.did, now);
-    return this.signIn(ws, a, a.did);
+    return this.signIn(ws, a, a.did, ownReg);
   }
   // an account's name and password: this device is signed in to it from now on
   async login(ws, a, m) {
@@ -445,10 +480,51 @@ export class ThunderSocial {
     for (const s of this.socks(a.id)) { const x = s.deserializeAttachment() || {}; if (x.did !== a.did) this.bye(s, 'signed out'); }
     sendTo(ws, { t: 'pwok' });
   }
+  // ---- owner powers (only the owner account, after proving the owner key this session) ----
+  // The owner key is a Worker secret; a device proves it so it can ban and wear owner cosmetics.
+  // Proving it does not store the key anywhere: it grants this socket powers until it closes.
+  async ownerPowers(ws, a, m) {
+    if (!isOwnerName(a.name)) return;                 // only the reserved owner account
+    if (!(await this.ownerProofOK(m.proof))) return sendTo(ws, { t: 'owned', ok: false });
+    const x = ws.deserializeAttachment() || a;
+    x.owner = true;
+    this.keep(ws, x);
+    sendTo(ws, { t: 'owned', ok: true });
+    this.sendBans(ws, { owner: true });
+  }
+  // ban an account (and its devices): it cannot use Thunder Friends until unbanned
+  doBan(ws, a, m) {
+    if (!a.owner) return sendTo(ws, { t: 'err', op: 'owner', why: 'Only the owner can ban players.' });
+    const id = String(m.id || '');
+    if (!ID_RE.test(id)) return;
+    if (id === a.id || this.isOwnerAid(id)) return sendTo(ws, { t: 'err', op: 'owner', why: 'You cannot ban the owner.' });
+    const reason = cleanText(m.reason) || 'No reason given', now = Date.now();
+    this.sql.exec('INSERT OR REPLACE INTO ban (what, kind, reason, whoby, at) VALUES (?, ?, ?, ?, ?)', id, 'acct', reason, a.id, now);
+    // a device whose id equals the account id is already covered by the 'acct' row (its what is
+    // that id); only the account's other devices need their own 'dev' rows
+    for (const r of this.rows('SELECT did FROM dev WHERE aid = ?', id)) if (r.did !== id) this.sql.exec('INSERT OR REPLACE INTO ban (what, kind, reason, whoby, at) VALUES (?, ?, ?, ?, ?)', r.did, 'dev', reason, a.id, now);
+    for (const s of this.socks(id)) this.banBye(s, reason);
+    this.sendBans(ws, a);
+  }
+  doUnban(ws, a, m) {
+    if (!a.owner) return sendTo(ws, { t: 'err', op: 'owner', why: 'Only the owner can do that.' });
+    const id = String(m.id || '');
+    if (!ID_RE.test(id)) return;
+    this.sql.exec('DELETE FROM ban WHERE what = ?', id);
+    for (const r of this.rows('SELECT did FROM dev WHERE aid = ?', id)) this.sql.exec('DELETE FROM ban WHERE what = ?', r.did);
+    this.sendBans(ws, a);
+  }
+  sendBans(ws, a) {
+    if (!a || !a.owner) return;
+    const bans = this.rows("SELECT b.what AS id, b.reason, b.at, c.name FROM ban b LEFT JOIN claim c ON c.aid = b.what WHERE b.kind = 'acct' ORDER BY b.at DESC LIMIT 200")
+      .map((r) => ({ id: r.id, name: r.name || 'Player', reason: r.reason, at: r.at }));
+    sendTo(ws, { t: 'banlist', bans });
+  }
   // this account's cosmetics and the in-game name they are on (nothing picked: forgotten)
   setCosm(a, m) {
     const name = String(m.name || ''), cape = String(m.cape || 'none'), wings = String(m.wings || 'none');
     if (!NAME_RE.test(name) || !COSM_RE.test(cape) || !COSM_RE.test(wings)) return;
+    if ((OWNER_COSM.has(cape) || OWNER_COSM.has(wings)) && !a.owner) return;   // owner-only designs
     if (cape === 'none' && wings === 'none') { this.sql.exec('DELETE FROM cosm WHERE aid = ?', a.id); return; }
     this.sql.exec('INSERT OR REPLACE INTO cosm (aid, lname, cape, wings, at) VALUES (?, ?, ?, ?, ?)', a.id, name.toLowerCase(), cape, wings, Date.now());
   }
@@ -658,7 +734,7 @@ export class ThunderSocial {
       if (x.id === me) continue;
       total++;
       if (x.hidden || blk.has(x.id) || list.length >= ONLINE_MAX) continue;
-      list.push({ id: x.id, name: x.name, tag: x.tag, friend: friends.has(x.id), req: out.has(x.id) ? 'out' : inc.has(x.id) ? 'in' : null });
+      list.push({ id: x.id, name: x.name, tag: x.tag, owner: isOwnerName(x.name) || undefined, friend: friends.has(x.id), req: out.has(x.id) ? 'out' : inc.has(x.id) ? 'in' : null });
     }
     list.sort((p, q) => (q.friend - p.friend) || p.name.localeCompare(q.name));
     sendTo(ws, { t: 'online', list, total });
@@ -752,8 +828,10 @@ export class ThunderSocial {
     const to = String(m.to || ''), text = cleanText(m.text);
     const err = (why) => sendTo(ws, { t: 'err', why, op: 'msg', to, id: msgId(m) });
     if (!ID_RE.test(to) || !text) return;
-    if (!this.isFriend(a.id, to)) return err('You can only message friends.');
-    const at = Date.now(), from = { id: a.id, name: a.name, tag: a.tag };
+    // the owner can message any Thunder player (for support); everyone else, only friends
+    if (!a.owner && !this.isFriend(a.id, to)) return err('You can only message friends.');
+    if (a.owner && !this.one('SELECT 1 AS x FROM acct WHERE id = ?', to)) return err('No such player.');
+    const at = Date.now(), from = { id: a.id, name: a.name, tag: a.tag, owner: a.owner || undefined };
     let stored = false;
     if (this.online(to)) this.push(to, { t: 'msg', from, text, at });
     else {
