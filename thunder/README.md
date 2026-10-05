@@ -433,6 +433,19 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   hosting and B joined connected directly, B's voice reached A while B held V (and only then), Mute
   and Proximity (B teleported 100 blocks away: silent both ways; back: full volume) worked, and B
   leaving the world stopped its microphone and A dropped B.
+- `thunder-owner.js` - Owner tools (Right Shift > Friends > Owner), for the reserved account
+  ThunderGamey_ only. An owner badge (a gold bolt) shows by the owner's name everywhere the hub
+  marks it (friends, chat, parties, voice, On Thunder now). Owner powers need the owner key each
+  session: the key is the thunder-relay Worker's OWNER_KEY secret, turned into a proof in the
+  browser (SHA-256 of "thunder-owner:"+key), so the key never leaves it and is never stored.
+  Claiming the name (register) needs the key in an extra field of the sign-in form; later logins
+  use the password, then the Owner card's key box sends owner {proof} for powers. With powers the
+  owner bans a player and their devices with a reason (ban {id, reason} / unban, the list is
+  banlist), wears the owner-only "owner" cape/wings (hidden from the picker for everyone else, and
+  refused by the hub), and messages any player. Nothing destructive: no force-join of others'
+  worlds, no remote wipe or disabling of a client, no silent control of others' settings. Tested:
+  24 hub checks plus, in the browser, registering with the key (powers on), the Owner card, a ban
+  that kicked a player with the reason and listed them, unban, and the badge and owner cosmetic.
 - `offline.js` and `offline-loader.js` - the offline file, `thunder-offline.html`: the site in one
   HTML file that runs from a folder (`node thunder/offline.js`; the GitHub Action
   `thunder-offline.yml` puts it on the "offline" release on every update). The big files are

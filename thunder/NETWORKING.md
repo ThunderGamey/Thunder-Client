@@ -147,6 +147,14 @@ Thunder relay (see below): nothing else to set up.
   even when friends need the code. The card has the members, where the leader is (with **Join**),
   the party chat, **Leave**, and for the leader **Invite** and **Remove**. When the leader leaves,
   the member who joined next leads.
+- **Owner** (the reserved **ThunderGamey_** account only): an owner badge shows by the owner's
+  name everywhere. Owner tools turn on with the owner key (the thunder-relay Worker's `OWNER_KEY`
+  secret; set it in the Worker's settings). The key becomes a proof in the browser and is never
+  stored. With tools on, the owner can **ban** a player and their devices from Thunder Friends with
+  a reason (they are kicked and cannot reconnect until unbanned), **unban**, wear the owner-only
+  cosmetic, and message any player. The name cannot be registered by anyone without the key, so it
+  is always reserved. Not built, by design: no forcing into others' worlds, no remote wipe or
+  disabling of a client, no silent changing of others' settings.
 - **Voice Chat** (on by default): in a world opened through Thunder's relay, everyone can talk.
   You hear the others at once; hold **V** to talk (the first time, the browser asks for your
   microphone; **Use my microphone** in the card does the same), or turn on **Always on**. Your
@@ -382,6 +390,13 @@ EaglercraftX's LAN framing on them. The browser half was never compiled in, and 
   Thunder Cosmetics use it too: `cosm {name, cape, wings}` keeps an account's picks with its
   in-game name (nothing picked: forgotten), and `cosmq {names}` (at most 64 in-game names) is
   answered `cosma {set: [[name, cape, wings]], asked}` with only the ids, never the account.
+  Owner tools use it too: a signed-in ThunderGamey_ sends `owner {proof}` (the SHA-256 of
+  "thunder-owner:"+the owner key, so the key never leaves the browser) and gets `owned {ok}`; the
+  hub checks the proof against its `OWNER_KEY` secret. With powers, `ban {id, reason}` bans an
+  account and its devices (they are refused at connect with the reason) and `unban {id}` lifts it,
+  both answered with `banlist {bans}`. The reserved name is also refused at `register` without the
+  proof, so nobody else can take it. Cards, the online list and messages from the owner carry
+  `owner: true` for the badge.
   Parties use it too: `pnew` makes a party (the maker leads), `pinv {to}` (leader, friends only,
   at most 8 players; kept 15 minutes, given again when the friend signs in) reaches the friend as
   `pinvited {pid, from, members}`, `pacc`/`pdec {pid}` answer it, `pleave`, `pkick {id}` (leader),
