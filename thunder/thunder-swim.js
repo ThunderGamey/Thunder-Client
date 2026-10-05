@@ -463,6 +463,8 @@
   }
 
   // ---- camera: the eye height slides (camTick), and a new frame starts with no player drawn --
+  // (Freelook, thunder-freelook.js, which puts itself in SW.fl: while the camera is placed, the
+  // player's rotation reads the camera's; st bit 2)
   var origFJp=FJp;
   FJp=function(a,b){
     var st=0,r;
@@ -471,11 +473,13 @@
       SW.rEnt=null;
       var ve=HEN&&HEN.hI;
       if(on()&&SW.camSm&&ve&&ve===SW.camFor){SW.cam=ve;SW.camEye=SW.eyeO+(SW.eye-SW.eyeO)*b;st=1;}
+      var fl=SW.fl;
+      if(fl&&fl.on&&ve&&ve===HEN.v){fl.swap(ve);st|=2;}
     }
     try{r=origFJp(a,b);}
     finally{
       if($rt_suspending())$rt_nativeThread().push(st);
-      else SW.cam=null;
+      else{SW.cam=null;if((st&2)&&SW.fl)SW.fl.unswap();}
     }
     return r;
   };

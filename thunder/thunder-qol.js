@@ -75,12 +75,14 @@
 
   // ---- Clear Chat: GuiNewChat.drawChat draws a black box behind every line with Gui.drawRect;
   // while it runs, the drawRect wrapper in thunder-theme.js leaves out pure black boxes ----------
+  // (it also tells Chat Tools, thunder-chat.js, which chat is drawing: lines that say your name
+  // get a gold box)
   var origDYN=DYN;
   DYN=function(a,b){
-    if(!$rt_resuming())QL.chat=S.clearChat?1:0;
+    if(!$rt_resuming()){QL.chat=S.clearChat?1:0;CT.chat=a;}
     var ok=false,r;
     try{r=origDYN(a,b);ok=true;}
-    finally{if(!ok||!$rt_suspending())QL.chat=0;}
+    finally{if(!ok||!$rt_suspending()){QL.chat=0;CT.chat=null;}}
     return r;
   };
   function clearChatSkips(color){return QL.chat===1&&(color&0xFFFFFF)===0;}

@@ -318,7 +318,10 @@
     zoomKey:'KeyC',worldMapKey:'KeyM',
     waypoints:true,waypointKey:'KeyB',waypointsInWorld:true,deathPoints:true,  // thunder-waypoints.js
     // thunder-social.js: Thunder Friends (friends list, chat, pop-ups); O opens the chat
-    socialOn:true,socialListed:true,socialShare:true,socialToasts:true,socialOnlineToasts:true,socialKey:'KeyO',socialQuickJoin:true
+    socialOn:true,socialListed:true,socialShare:true,socialToasts:true,socialOnlineToasts:true,socialKey:'KeyO',socialQuickJoin:true,
+    // thunder-chat.js: Chat Tools (the time before lines and Auto GG only when switched on)
+    chatTools:true,chatMention:true,chatMentionSound:true,chatMerge:true,chatTime:false,autoGG:false,
+    freelook:true,freelookKey:'KeyX',freelookToggle:false   // thunder-freelook.js
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -585,6 +588,8 @@
     '.tcm-card.tcm-always .tcm-opts{border-top:0;padding-top:0}',
     '.tcm-row{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:12px;color:#b7cad8}',
     '.tcm-row span{flex:1}',
+    '.tcm-text{flex:0 0 46%;min-width:0;height:26px;padding:0 9px;border-radius:7px;border:1px solid rgba(120,150,175,.3);background:rgba(3,7,12,.6);color:#eafaff;font:600 12px system-ui,sans-serif;outline:0}',
+    '.tcm-text:focus{border-color:rgba(79,209,255,.65);box-shadow:0 0 0 3px rgba(79,209,255,.12)}',
     '.tcm-row em{font-style:normal;font-size:11px;font-weight:700;color:#7fdcff;min-width:62px;text-align:right}',
     '.tcm-slider{display:block;width:100%;margin-top:6px}',
     '.tcm-range{-webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:4px;outline:0;cursor:pointer;',
@@ -846,6 +851,7 @@
   // one settings row: colors -> colour swatches, choices -> segmented buttons, number -> slider,
   // boolean -> switch
   function optRow(o){
+    if(o.text)return textRow(o);
     if(o.key)return keyRow(o);
     if(o.colors)return swatchRow(o);
     if(o.choices)return segRow(o);
@@ -923,6 +929,22 @@
     b.addEventListener('mouseleave',function(){if(armed){armed=0;paint();}});
     paint();
     return b;
+  }
+  // o.text: a short line of text (o.get / o.set keep it; saved when the box is left or Enter)
+  function textRow(o){
+    var r=el('div','tcm-row'),inp=el('input','tcm-text');
+    r.appendChild(el('span',null,o.name));
+    inp.type='text';inp.maxLength=o.max||100;inp.spellcheck=false;inp.autocomplete='off';inp.placeholder=o.placeholder||'';
+    inp.value=o.get();
+    function keep(){o.set(inp.value);inp.value=o.get();}
+    // typing here stays here (the game listens to keys on the window)
+    inp.addEventListener('keydown',function(e){e.stopPropagation();if(e.key==='Enter'){e.preventDefault();keep();inp.blur();}});
+    inp.addEventListener('keyup',function(e){e.stopPropagation();});
+    inp.addEventListener('keypress',function(e){e.stopPropagation();});
+    inp.addEventListener('change',keep);
+    inp.addEventListener('blur',keep);
+    r.appendChild(inp);
+    return r;
   }
   function switchRow(o){
     var r=el('div','tcm-row');
@@ -1724,6 +1746,12 @@
 
   // Thunder Friends: friends list, who is on Thunder, chat and world invites, with pop-ups
   // @include thunder-social.js
+
+  // Chat Tools: name highlight, merged repeats, the time, Auto GG
+  // @include thunder-chat.js
+
+  // Freelook: hold X to look around your player
+  // @include thunder-freelook.js
 
   // Title screen: animated Thunder storm background with mouse parallax, and the Thunder logo
   // @include thunder-title.js

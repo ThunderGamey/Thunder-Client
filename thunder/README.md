@@ -78,6 +78,30 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   (not the hand) is divided in the `getFOVModifier` wrapper, glides in and out, the mouse wheel
   zooms further while zoomed (the event never reaches the game, so the hotbar stays), and mouse
   sensitivity is lowered with the zoom and put back exactly when it ends or a screen opens.
+- `thunder-freelook.js` - Freelook (Utility, on, key X): while the key is held (or toggled), the
+  view goes to third person and `Entity.turn` (`setAngles`) turns the camera's own yaw and pitch
+  instead of the player; while `EntityRenderer.orientCamera` places the camera, the player's
+  rotation reads the camera's (the wrapper in `thunder-swim.js` calls it through `SW.fl`), and is
+  put back right after, so the player keeps its direction and the server sees nothing. Letting go
+  puts the old view back. Tested: X held, a turn of 90 degrees moved only the camera, X let go.
+- `thunder-chat.js` - Chat Tools (Utility): every chat line goes through
+  `GuiNewChat.printChatMessageWithOptionalDeletion`, whose wrapper reads its text (the game's
+  `getUnformattedText`; the wrapper keeps its state on the game thread's stack when that pauses)
+  and gives the game a new line: a `TextComponentString` with the time (when on) and the original
+  appended (so colours, links and hover texts stay), with a line id of its own. A line that says
+  your name (the profile name or your Thunder Friends name; not your own lines like `<You> hi`,
+  `[You] ...` from /say or `You joined the game`, unless your name comes again) is kept as a
+  mention: while `GuiNewChat.drawChat` runs, its black box (`Gui.drawRect(-2, row * -9 - 9, ...)`)
+  is drawn gold instead, and a short chime plays. The same text again within a minute, with
+  nothing between, replaces the last line (the game removes the lines with the id it is given)
+  and ends with (x2), (x3)... Auto GG (off by default; the text is in `localStorage.thunderAutoGG`):
+  on a server or in a friend's world, a line that says a game is over (`won the game`,
+  `Winner: ...`, `1st Killer`, `GAME OVER`, `Reward Summary`...) and does not look like a player
+  talking (`<Steve> I won the game`, `Steve: winner winner`) sends the text about a second later,
+  at most once in 20 seconds. Tested with a friend in a world: a line with your name in gold,
+  /say three times merged into "(x3)", the time on each line, Auto GG answering
+  `/say Winner: Steve` with gg, the text box saving its text; unit tests for the name rules (15
+  lines) and the game-over rules (17 lines).
 - `thunder-qol.js` - Toggle Sneak (`MovementInputFromOptions.updatePlayerMoveState`), Clear Chat
   (black boxes left out while `GuiNewChat.drawChat` runs), Password Hider (the chat box draws
   `/login ****`; the text itself is unchanged), Show Own Name Tag (the `canRenderName` prototype

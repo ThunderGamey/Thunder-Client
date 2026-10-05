@@ -326,6 +326,7 @@
   };
   var origD49=D49;
   D49=function(a,b,c,d,e){
+    if(!$rt_resuming()){var ce=chatRowColor(a,b,c,d,e);if(ce!==null)return origD49(a,b,c,d,ce);}   // Chat Tools (thunder-chat.js)
     if(clearChatSkips(e)&&!$rt_resuming())return;              // Clear Chat (thunder-qol.js)
     if(thCredits>0&&!$rt_resuming()&&thButtonsOn()){
       if(e===855638048)e=0x33FFFFFF;else if(e===1711276032)e=0xCC40B8F0|0;   // scrollbar track, thumb
