@@ -355,6 +355,9 @@ EaglercraftX's LAN framing on them. The browser half was never compiled in, and 
   connection drops. A keepalive left unanswered for 30 s means the connection died without closing
   (a network change, a laptop waking up), so the game drops it and connects again, and so does a
   sign-in the hub has not answered within 20 s. Only the site's own pages may connect (`Origin`).
+  Thunder Cosmetics use it too: `cosm {name, cape, wings}` keeps an account's picks with its
+  in-game name (nothing picked: forgotten), and `cosmq {names}` (at most 64 in-game names) is
+  answered `cosma {set: [[name, cape, wings]], asked}` with only the ids, never the account.
   Settings Sync uses the same connection: `welcome` carries the account's settings as
   `[key, value, when]` (keys like `s.zoomKey`, `g.key_key.jump`, `h.fps`, `w.mp:<server>@0`,
   `x.servers`), a device sends what it changed as `sync {set}` (frames of up to 16 KB; values of at

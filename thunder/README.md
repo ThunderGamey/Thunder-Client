@@ -62,7 +62,11 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
 - `thunder-boot.js` - `TC.boot()` for the loading screen, and Quick Start (Right Shift > Utility,
   on): `Minecraft.displayGuiScreen` opens the title screen instead of the Eaglercraft Edit Profile
   screen the game opens at start (Edit Profile stays a button on the title screen), and leaves out
-  the default-username reminder.
+  the default-username reminder. The game keeps your name when Done is pressed on that screen, so
+  when no profile is saved yet (`_eaglercraft_1.12.p`) the first skip saves it once
+  (`EaglerProfile.save`): before this, a player who never opened Edit Profile got a new random name
+  every start, which on servers is a different player each time. Tested: saved at the first start,
+  the same name after a reload.
 - `thunder-combat.js` - Totem Counter and Pickup Notifier (HUD boxes, movable in the HUD editor;
   pickups come from the game's own "item collected" message, `SPacketCollectItem.processPacket`,
   so only real pickups show), Target Crosshair (aiming at a player within reach: the crosshair,
@@ -138,6 +142,23 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   the hub. Tested: shared from the Waypoints card in a world, added from the pop-up and from the
   chat (a Nether one into the Nether list), and the friend who then joined the world saw it there
   (same world key); 12 checks of the text format (names with `|`, other dimensions, bad places).
+- `thunder-cosmetics.js` - Thunder Cosmetics (Right Shift > Cosmetics): 8 capes (Thunder, Storm,
+  Gold Bolt, Crimson, Emerald, Galaxy, Sunset, Ice) and 4 wings (Thunder, Angel, Dragon, Flame), free.
+  The designs are painted pixel by pixel into 64x32 `DynamicTexture`s in the game's cape layout
+  (outside, inside, edges, and the elytra part, so a real elytra worn with a Thunder cape matches
+  it), converted to the byte order the game uploads (0xAABBGGRR), and registered with
+  `TextureManager.getDynamicTextureLocation`, on the game thread the first time they are drawn.
+  Capes: `AbstractClientPlayer.getLocationCape` gives the Thunder cape's texture, so the game's own
+  cape layer draws it (only when that player shows their cape, never when invisible). Wings: while
+  `LayerElytra.doRenderLayer` runs for a player with Thunder wings who wears no elytra and is not
+  invisible, the elytra model is drawn first with the wing texture, set a little wider than folded
+  and slowly beating (a small state machine that survives the game thread pausing), then the
+  game's own elytra layer runs as usual. Your picks go to the Thunder Friends hub with your
+  in-game name; Thunder asks it, by in-game name, for the cosmetics of the players around you
+  (each name again after 3 minutes) and draws them; Show other players' cosmetics turns that off.
+  Tested: cape and wings in third person, and a second Thunder player who joined the world saw the
+  first one's wings (looked up from the hub); 9 hub checks (lookup by any capitals, nothing about
+  the account given out, newest account on a shared name, bad ids refused, 64 names at most).
 - `thunder-backup.js` - World Backup (Utility). Save backup reads every world in the game's
   `worlds_list.txt` straight from its IndexedDB store (`..._PlatformFilesystem_1_12_2_`, records
   `{path, data}` keyed by `[path]`) and downloads one `.thunderbackup` file: gzip of

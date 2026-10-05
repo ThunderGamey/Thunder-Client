@@ -322,7 +322,8 @@
     // thunder-chat.js: Chat Tools (the time before lines and Auto GG only when switched on)
     chatTools:true,chatMention:true,chatMentionSound:true,chatMerge:true,chatTime:false,autoGG:false,
     freelook:true,freelookKey:'KeyX',freelookToggle:false,  // thunder-freelook.js
-    syncSettings:true        // thunder-sync.js: settings follow the Thunder Friends account
+    syncSettings:true,       // thunder-sync.js: settings follow the Thunder Friends account
+    cosmCape:'none',cosmWings:'none',cosmOthers:true   // thunder-cosmetics.js: your cape and wings ("none" or a design)
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -620,6 +621,13 @@
     '.tcm-wpt-info{flex:0 0 auto;color:#8aa1b3;font-size:11px;font-variant-numeric:tabular-nums}',
     '.tcm-wpt-btn{flex:0 0 auto;padding:3px 8px;border-radius:6px;border:1px solid rgba(110,140,160,.3);background:rgba(3,7,12,.5);color:#cfe8f8;font:600 11px inherit;cursor:pointer}',
     '.tcm-wpt-del{color:#ff8a8a}',
+    '.tcm-cos{display:flex;flex-wrap:wrap;gap:8px;margin-top:9px}',
+    '.tcm-cos-b{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:5px;min-width:64px;min-height:84px;padding:7px 6px 6px;',
+      'border-radius:10px;border:1px solid rgba(110,140,160,.28);background:rgba(3,7,12,.5);color:#cfe8f8;font:600 10.5px inherit;cursor:pointer}',
+    '.tcm-cos-b canvas{image-rendering:pixelated;display:block}.tcm-cos-b em{font-style:normal}',
+    '.tcm-cos-b:hover{border-color:rgba(79,209,255,.5)}',
+    '.tcm-cos-b.tcm-on{border-color:#4fd1ff;box-shadow:0 0 12px rgba(79,209,255,.35),inset 0 0 0 1px rgba(79,209,255,.4);color:#fff}',
+    '.tcm-cos-none{flex:1;display:flex;align-items:center;justify-content:center;width:40px;color:#6f879a;font-size:20px}',
     '.tcm-wpt-share{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin:-2px 0 2px 22px;font-size:11px;color:#9db4c6}',
     '.tcm-wpt-btn.tcm-wpt-on{border-color:rgba(79,209,255,.55);color:#e9f9ff}',
     '.tcm-key{margin-left:auto;min-width:84px;padding:4px 10px;border-radius:7px;border:1px solid rgba(110,140,160,.35);background:rgba(3,7,12,.6);color:#dff3ff;font:600 11px/1.3 inherit;cursor:pointer}',
@@ -1761,6 +1769,9 @@
 
   // Settings Sync: Thunder's and the game's settings follow your Thunder Friends account
   // @include thunder-sync.js
+
+  // Thunder Cosmetics: capes and wings everyone on Thunder sees
+  // @include thunder-cosmetics.js
 
   // Title screen: animated Thunder storm background with mouse parallax, and the Thunder logo
   // @include thunder-title.js

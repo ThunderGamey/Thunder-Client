@@ -438,6 +438,7 @@
         SO.cver++;soSaveChats();soChanged();return;
       }
       case 'sync':syRemote(m.set);return;
+      case 'cosma':cosAnswer(m);return;
       case 'syncall':syWelcome(m.sync);soChanged();return;
       case 'invite':
         soAdd(m.from.id,{w:'sys',text:m.from.name+' invited you to their world.',at:m.at,code:m.code});

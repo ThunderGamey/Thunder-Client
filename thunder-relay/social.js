@@ -32,6 +32,11 @@
 // Messages to a friend who is offline wait here (at most 100 per player, 30 days) until they come
 // online and are deleted once delivered.
 //
+// Thunder cosmetics: an account picks a cape and wings (ids of Thunder's own designs) and says its
+// in-game name; any signed-in Thunder player asks for the cosmetics of the players around them by
+// in-game name (at most 64 at a time) and draws them. Only accounts that picked something are kept,
+// and only the ids and the in-game name are given out (never the account).
+//
 // Settings that follow an account: a signed-in device sends the settings it changed as
 // [key, value, when] (key like "s.zoomKey", value a string of at most 12000 characters); per key
 // the newest is kept (a time more than a minute ahead of the hub's clock counts as now), at most
@@ -43,6 +48,7 @@
 //   client -> hub: hello {key, name, hide, share, s}, then (a device not signed in, told "auth")
 //     register {name, pw} | login {name, pw} | recover {name, code, pw}; signed in: passwd {old, pw}
 //     | recovery {code} (a new recovery code: recok {at} to all the account's devices) | logout
+//     | cosm {name, cape, wings} | cosmq {names} (answered cosma {set: [[name, cape, wings]]})
 //     | status {s} | hide {v} | share {v}
 //     | online | add {who} | accept {id} | decline {id} | cancel {id} | remove {id} | block {id}
 //     | unblock {id} | msg {to, text, id} | invite {to, code} | ack {n} | sync {set: [[key, value, when]]}
@@ -61,6 +67,8 @@ const SYNC_VAL = 12000;          // characters in one synced setting
 const SYNC_KEYS = 800;           // synced settings per account
 const SYNC_BYTES = 400000;       // all of an account's synced settings together
 const SYNC_KEY_RE = /^[a-z]\.[A-Za-z0-9_.:@,\/\-]{1,160}$/;
+const COSM_RE = /^[a-z0-9]{1,24}$/;   // a cosmetic's id ("none": nothing)
+const COSM_ASK = 64;                  // in-game names in one question
 const MAX_TEXT = 300;            // characters in a chat message
 const MAX_FRIENDS = 300;
 const MAX_OUT = 30;              // friend requests one player has waiting
@@ -145,6 +153,9 @@ export class ThunderSocial {
     q('CREATE INDEX IF NOT EXISTS dev_aid ON dev (aid)');
     // recovery codes: what is kept of the key the browser made from the code, one per account
     q('CREATE TABLE IF NOT EXISTS recov (aid TEXT PRIMARY KEY, salt TEXT NOT NULL, hash TEXT NOT NULL, at INTEGER NOT NULL)');
+    // cosmetics: an account's cape and wings, and the in-game name they are shown on
+    q('CREATE TABLE IF NOT EXISTS cosm (aid TEXT PRIMARY KEY, lname TEXT NOT NULL, cape TEXT NOT NULL, wings TEXT NOT NULL, at INTEGER NOT NULL)');
+    q('CREATE INDEX IF NOT EXISTS cosm_name ON cosm (lname)');
     // settings that follow an account: key, value and when it was changed
     q('CREATE TABLE IF NOT EXISTS sync (aid TEXT NOT NULL, k TEXT NOT NULL, v TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (aid, k))');
   }
@@ -244,6 +255,8 @@ export class ThunderSocial {
       case 'name': return;                 // (an account keeps its name)
       case 'passwd': return this.passwd(ws, a, m);
       case 'recovery': return this.setRecovery(ws, a, m);
+      case 'cosm': return this.setCosm(a, m);
+      case 'cosmq': return this.askCosm(ws, m);
       case 'logout': return this.logout(ws, a);
       case 'hide': return this.setFlag(ws, a, 'hidden', !!m.v);
       case 'share': return this.setFlag(ws, a, 'share', m.v !== false);
@@ -403,6 +416,26 @@ export class ThunderSocial {
     this.sql.exec('DELETE FROM dev WHERE aid = ? AND did <> ?', a.id, a.did);
     for (const s of this.socks(a.id)) { const x = s.deserializeAttachment() || {}; if (x.did !== a.did) this.bye(s, 'signed out'); }
     sendTo(ws, { t: 'pwok' });
+  }
+  // this account's cosmetics and the in-game name they are on (nothing picked: forgotten)
+  setCosm(a, m) {
+    const name = String(m.name || ''), cape = String(m.cape || 'none'), wings = String(m.wings || 'none');
+    if (!NAME_RE.test(name) || !COSM_RE.test(cape) || !COSM_RE.test(wings)) return;
+    if (cape === 'none' && wings === 'none') { this.sql.exec('DELETE FROM cosm WHERE aid = ?', a.id); return; }
+    this.sql.exec('INSERT OR REPLACE INTO cosm (aid, lname, cape, wings, at) VALUES (?, ?, ?, ?, ?)', a.id, name.toLowerCase(), cape, wings, Date.now());
+  }
+  // the cosmetics on these in-game names (the newest account that is on a name, when several are)
+  askCosm(ws, m) {
+    const names = Array.isArray(m.names) ? m.names.slice(0, COSM_ASK) : [], set = [], seen = new Set();
+    for (const n of names) {
+      if (typeof n !== 'string' || !NAME_RE.test(n)) continue;
+      const l = n.toLowerCase();
+      if (seen.has(l)) continue;
+      seen.add(l);
+      const r = this.one('SELECT cape, wings FROM cosm WHERE lname = ? ORDER BY at DESC LIMIT 1', l);
+      if (r) set.push([l, r.cape, r.wings]);
+    }
+    sendTo(ws, { t: 'cosma', set, asked: [...seen] });
   }
   // a new recovery code for the account (an older one stops working)
   async setRecovery(ws, a, m) {

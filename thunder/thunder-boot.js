@@ -6,10 +6,13 @@
      - Quick Start (Right Shift > Utility, on by default): the game opens the Eaglercraft Edit
        Profile screen every time it starts; with Quick Start it goes straight to the title screen
        (Edit Profile is a button there), and the "default username" reminder after Edit Profile
-       is left out.
+       is left out. The game keeps your name when you press Done on that screen; a player who
+       has never done that would get a new random name every start (a different player on
+       servers each time), so the first skip saves the profile once, like pressing Done.
 
      Game function this module replaces (the wrapper only picks which screen is opened):
      @hook GGs net.minecraft.client.Minecraft.displayGuiScreen
+     @use DUX net.lax1dude.eaglercraft.profile.EaglerProfile.save
 
      Classes and fields it uses:
      @class BV5 net.lax1dude.eaglercraft.profile.GuiScreenDefaultUsernameNote
@@ -25,7 +28,12 @@
   var origGGs=GGs;
   GGs=function(a,b){
     if(!$rt_resuming()&&S.quickStart&&b!==null){
-      if(BOOT.frames===0&&b instanceof Zj&&b.cal!==null){b=b.cal;BOOT.skipped.push('Edit Profile');}
+      if(BOOT.frames===0&&b instanceof Zj&&b.cal!==null){
+        b=b.cal;BOOT.skipped.push('Edit Profile');
+        // (no saved profile yet: this random name is kept from now on)
+        var saved=null;try{saved=W.localStorage.getItem('_eaglercraft_1.12.p');}catch(_){saved='?';}
+        if(saved===null&&!BOOT.saved){BOOT.saved=true;runOnGame([function(){DUX();}]);}
+      }
       else if(b instanceof BV5&&b.cIw!==null){b=b.cIw;BOOT.skipped.push('username reminder');}
     }
     return origGGs(a,b);
