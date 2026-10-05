@@ -414,6 +414,25 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   Disconnect), Remove, the leader leaving (the other got the lead and a pop-up), the last one
   leaving, and the party coming back after a reload.
 
+- `thunder-voice.js` - Voice Chat (Right Shift > Friends > Voice Chat, on): the players in a world
+  opened through Thunder's relay (Open to Friends, or a friend's world joined by its code) talk to
+  each other. Every game in the world joins its voice chat on the relay (`/relay?voice=<code>`,
+  only while the world is open there), which tells it who else is in it and passes each pair's
+  WebRTC offer and answer (of each pair, the one whose id sorts first offers; the description
+  carries its candidates, so it is one message each way). The audio then goes straight between
+  the two games (or through this site's TURN server when it has one), never through Thunder. You
+  hear the others at once; the microphone is asked for only when you hold the push-to-talk key (V)
+  or press **Use my microphone**, sends only while you talk (or always, with **Always on**), and is
+  stopped when you leave the world. Each voice goes through Web Audio: a volume (the Volume slider,
+  Mute, and with Proximity the distance to that player in your world: full within 8 blocks, silent
+  from 40 or when you cannot see them) and left/right from where they stand. Who is talking shows
+  at the left of the screen. A computer running an Always open world joins only while someone has
+  used it in the last 5 minutes. Tested: 19 relay checks (no voice chat without an open world,
+  who is in it, offers and answers passed only between members, names cleaned, at most 16, 16 KB
+  and 120 messages a minute, the world closing); in two browsers (Chrome's test microphone): A
+  hosting and B joined connected directly, B's voice reached A while B held V (and only then), Mute
+  and Proximity (B teleported 100 blocks away: silent both ways; back: full volume) worked, and B
+  leaving the world stopped its microphone and A dropped B.
 - `offline.js` and `offline-loader.js` - the offline file, `thunder-offline.html`: the site in one
   HTML file that runs from a folder (`node thunder/offline.js`; the GitHub Action
   `thunder-offline.yml` puts it on the "offline" release on every update). The big files are

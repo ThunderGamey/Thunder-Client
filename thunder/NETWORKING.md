@@ -147,6 +147,14 @@ Thunder relay (see below): nothing else to set up.
   even when friends need the code. The card has the members, where the leader is (with **Join**),
   the party chat, **Leave**, and for the leader **Invite** and **Remove**. When the leader leaves,
   the member who joined next leads.
+- **Voice Chat** (on by default): in a world opened through Thunder's relay, everyone can talk.
+  You hear the others at once; hold **V** to talk (the first time, the browser asks for your
+  microphone; **Use my microphone** in the card does the same), or turn on **Always on**. Your
+  microphone sends only while you talk and stops when you leave the world. **Proximity** (on):
+  players sound from where they stand and fade out by 40 blocks. The card lists who is in the
+  voice chat, whether their voice connected (a network that blocks direct connections needs this
+  site's TURN server for voice), with **Mute**, and the volume. Voices go straight between the
+  games: Thunder's relay only introduces them.
 - **Thunder Friends settings**: the card's switch (off = you are offline to everyone), **Show me in
   On Thunder now**, **Show friends what I am playing** (and your open world: its code and who is
   in it), the pop-ups, one-click Join, and the chat key.
@@ -343,6 +351,13 @@ EaglercraftX's LAN framing on them. The browser half was never compiled in, and 
   (`thunder-relay/relay.js`) is one Durable Object per world code, holding everything in the
   WebSockets' attachments so it can sleep between messages; it only accepts the site's own pages
   (the `Origin` header), and a tunnel only with a token it handed out.
+- **Voice chat (Thunder relay only).** Each game in a world opened through the relay joins the
+  world's voice chat in the same Durable Object: `/relay?voice=<code>` (only while that world is
+  open there; at most 16 games) takes text messages: `{t:'hi', name}`, answered `{t:'room', you,
+  list: [{id, name}], ice}` (the others get `{t:'join', id, name}`), and `{t:'sig', to, d}`, passed
+  on as `{t:'sig', from, d}` (an offer or answer with its candidates; at most 16 KB a message and
+  120 messages a minute); `{t:'leave', id}` when someone goes. The audio is WebRTC between the
+  games (directly, or through the site's TURN server), so the relay only ever sees who is there.
 - **Thunder Friends hub** (`thunder-relay/social.js`): one Durable Object for everyone, reached at
   `/social` like the relay, holding accounts (id, name, tag, the password's salted hash), the
   devices logged in to each, friends, requests, blocks and waiting messages in its SQLite storage.

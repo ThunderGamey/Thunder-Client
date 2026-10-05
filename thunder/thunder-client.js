@@ -324,7 +324,10 @@
     freelook:true,freelookKey:'KeyX',freelookToggle:false,  // thunder-freelook.js
     syncSettings:true,       // thunder-sync.js: settings follow the Thunder Friends account
     cosmCape:'none',cosmWings:'none',cosmOthers:true,  // thunder-cosmetics.js: your cape and wings ("none" or a design)
-    partyFollow:true         // thunder-party.js: your game goes where your party's leader goes
+    partyFollow:true,        // thunder-party.js: your game goes where your party's leader goes
+    // thunder-voice.js: Voice Chat in friends' worlds (you hear others; your microphone only once
+    // you choose it: hold V, or Always on)
+    voice:true,voiceKey:'KeyV',voiceOpen:false,voiceProximity:true,voiceVolume:100
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -1761,6 +1764,9 @@
 
   // Parties: friends who play together and follow their leader, with a party chat
   // @include thunder-party.js
+
+  // Voice Chat: talk with the players in a friends' world, straight between the games
+  // @include thunder-voice.js
 
   // Chat Tools: name highlight, merged repeats, the time, Auto GG
   // @include thunder-chat.js

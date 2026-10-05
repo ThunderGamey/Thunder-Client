@@ -12,6 +12,9 @@
 //  - tunnel: when the two players still cannot connect directly (not even through TURN), each opens
 //    a second WebSocket (?tunnel=) and the Durable Object passes the game's bytes between the two,
 //    unchanged. Thunder only falls back to it after the direct connection had its chance.
+//  - voice: the players in a world open here meet in its voice chat (?voice=code, only while the
+//    world is open); the Durable Object tells them who else is in it and passes each pair's WebRTC
+//    offer and answer. The voices themselves go straight between the players' games.
 //
 // Deploy (once): Cloudflare dashboard > Workers & Pages > Create > Import a repository > this
 // repository, root directory thunder-relay; then in the Pages project > Settings > Bindings add a
@@ -27,6 +30,9 @@
 //   0x20 tunnel [id s8][token s16]: a friend asks for the tunnel (empty id and token); the relay
 //        answers both the friend and the host with the friend's id and a one-time token
 //   0x22 use the tunnel [id s8][s16]: the host has no WebRTC and asks the friend to use it
+// Voice chat (text, JSON): the game says {t:'hi', name}; it gets {t:'room', you, list: [{id, name}],
+// ice} and the others {t:'join', id, name}; {t:'sig', to, d} reaches that player as {t:'sig', from,
+// d}; {t:'leave', id} when someone goes.
 
 const CODE_CHARS = 'abcdefghijkmnpqrstuvwxyz23456789';     // no 0/o or 1/l to mix up
 const CODE_LEN = 6;                                         // the public relays use 5
@@ -34,6 +40,9 @@ const ID_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const MAX_FRIENDS = 32;                                     // friends in signalling at once, per world
 const MAX_PACKET = 65536;                                   // signalling packets (tunnels pass anything)
 const STUN = ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'];
+const MAX_VOICE = 16;                                       // players in a world's voice chat
+const MAX_VOICE_MSG = 16384;                                // one voice chat message (an offer)
+const VOICE_RATE = 120;                                     // voice chat messages a minute, per player
 
 const OWNER_DAYS = 180;                                      // how long an unused kept code stays reserved
 async function hashKey(key) {
@@ -111,9 +120,10 @@ export default {
       }
       return json({ error: 'no free code, try again' }, 503);
     }
-    const code = String(q.get('join') || q.get('tunnel') || '').toLowerCase();
+    const code = String(q.get('join') || q.get('tunnel') || q.get('voice') || '').toLowerCase();
     if (!/^[a-z0-9]{1,16}$/.test(code)) return json({ error: 'bad code' }, 400);
     if (q.has('join')) return room(env, code, request, { role: 'join' });
+    if (q.has('voice')) return room(env, code, request, { role: 'voice' });
     return room(env, code, request, {
       role: 'tunnel', peer: q.get('peer') || '', token: q.get('token') || '', side: q.get('side') === 'h' ? 'h' : 'f',
     });
@@ -154,7 +164,8 @@ function shut(ws, reason) { try { ws.close(1000, reason || 'bye'); } catch (e) {
 // ---- one world (code) ----
 // State lives in the sockets' attachments, so the object can hibernate between messages and wake
 // up with everything it needs: host {r:'h', code, hs, toks: {friend id: tunnel token}},
-// friend {r:'f', code, id, hs, done, tun}, tunnel end {r:'t', peer, side 'h'|'f', live}.
+// friend {r:'f', code, id, hs, done, tun}, tunnel end {r:'t', peer, side 'h'|'f', live},
+// voice chat {r:'v', id, name, hi, n, t} (n messages since t, for the rate limit).
 export class ThunderRelay {
   constructor(ctx, env) {
     this.ctx = ctx;
@@ -212,6 +223,14 @@ export class ThunderRelay {
       }
       att = { r: 't', peer, side, live: 0 };
       tags = ['t:' + peer];
+    } else if (role === 'voice') {
+      // the world's voice chat: only while the world is open here
+      const h = this.host();
+      const ha = h && h.deserializeAttachment();
+      if (!h || !ha || !ha.hs) return new Response('no world with that code', { status: 404 });
+      if (this.ctx.getWebSockets('v').length >= MAX_VOICE) return new Response('the voice chat is full', { status: 429 });
+      att = { r: 'v', id: rand(ID_CHARS, 12), name: '', hi: 0, n: 0, t: Date.now() };
+      tags = ['v', 'v:' + att.id];
     } else {
       return new Response('bad role', { status: 400 });
     }
@@ -225,6 +244,7 @@ export class ThunderRelay {
     const a = ws.deserializeAttachment();
     if (!a) return;
     if (a.r === 't') return this.fromTunnel(ws, a, msg);
+    if (a.r === 'v') return this.fromVoice(ws, a, msg);
     if (typeof msg === 'string') return;                    // keepalive text
     if (msg.byteLength > MAX_PACKET) return this.refuse(ws, 2, 'packet too large');
     let p;
@@ -331,6 +351,38 @@ export class ThunderRelay {
     for (const e of ends) if (e !== ws) send(e, msg);
   }
 
+  // voice chat: who is in it, and each pair's offer and answer (the voices go between the games)
+  fromVoice(ws, a, msg) {
+    if (typeof msg !== 'string' || msg.length > MAX_VOICE_MSG) return shut(ws, 'bad message');
+    const t = Date.now();
+    if (t - (a.t || 0) > 60000) { a.t = t; a.n = 0; }
+    a.n = (a.n || 0) + 1;
+    ws.serializeAttachment(a);
+    if (a.n > VOICE_RATE) return shut(ws, 'too many messages');
+    let m;
+    try { m = JSON.parse(msg); } catch (e) { return shut(ws, 'bad message'); }
+    if (!m || typeof m !== 'object') return;
+    const others = () => this.ctx.getWebSockets('v').filter((v) => {
+      const x = v !== ws && v.deserializeAttachment();
+      return x && x.hi && !x.gone;
+    });
+    if (m.t === 'hi') {
+      if (a.hi) return;
+      a.hi = 1;
+      a.name = String(m.name || '').replace(/[^A-Za-z0-9_]/g, '').slice(0, 16) || 'Player';
+      ws.serializeAttachment(a);
+      const list = others();
+      // (the newcomer hears who is there before anyone can send it an offer)
+      send(ws, JSON.stringify({ t: 'room', you: a.id, list: list.map((v) => { const x = v.deserializeAttachment(); return { id: x.id, name: x.name }; }), ice: STUN }));
+      for (const v of list) send(v, JSON.stringify({ t: 'join', id: a.id, name: a.name }));
+      return;
+    }
+    if (!a.hi || m.t !== 'sig' || !m.d || typeof m.d !== 'object') return;
+    const to = this.ctx.getWebSockets('v:' + String(m.to || ''))[0];
+    const x = to && to !== ws && to.deserializeAttachment();
+    if (x && x.hi && !x.gone) send(to, JSON.stringify({ t: 'sig', from: a.id, d: m.d }));
+  }
+
   async webSocketClose(ws) { this.gone(ws); }
 
   async webSocketError(ws) { this.gone(ws); }
@@ -348,6 +400,8 @@ export class ThunderRelay {
       if (h && a.hs && !a.done && !a.tun) send(h, donePkt(a.id, 2, 'Client disconnected'));
     } else if (a.r === 't') {
       for (const e of this.ctx.getWebSockets('t:' + a.peer)) if (e !== ws) shut(e, 'the other end left');
+    } else if (a.r === 'v' && a.hi) {
+      for (const v of this.ctx.getWebSockets('v')) if (v !== ws) send(v, JSON.stringify({ t: 'leave', id: a.id }));
     }
     shut(ws);
   }
