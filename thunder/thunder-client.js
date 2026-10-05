@@ -321,7 +321,8 @@
     socialOn:true,socialListed:true,socialShare:true,socialToasts:true,socialOnlineToasts:true,socialKey:'KeyO',socialQuickJoin:true,
     // thunder-chat.js: Chat Tools (the time before lines and Auto GG only when switched on)
     chatTools:true,chatMention:true,chatMentionSound:true,chatMerge:true,chatTime:false,autoGG:false,
-    freelook:true,freelookKey:'KeyX',freelookToggle:false   // thunder-freelook.js
+    freelook:true,freelookKey:'KeyX',freelookToggle:false,  // thunder-freelook.js
+    syncSettings:true        // thunder-sync.js: settings follow the Thunder Friends account
   };
   var S={},k;
   for(k in DEFAULTS)S[k]=DEFAULTS[k];
@@ -1755,6 +1756,9 @@
 
   // World Backup: all singleplayer worlds and settings in one file, and repair of cut-off saves
   // @include thunder-backup.js
+
+  // Settings Sync: Thunder's and the game's settings follow your Thunder Friends account
+  // @include thunder-sync.js
 
   // Title screen: animated Thunder storm background with mouse parallax, and the Thunder logo
   // @include thunder-title.js

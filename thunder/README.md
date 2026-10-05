@@ -102,6 +102,31 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   /say three times merged into "(x3)", the time on each line, Auto GG answering
   `/say Winner: Steve` with gg, the text box saving its text; unit tests for the name rules (15
   lines) and the game-over rules (17 lines).
+- `thunder-sync.js` - Settings Sync (Friends, on): while signed in to Thunder Friends, settings
+  follow the account. Each setting is a key and a value: `s.<id>` (Thunder's settings as JSON,
+  except `sh*`, `shaders`, `clearLeaves`, `titleQuality`, `socialOn` and `syncSettings`),
+  `g.<option>` (the game's options that are about the player: key bindings, sensitivity, FOV,
+  sounds, chat, skin layers...; never video options, language or packs), `h.<widget>` (HUD
+  layout), `w.mp:<server>@<dim>` (server waypoints), `x.autogg`, `x.servers` (the game's server
+  list). Every two seconds the current values are hashed and compared with the last synced ones
+  (`thunderSync_v1` keeps per key the time and hash); a change gets the hub's time and is sent once
+  changes rest for 1.5 s. Per key the newest wins, here and on the hub (`thunder-relay/social.js`).
+  The first sign-in of a browser to an account takes the account's settings. A Thunder setting is
+  checked against its default's type (and its slider's or choice's range) and its option's
+  `onChange` runs; game options are written into the saved options (`_eaglercraft_1.12.g`) and the
+  game reads them again on its own thread (`GameSettings.loadOptions`, which also refreshes the key
+  bindings); a HUD box while the HUD editor is open and the server list while the Multiplayer
+  screen is open wait until it closes, and are dropped if they were changed there meanwhile (that
+  change is newer). Tested with two browsers on one account and a scripted third device:
+  a first sign-in took the account's settings (zoom key, zoom level, sensitivity 0.8 in the
+  running game, jump key), a change on one browser reached the other in 3.5 s, HUD positions,
+  server waypoints and the Auto GG text came through, invalid values were refused and repaired
+  from the browsers, a HUD change during editing waited (and lost to a reset made in the editor),
+  changes made offline won or lost by time per key, the switch stopped and resumed syncing, a
+  server added on one browser showed in the other's Multiplayer list (and a deletion waited while
+  that list was open), reloads sent nothing, and signing in to another account brought that
+  account's settings back. Hub: 18 protocol checks (newest wins, pushes, privacy between accounts,
+  frame and size limits).
 - `thunder-backup.js` - World Backup (Utility). Save backup reads every world in the game's
   `worlds_list.txt` straight from its IndexedDB store (`..._PlatformFilesystem_1_12_2_`, records
   `{path, data}` keyed by `[path]`) and downloads one `.thunderbackup` file: gzip of

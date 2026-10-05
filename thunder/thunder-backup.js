@@ -29,7 +29,7 @@
   var BK_DB='_net_lax1dude_eaglercraft_v1_8_internal_PlatformFilesystem_1_12_2_',BK_STORE='filesystem';
   var BK_WORLDS='eaglercraft/worlds/',BK_LIST='worlds_list.txt',BK_MAGIC='THUNDERBKP1\n',BK_AT='thunderBackupAt';
   var BK_GAME=/^_eaglercraft_1\.12\.[gps]$/,BK_SERVERS='_eaglercraft_1.12.s';
-  var BK_SKIP=/^thunder(?:Social_v1|SocialChats_v1|Offline|BuiltinPacks|Pack121On|BackupAt|WorldCodes_v1|AlwaysOpen_v1|LanIce|LanRelays|LanSiteRelay|ShaderAuto_v1|ClientSettings_v3)/;
+  var BK_SKIP=/^thunder(?:Social_v1|SocialChats_v1|Offline|BuiltinPacks|Pack121On|BackupAt|WorldCodes_v1|AlwaysOpen_v1|LanIce|LanRelays|LanSiteRelay|ShaderAuto_v1|ClientSettings_v3|Sync_v1)/;
   function bkKeyOk(k){return typeof k==='string'&&(BK_GAME.test(k)||(/^thunder/.test(k)&&!BK_SKIP.test(k)));}
   var BK={busy:false,state:'',msg:'',pending:null,rescued:[],rescueAt:-1e9,want:false,boot:false,lastScr:null,done:false};
 

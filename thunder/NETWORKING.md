@@ -132,6 +132,16 @@ Thunder relay (see below): nothing else to set up.
 - **Thunder Friends settings**: the card's switch (off = you are offline to everyone), **Show me in
   On Thunder now**, **Show friends what I am playing** (and your open world: its code and who is
   in it), the pop-ups, one-click Join, and the chat key.
+- **Settings Sync** (on by default): your settings follow your account. Sign in on another
+  computer and Thunder's settings (every module, option and key), the HUD layout, the Auto GG
+  text, waypoints on servers, the server list and the game's own options that are about you (key
+  bindings, mouse sensitivity, FOV, sounds, chat, skin layers, main hand, auto-jump) are the same
+  there; a change on one computer reaches the others that are open within a few seconds. Shaders,
+  See-through Leaves, the title screen quality and the game's video options (render distance,
+  graphics, VSync, GUI scale, language, resource packs) stay per computer. The first time a
+  computer signs in to an account, the account's settings replace the ones there (what the
+  account does not have yet is added to it); after that, per setting, the newest change wins,
+  also for changes made while offline. The card shows when it last synced.
 
 The password never leaves the browser: it is turned into a key first (PBKDF2-SHA256, 100000
 rounds, salted with the account's name), and the hub keeps only a salted SHA-256 of that key. Each
@@ -333,6 +343,14 @@ EaglercraftX's LAN framing on them. The browser half was never compiled in, and 
   connection drops. A keepalive left unanswered for 30 s means the connection died without closing
   (a network change, a laptop waking up), so the game drops it and connects again, and so does a
   sign-in the hub has not answered within 20 s. Only the site's own pages may connect (`Origin`).
+  Settings Sync uses the same connection: `welcome` carries the account's settings as
+  `[key, value, when]` (keys like `s.zoomKey`, `g.key_key.jump`, `h.fps`, `w.mp:<server>@0`,
+  `x.servers`), a device sends what it changed as `sync {set}` (frames of up to 16 KB; values of at
+  most 12000 characters), and the hub keeps the newest per key (a time more than a minute ahead
+  of its clock counts as now; at most 800 keys and 400 KB per account), sends it to the account's
+  other open devices, and sends back what it has that is newer. `syncget` asks for all of them
+  again (`syncall`). Only the account itself gets its settings. The browser keeps, per key, only
+  when it last changed and a short hash (`localStorage.thunderSync_v1`).
 - **Host:** each friend's data channel is bridged to a player channel on the host's server
   Worker. Bytes pass through unchanged both ways; the Worker already frames and compresses them.
 - **Friend:** the game's own singleplayer connecting screen and login run as usual; the local

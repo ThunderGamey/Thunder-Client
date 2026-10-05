@@ -213,6 +213,7 @@
         if(SO.ws!==ws)return;
         SO.ws=null;
         soUnsure();
+        syStop();
         SO.authBusy=SO.acctBusy=false;
         if(SO.reset){
           // signed out (logged out here, or a new password on another device): this browser
@@ -359,6 +360,7 @@
         if(last)soSend({t:'ack',n:last});
         soSet('on','');
         soLog('signed in as '+soTagged(SO.me));
+        syWelcome(m.sync);       // settings that follow the account (thunder-sync.js)
         if(mail.length&&S.socialToasts)soToast({kind:'msg',title:mail.length===1?mail[0].from.name:mail.length+' messages',
           text:mail.length===1?mail[0].text:'from '+Object.keys(who).join(', ')+' while you were away',id:mail.length===1?mail[0].from.id:''});
         if(SO.reqIn.length&&S.socialToasts)soToast({kind:'req',title:'Friend requests',text:SO.reqIn.length+' waiting in Right Shift \u2192 Friends'});
@@ -413,6 +415,8 @@
         for(i=l.length-1;i>=0;i--)if(l[i].id===m.id&&l[i].w==='out'){l[i].st=m.stored?'waiting':'sent';break;}
         SO.cver++;soSaveChats();soChanged();return;
       }
+      case 'sync':syRemote(m.set);return;
+      case 'syncall':syWelcome(m.sync);soChanged();return;
       case 'invite':
         soAdd(m.from.id,{w:'sys',text:m.from.name+' invited you to their world.',at:m.at,code:m.code});
         if(S.socialToasts)soToast({kind:'invite',title:m.from.name,text:'invited you to their world',code:m.code,id:m.from.id});
@@ -426,6 +430,7 @@
         }
         if(m.op==='auth'){SO.authBusy=false;SO.authMsg=m.why;SO.authOk=false;soChanged();return;}
         if(m.op==='passwd'){SO.acctBusy=false;SO.acctMsg=m.why;SO.acctOk=false;soChanged();return;}
+        if(m.op==='sync'){SY.msg=m.why;soChanged();return;}
         if(m.op==='add'){SO.addMsg=m.why;SO.addOk=false;soChanged();return;}
         if((m.op==='msg'||m.op==='invite')&&m.to){
           // the message it is about (by its id; else the newest one still sending)

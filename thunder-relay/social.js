@@ -28,20 +28,34 @@
 // Messages to a friend who is offline wait here (at most 100 per player, 30 days) until they come
 // online and are deleted once delivered.
 //
+// Settings that follow an account: a signed-in device sends the settings it changed as
+// [key, value, when] (key like "s.zoomKey", value a string of at most 12000 characters); per key
+// the newest is kept (a time more than a minute ahead of the hub's clock counts as now), at most
+// 800 keys and 400 KB per account. A device gets them all in welcome, and a change from one device
+// is sent to the account's other open devices; one that is older than what is kept goes back to
+// the sender. Only the account itself ever gets them.
+//
 // Protocol (JSON text frames; "ping" is answered "pong" without waking the object):
 //   client -> hub: hello {key, name, hide, share, s}, then (a device not signed in, told "auth")
 //     register {name, pw} | login {name, pw}; signed in: passwd {old, pw} | logout
 //     | status {s} | hide {v} | share {v}
 //     | online | add {who} | accept {id} | decline {id} | cancel {id} | remove {id} | block {id}
-//     | unblock {id} | msg {to, text, id} | invite {to, code} | ack {n}
+//     | unblock {id} | msg {to, text, id} | invite {to, code} | ack {n} | sync {set: [[key, value, when]]}
+//     | syncget (the account's settings again: syncall {sync})
 //   s (what a player is doing): {w: menu | sp | server (server) | join (host: whose world)
 //     | host (code, or lock: friends need the code; players: who joined)}
-//   hub -> client: auth | welcome | pwok | presence | request | friend | unfriend | reqgone
-//     | blocked | online | added | msg | msgout | sent | invite | err
+//   hub -> client: auth | welcome (with sync: [[key, value, when]]) | pwok | presence | request
+//     | friend | unfriend | reqgone | blocked | online | added | msg | msgout | sent | invite
+//     | sync {set} | syncall {sync} | err
 //   a friend (welcome, presence, friend): {id, name, tag, online, s, seen (offline: when they were
 //     last online)}
 
 const MAX_FRAME = 4096;          // bytes in one message from a client
+const MAX_SYNC_FRAME = 16384;    // ...a sync message (a device sends its changed settings a few at a time)
+const SYNC_VAL = 12000;          // characters in one synced setting
+const SYNC_KEYS = 800;           // synced settings per account
+const SYNC_BYTES = 400000;       // all of an account's synced settings together
+const SYNC_KEY_RE = /^[a-z]\.[A-Za-z0-9_.:@,\/\-]{1,160}$/;
 const MAX_TEXT = 300;            // characters in a chat message
 const MAX_FRIENDS = 300;
 const MAX_OUT = 30;              // friend requests one player has waiting
@@ -124,6 +138,8 @@ export class ThunderSocial {
     q('CREATE TABLE IF NOT EXISTS claim (lname TEXT PRIMARY KEY, aid TEXT NOT NULL UNIQUE, name TEXT NOT NULL, salt TEXT NOT NULL, hash TEXT NOT NULL, at INTEGER NOT NULL, fails INTEGER NOT NULL DEFAULT 0, failat INTEGER NOT NULL DEFAULT 0)');
     q('CREATE TABLE IF NOT EXISTS dev (did TEXT PRIMARY KEY, aid TEXT NOT NULL, at INTEGER NOT NULL)');
     q('CREATE INDEX IF NOT EXISTS dev_aid ON dev (aid)');
+    // settings that follow an account: key, value and when it was changed
+    q('CREATE TABLE IF NOT EXISTS sync (aid TEXT NOT NULL, k TEXT NOT NULL, v TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (aid, k))');
   }
   rows(s, ...b) { return this.sql.exec(s, ...b).toArray(); }
   one(s, ...b) { const r = this.rows(s, ...b); return r.length ? r[0] : null; }
@@ -199,7 +215,7 @@ export class ThunderSocial {
 
   async webSocketMessage(ws, msg) {
     this.idx = null;
-    if (typeof msg !== 'string' || msg.length > MAX_FRAME) return this.bye(ws, 'bad message');
+    if (typeof msg !== 'string' || msg.length > (msg.startsWith('{"t":"sync"') ? MAX_SYNC_FRAME : MAX_FRAME)) return this.bye(ws, 'bad message');
     let m;
     try { m = JSON.parse(msg); } catch (e) { return this.bye(ws, 'bad message'); }
     if (!m || typeof m !== 'object' || typeof m.t !== 'string') return;
@@ -233,6 +249,8 @@ export class ThunderSocial {
       case 'unblock': return this.unblock(ws, me, String(m.id || ''));
       case 'msg': return this.message(ws, a, m);
       case 'invite': return this.invite(ws, a, m);
+      case 'sync': return this.sync(ws, a, m);
+      case 'syncget': return sendTo(ws, { t: 'syncall', sync: this.syncOf(me) });
       case 'ack': {
         const n = Number(m.n);
         if (Number.isFinite(n)) this.sql.exec('DELETE FROM mail WHERE too = ? AND n <= ?', me, n);
@@ -283,8 +301,35 @@ export class ThunderSocial {
     const blocked = this.rows('SELECT a.id, a.name, a.tag FROM block b JOIN acct a ON a.id = b.b WHERE b.a = ?', aid);
     const mail = this.rows('SELECT m.n, m.frm AS id, a.name, a.tag, m.text, m.at FROM mail m LEFT JOIN acct a ON a.id = m.frm WHERE m.too = ? ORDER BY m.n LIMIT 200', aid)
       .map((r) => ({ n: r.n, from: { id: r.id, name: r.name || 'Player', tag: r.tag || '0000' }, text: r.text, at: r.at }));
-    sendTo(ws, { t: 'welcome', me: { id: aid, name, tag, hidden: !!hidden }, friends, reqIn, reqOut, blocked, mail, now });
+    sendTo(ws, { t: 'welcome', me: { id: aid, name, tag, hidden: !!hidden }, friends, reqIn, reqOut, blocked, mail, sync: this.syncOf(aid), now });
     if (!wasOnline || hi.s) this.tellFriends(aid);
+  }
+
+  syncOf(aid) { return this.rows('SELECT k, v, at FROM sync WHERE aid = ?', aid).map((r) => [r.k, r.v, r.at]); }
+  // settings this device changed: per key the newest is kept and sent to the account's other open
+  // devices; a key where the hub has something newer gets that back
+  sync(ws, a, m) {
+    const set = Array.isArray(m.set) ? m.set.slice(0, 300) : [];
+    const now = Date.now(), took = [], back = [];
+    const have = this.one('SELECT COUNT(*) AS n, COALESCE(SUM(LENGTH(v)), 0) AS b FROM sync WHERE aid = ?', a.id);
+    let n = have ? have.n : 0, bytes = have ? have.b : 0, full = false;
+    for (const it of set) {
+      if (!Array.isArray(it) || it.length !== 3) continue;
+      const k = it[0], v = it[1];
+      let at = Number(it[2]);
+      if (typeof k !== 'string' || !SYNC_KEY_RE.test(k) || typeof v !== 'string' || v.length > SYNC_VAL || !Number.isFinite(at) || at <= 0) continue;
+      at = Math.floor(at > now + 60000 ? now : at);      // (a device whose clock is ahead)
+      const cur = this.one('SELECT v, at FROM sync WHERE aid = ? AND k = ?', a.id, k);
+      if (cur && cur.at >= at) { if (cur.v !== v) back.push([k, cur.v, cur.at]); continue; }
+      const nn = n + (cur ? 0 : 1), nb = bytes - (cur ? cur.v.length : 0) + v.length;
+      if (nn > SYNC_KEYS || nb > SYNC_BYTES) { full = true; continue; }
+      this.sql.exec('INSERT INTO sync (aid, k, v, at) VALUES (?, ?, ?, ?) ON CONFLICT(aid, k) DO UPDATE SET v = excluded.v, at = excluded.at', a.id, k, v, at);
+      n = nn; bytes = nb;
+      took.push([k, v, at]);
+    }
+    if (took.length) this.push(a.id, { t: 'sync', set: took }, ws);
+    if (back.length) sendTo(ws, { t: 'sync', set: back });
+    if (full) sendTo(ws, { t: 'err', op: 'sync', why: 'Your account has no room for more settings (800 or 400 KB); the newest changes stay on this device.' });
   }
 
   // a new account with this device's name and password (the account takes the device's id)
