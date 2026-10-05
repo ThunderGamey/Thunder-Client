@@ -59726,21 +59726,29 @@ c.PK;})();
      - Your picks go to the Thunder Friends hub with your in-game name (while you are signed in).
        Thunder asks the hub for the cosmetics of the players around you, by in-game name (each
        name again after a few minutes), and draws them. Players on other clients see you as usual.
-     - The designs are painted here, pixel by pixel, into 64x32 game textures (DynamicTexture):
-       a cape's outside and inside, plus the elytra part of a cape texture (so a caped player's
-       real elytra match the cape), and wings on the elytra part of their own texture.
+     - The designs are painted here, pixel by pixel, into game textures (DynamicTexture): a cape's
+       outside and inside in a 32x32 texture (this Eaglercraft draws capes with the texture
+       stretched twice as wide, ModelPlayer.renderCape, so a cape texture is 32 pixels across),
+       and wings on the elytra part of a 64x32 texture (one per wings design, and one per cape in
+       its colours).
      - Capes: AbstractClientPlayer.getLocationCape gives the Thunder cape for a player who has one,
        so the game's own cape layer draws it (only when that player shows their cape, like any
-       cape, and never on invisible players).
+       cape, and never on invisible players or over an elytra).
      - Wings: while LayerElytra.doRenderLayer runs for a player with Thunder wings who wears no
-       elytra and is not invisible, the elytra model is drawn first with the wing texture, set a
-       little wider than folded and slowly beating; then the game's own elytra layer runs as usual.
+       elytra and is not invisible, the elytra model is drawn first with the wing texture; then the
+       game's own elytra layer runs as usual. ModelElytra.setRotationAngles, after the game's own
+       pose, spreads the wings of a player with Thunder wings out from the back like a bird's,
+       slowly beating, and blends back to the game's pose as the player glides with an elytra.
+     - A real elytra: AbstractClientPlayer.getLocationElytra (which this Eaglercraft leaves empty)
+       gives the player's Thunder wings (and so the spread pose while not gliding), else the
+       elytra in their Thunder cape's colours.
 
      Game classes and functions it uses:
      @hook DQF net.minecraft.client.entity.AbstractClientPlayer.getLocationCape
+     @hook Dv7 net.minecraft.client.entity.AbstractClientPlayer.getLocationElytra
      @hook EDX net.minecraft.client.renderer.entity.layers.LayerElytra.doRenderLayer
      @use FTb net.minecraft.client.renderer.entity.Render.bindTexture
-     @use DqG net.minecraft.client.model.ModelElytra.setRotationAngles
+     @hook DqG net.minecraft.client.model.ModelElytra.setRotationAngles
      @use Dju net.minecraft.client.model.ModelElytra.render
      @use DfI net.minecraft.entity.Entity.isInvisible
      @class Vh net.minecraft.client.entity.AbstractClientPlayer
@@ -59755,7 +59763,7 @@ c.PK;})();
      @field bX net.minecraft.client.model.ModelElytra.setRotationAngles ModelRenderer.rotateAngleZ
      @field ckw net.minecraft.client.renderer.entity.layers.LayerElytra.doRenderLayer LayerElytra.modelElytra
      @field bcC net.minecraft.client.renderer.entity.layers.LayerElytra.doRenderLayer LayerElytra.renderPlayer
-     (GlStateManager color CFi, pushMatrix Eu0, popMatrix ECi, translate DPm, ItemStack.getItem C51,
+     (GlStateManager color CFi, pushMatrix Eu0, popMatrix ECi, translate DPm, scale FWK, ItemStack.getItem C51,
      getItemStackFromSlot yE, EntityEquipmentSlot.CHEST HIj, DynamicTexture YW (its constructor Fl7, data
      a45, updateDynamicTexture Egf), TextureManager.getDynamicTextureLocation EpG,
      Minecraft.renderEngine bH, World.playerEntities e4 and ArrayList EH / Bm are declared elsewhere.)
@@ -59782,7 +59790,7 @@ c.PK;})();
   var COS_BOLT=['..........','......##..','.....###..','....###...','...###....','..#######.','.#######..','....###...',
     '...###....','..###.....','..##......','.##.......','.#........','..........','..........','..........'];
 
-  // ---- painting: 64x32 ARGB pixels in the game's cape and elytra layout ----
+  // ---- painting: ARGB pixels in the game's cape (32x32) and elytra (64x32) layouts ----
   function cosMix(a,b,t){
     t=t<0?0:t>1?1:t;
     return (Math.round((a>>16&255)+((b>>16&255)-(a>>16&255))*t)<<16)|(Math.round((a>>8&255)+((b>>8&255)-(a>>8&255))*t)<<8)|
@@ -59798,36 +59806,49 @@ c.PK;})();
     }
     return false;
   }
-  // a wing face (10 wide, 20 tall): null where the feathers end
+  // a wing face, 10 across and 20 from the shoulder (row 0) to the tip: null (see-through) past
+  // its outline, so the wing has a wing's shape: long feathers along the front edge (column 0)
+  // getting shorter towards the back, each feather's tip apart from the next; a dragon wing is
+  // a membrane between three bones, scalloped between them
+  var COS_FEATHER=[20,18,19,17,17,15,16,14,14,12],COS_MEMBRANE=[20,18,16,17,19,16,14,15,17,13];
   function cosWingPx(w,x,y){
-    var f=x>>1,len=[17,19,20,19,16][f];
+    var len=(w.membrane?COS_MEMBRANE:COS_FEATHER)[x];
     if(y>=len)return null;
     var c=cosMix(w.base[0],w.base[1],y/19);
-    if(w.membrane){if(x===0||x===4||x===8)c=w.gap;else if(y>=len-2)c=w.tip;}
-    else{
-      if(y>=9&&(x&1)===1)c=cosMix(c,w.gap,0.55);         // the feathers part
+    if(w.membrane){
+      if(x===0||x===4||x===8)c=cosMix(w.gap,w.tip,y/40);           // the bones
+      else if(y>=len-2)c=cosMix(c,w.tip,0.6);
+    }else{
+      if(y>=7&&(x&1)===1)c=cosMix(c,w.gap,0.5);                     // one long feather and the next
       if(y>=len-2)c=w.tip;
-      if(y<9&&cosHash(x,y)%5===0)c=cosMix(c,w.tip,0.3);  // small feathers on top
+      if(y<7&&cosHash(x,y)%4===0)c=cosMix(c,w.tip,0.35);            // small feathers at the shoulder
+      if(x===0&&y<len-2)c=cosMix(c,w.tip,0.25);                    // the front edge, lighter
     }
     return c;
   }
-  // the elytra part of a texture: each wing's outside (36,2), inside (24,2) and edges
+  // the elytra part of a texture: each wing's outside (36,2), inside (24,2) and edges. In box
+  // terms (ModelBox) the outside face has column 0 at the box's +x edge and the inside face at its
+  // -x edge, so the inside is painted mirrored and both have the same outline. With the wings
+  // spread, the +x edge is the front edge of the wing (the edge face at 34) and -x the back (22).
   function cosPaintWings(img,w){
     var x,y,c;
     for(y=0;y<20;y++)for(x=0;x<10;x++){
       c=cosWingPx(w,x,y);
       if(c===null)continue;
       img[(2+y)*64+36+x]=cosOpaque(c);
-      img[(2+y)*64+24+x]=cosOpaque(cosMix(c,0,0.25));
+      img[(2+y)*64+24+(9-x)]=cosOpaque(cosMix(c,0,0.25));
     }
-    for(x=0;x<10;x++)for(y=0;y<2;y++){img[y*64+24+x]=cosOpaque(w.gap);img[y*64+34+x]=cosOpaque(w.gap);}
+    // (the shoulder end is closed; the tip end stays see-through, as the feathers end unevenly)
+    for(x=0;x<10;x++)for(y=0;y<2;y++)img[y*64+24+x]=cosOpaque(w.gap);
     for(y=0;y<20;y++)for(x=0;x<2;x++){
-      if(cosWingPx(w,x*9,y)!==null)img[(2+y)*64+22+x]=cosOpaque(w.gap);
-      if(cosWingPx(w,9-x*9,y)!==null)img[(2+y)*64+34+x]=cosOpaque(w.gap);
+      if(cosWingPx(w,0,y)!==null)img[(2+y)*64+34+x]=cosOpaque(w.gap);
+      if(cosWingPx(w,9,y)!==null)img[(2+y)*64+22+x]=cosOpaque(w.gap);
     }
   }
+  // a cape: outside (1,1) and inside (12,1), 10x16 each, with its edges, 32 pixels across
+  var COS_CW=32;
   function cosPaintCape(d){
-    var img=new Int32Array(64*32),x,y,c;
+    var img=new Int32Array(COS_CW*32),x,y,c,W2=COS_CW;
     for(y=0;y<16;y++)for(x=0;x<10;x++){
       c=cosMix(d.bg[0],d.bg[1],y/15);
       if(d.extra==='stars'&&cosHash(x,y)%9===0)c=cosHash(y,x)%2?0xffffff:0xffc8f0;
@@ -59835,14 +59856,15 @@ c.PK;})();
       if(x===0||x===9||y===15)c=d.edge;
       if(COS_BOLT[y].charAt(x)==='#')c=d.bolt;
       else if(cosBoltEdge(x,y))c=d.boltEdge;
-      img[(1+y)*64+1+x]=cosOpaque(c);                                         // outside
-      img[(1+y)*64+12+x]=cosOpaque(cosMix(cosMix(d.bg[0],d.bg[1],y/15),0,0.35));  // inside
+      img[(1+y)*W2+1+x]=cosOpaque(c);                                         // outside
+      img[(1+y)*W2+12+x]=cosOpaque(cosMix(cosMix(d.bg[0],d.bg[1],y/15),0,0.35));  // inside
     }
     for(x=0;x<10;x++){img[1+x]=cosOpaque(d.edge);img[11+x]=cosOpaque(d.edge);}
-    for(y=0;y<16;y++){img[(1+y)*64]=cosOpaque(d.edge);img[(1+y)*64+11]=cosOpaque(d.edge);}
-    cosPaintWings(img,{base:d.bg,tip:d.edge,gap:cosMix(d.bg[0],0,0.4)});
+    for(y=0;y<16;y++){img[(1+y)*W2]=cosOpaque(d.edge);img[(1+y)*W2+11]=cosOpaque(d.edge);}
     return img;
   }
+  // an elytra in a cape's colours
+  function cosPaintCapeEl(d){var img=new Int32Array(64*32);cosPaintWings(img,{base:d.bg,tip:d.edge,gap:cosMix(d.bg[0],0,0.4)});return img;}
   function cosPaintWingTex(w){var img=new Int32Array(64*32);cosPaintWings(img,w);return img;}
 
   // ---- the game textures, made on the game thread the first time they are drawn ----
@@ -59853,14 +59875,16 @@ c.PK;})();
     return o;
   }
   var COS_TEX={};
+  // kind: cape (32x32), capeel (an elytra in a cape's colours) or wings (64x32)
   function cosTex(kind,id){
     var k=kind+':'+id,t=COS_TEX[k];
     if(t)return t.loc;
-    var d=cosFind(kind==='cape'?COS_CAPES:COS_WINGS,id);
+    var d=cosFind(kind==='wings'?COS_WINGS:COS_CAPES,id);
     if(!d||!HEN||!HEN.bH)return null;
-    t=COS_TEX[k]={loc:null,tex:null,px:kind==='cape'?cosPaintCape(d):cosPaintWingTex(d)};
+    var w=kind==='cape'?COS_CW:64;
+    t=COS_TEX[k]={loc:null,tex:null,px:kind==='cape'?cosPaintCape(d):kind==='capeel'?cosPaintCapeEl(d):cosPaintWingTex(d)};
     runOnGame([
-      function(){if(!t.tex)t.tex=new YW();Fl7(t.tex,64,32);},
+      function(){if(!t.tex)t.tex=new YW();Fl7(t.tex,w,32);},
       function(){t.tex.a45.data.set(cosABGR(t.px));Egf(t.tex);},
       function(){var l=EpG(HEN.bH,$rt_str('thunder_'+kind+'_'+id),t.tex);if(!$rt_suspending())t.loc=l;}
     ]);
@@ -59936,12 +59960,43 @@ c.PK;})();
     }
     return origDQF(a);
   };
-  // wings a little wider than folded, slowly beating (t: the player's age in ticks)
-  function cosSpread(m,t){
-    var L=m.bo4,R=m.bFn,b=Math.sin(t*0.11)*0.07;
-    L.A=0.42+b*0.4;L.bb=0.1;L.bX=-0.62-b;L.cD=5;
+  // a real elytra: drawn with the player's Thunder wings, else in their Thunder cape's colours
+  var origDv7=Dv7;
+  Dv7=function(a){
+    if(!$rt_resuming()){
+      var c=cosOf(a),l=null;
+      if(c&&c.wings&&c.wings!=='none')l=cosTex('wings',c.wings);
+      else if(c&&c.cape&&c.cape!=='none')l=cosTex('capeel',c.cape);
+      if(l)return l;
+    }
+    return origDv7(a);
+  };
+  // Thunder wings spread up and out from the back like a bird's, slowly beating (t: the player's
+  // age in ticks). rotateAngleX A tilts them back, rotateAngleY bb sweeps them back and
+  // rotateAngleZ bX opens them out: -pi/2 is straight out to the side, as the game's own pose when
+  // gliding, and beyond that they rise. The game's pose (standing: -0.26; gliding: -pi/2) says how
+  // far into gliding the player is, and the spread blends into it.
+  var COS_POSE={x:0.3,y:0.35,z:-2.0,flap:0.16,speed:0.12,scale:1.3};
+  function cosPose(m,p,t){
+    var o=cosOf(p);
+    if(!o||!o.wings||o.wings==='none')return;
+    var L=m.bo4,R=m.bFn,P=COS_POSE,b=Math.sin(t*P.speed)*P.flap;
+    var k=Math.max(0,Math.min(1,(-L.bX-0.27)/1.3)),x=P.x,y=P.y+b*0.5,z=P.z-b;
+    L.A=x+(L.A-x)*k;L.bb=y+(L.bb-y)*k;L.bX=z+(L.bX-z)*k;L.cD=5;
     R.A=L.A;R.bb=-L.bb;R.bX=-L.bX;R.cD=-5;
   }
+  // ModelElytra.setRotationAngles(limbSwing, amount, ageInTicks, headYaw, headPitch, scale,
+  // entity): the game's pose first (it may pause the game thread: carried on when it resumes)
+  var origDqG=DqG;
+  DqG=function(a,b,c,d,e,f,g,h){
+    var st=0;
+    if($rt_resuming())st=$rt_nativeThread().pop();
+    if(st===0){
+      origDqG(a,b,c,d,e,f,g,h);
+      if($rt_suspending()){$rt_nativeThread().push(0);return;}
+    }
+    cosPose(a,h,d);
+  };
   var origEDX=EDX;
   EDX=function(a,b,c,d,e,f,g,h,i){
     var st,w;
@@ -59960,9 +60015,10 @@ c.PK;})();
         case 5:FTb(a.bcC,w.loc);break;
         case 6:Eu0();break;
         case 7:DPm(0.0,0.0,0.125);break;
-        case 8:DqG(a.ckw,c,d,f,g,h,i,b);break;
-        case 9:cosSpread(a.ckw,f);Dju(a.ckw,b,c,d,f,g,h,i);break;
-        case 10:ECi();st=19;break;
+        case 8:FWK(COS_POSE.scale,COS_POSE.scale,COS_POSE.scale);break;   // bigger than an elytra
+        case 9:DqG(a.ckw,c,d,f,g,h,i,b);break;
+        case 10:Dju(a.ckw,b,c,d,f,g,h,i);break;
+        case 11:ECi();st=19;break;
         case 20:origEDX(a,b,c,d,e,f,g,h,i);break;
       }
       if($rt_suspending()){$rt_nativeThread().push(w);$rt_nativeThread().push(st);return;}
@@ -59980,7 +60036,7 @@ c.PK;})();
     if(!ctx)return cv;
     var px=cape?cosPaintCape(d):cosPaintWingTex(d),x,y,c;
     for(y=0;y<h;y++)for(x=0;x<w;x++){
-      if(cape)c=px[(1+y)*64+1+x];
+      if(cape)c=px[(1+y)*COS_CW+1+x];
       else c=px[(2+y)*64+36+(x<10?9-x:x-10)];
       if(!(c>>>24))continue;
       ctx.fillStyle='rgb('+(c>>16&255)+','+(c>>8&255)+','+(c&255)+')';
@@ -60023,7 +60079,7 @@ c.PK;})();
       desc:'Thunder wings, free, slowly beating on your back. Everyone on Thunder Client sees them. They hide while you wear an elytra or are invisible.'},
     {cat:'cosmetics',id:'cosmOthers',name:'Show other players\' cosmetics',
       desc:'Draw the Thunder capes and wings of the other Thunder players around you.'});
-  TC.cosmetics={cache:COS.cache,capes:COS_CAPES.map(function(d){return d.id;}),wings:COS_WINGS.map(function(d){return d.id;}),
+  TC.cosmetics={cache:COS.cache,pose:COS_POSE,capes:COS_CAPES.map(function(d){return d.id;}),wings:COS_WINGS.map(function(d){return d.id;}),
     tex:function(k,id){return !!cosTex(k,id);},of:function(p){return cosOf(p);},paintCape:function(id){return cosPaintCape(cosFind(COS_CAPES,id));}};
 
   // Title screen: animated Thunder storm background with mouse parallax, and the Thunder logo
