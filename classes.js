@@ -49521,7 +49521,7 @@ c.PK;})();
     fastXp:false,menuSfx:true,modernSwim:true,
     // thunder-minimap.js: minimap (size in px, zoom in px per block, 0 top right / 1 top left)
     // minimap off by default for the best FPS (it reads chunks every frame)
-    minimap:false,minimapSize:130,minimapZoom:2,minimapCorner:0,minimapRound:false,minimapCoords:true,worldMap:true,
+    minimap:false,minimapSize:130,minimapZoom:2,minimapCorner:0,minimapRound:false,minimapCoords:true,minimapCaves:true,worldMap:true,
     // thunder-extras.js
     shulkerPreview:true,boat360:true,
     // thunder-weapons.js
@@ -52167,6 +52167,12 @@ c.PK;})();
      it looks down from your own height instead. Chunks are read a few per frame, nearest first,
      and read again every 20 seconds so changes show. Nothing is sent to the server; the map is
      kept for this session only.
+     Underground (you are covered by blocks), the map switches to a cave view where it reads a
+     slice at your own height instead of the surface: each column shows the first block at or just
+     below you (floors, walls and the blocks of underground structures), shaded by how far below
+     you it is, with open shafts left dark. On the world map the far explored surface stays while
+     the area around you shows the caves. Turn it off with "Caves underground" in the Minimap
+     settings.
      Game functions, classes and fields it uses:
      @use Cwu net.minecraft.client.multiplayer.ChunkProviderClient.getLoadedChunk
      @use FUh net.minecraft.world.chunk.Chunk.getHeightValue
@@ -52188,7 +52194,7 @@ c.PK;})();
      in thunder-client.js and the other modules.)
      ------------------------------------------------------------------------------------------- */
   var MM={tiles:{},count:0,world:null,pos:null,scanned:0,lastRescan:0,box:null,cv:null,cx2:null,coords:null,
-    scratch:null,sctx:null,big:null,open:false,view:{x:0,z:0,scale:2},drag:null,heights:{}};
+    scratch:null,sctx:null,big:null,open:false,view:{x:0,z:0,scale:2},drag:null,heights:{},caveOn:false,caveBand:0};
   var MM_RESCAN_MS=20000,MM_MAX_TILES=8000;
   function mmKey(cx,cz){return cx+','+cz;}
 
@@ -52228,6 +52234,36 @@ c.PK;})();
     return !!(mc&&mc.cAi);
   }
   function mmClear(){MM.tiles={};MM.heights={};MM.count=0;}
+  // you are underground: the column you stand in has blocks above your head
+  function mmUnderground(w,p){
+    try{
+      var wx=Math.floor(p.b),wz=Math.floor(p.c),ch=Cwu(w.Db,wx>>4,wz>>4);
+      if(!ch)return false;
+      return FUh(ch,wx&15,wz&15)>Math.floor(p.f)+1;
+    }catch(_){return false;}
+  }
+  // one chunk's 16x16 image as a slice at the player's height (the cave view)
+  function mmScanCave(w,cx,cz,py){
+    var ch=Cwu(w.Db,cx,cz);
+    if(!ch)return null;
+    if(!MM.pos){MM.pos=new Ba();T0(MM.pos,0,0,0);}
+    var pos=MM.pos,img=new W.ImageData(16,16),d=img.data,x,z,y,top=Math.min(py+3,255),bot=Math.max(py-24,0),wx,wz,i,st,mc,col,floor,sawAir,f,depth;
+    for(z=0;z<16;z++)for(x=0;x<16;x++){
+      i=z*16+x;wx=cx*16+x;wz=cz*16+z;floor=-1;sawAir=false;
+      for(y=top;y>=bot;y--){
+        if(mmSolid(w,ch,x,y,z,wx,wz)){floor=y;break;}
+        sawAir=true;
+      }
+      if(floor<0){d[i*4+3]=0;continue;}                 // open shaft / nothing within reach
+      st=FaW(ch,x,floor,z);pos.m=wx;pos.i=floor;pos.l=wz;mc=st?GeK(st,w,pos):null;col=mc?mc.cAi|0:0;
+      if(!col){d[i*4+3]=0;continue;}
+      depth=py-floor;                                    // >=0 at or below you, <0 above your head
+      f=depth<=0?1.0:depth<4?0.84:depth<10?0.66:0.5;
+      if(!sawAir)f*=0.66;                                // solid up to your level (a wall): darker
+      d[i*4]=((col>>16)&255)*f;d[i*4+1]=((col>>8)&255)*f;d[i*4+2]=(col&255)*f;d[i*4+3]=255;
+    }
+    return img;
+  }
 
   // a few chunks per frame: missing ones nearest first, then ones older than 20 s
   function mmUpdate(){
@@ -52235,15 +52271,19 @@ c.PK;})();
     if(w!==MM.world){MM.world=w;mmClear();}
     if(!w||!p||(!S.minimap&&!MM.open))return;
     var pcx=Math.floor(p.b/16),pcz=Math.floor(p.c/16),py=Math.floor(p.f),t=now(),budget=3,r,dx,dz,k,tile;
+    var mode=(S.minimapCaves!==false&&mmUnderground(w,p))?'cave':'surface',band=py>>3;
+    MM.caveOn=mode==='cave';MM.caveBand=band;
     for(r=0;r<=10&&budget>0;r++){
       for(dz=-r;dz<=r&&budget>0;dz++)for(dx=-r;dx<=r&&budget>0;dx++){
         if(Math.max(Math.abs(dx),Math.abs(dz))!==r)continue;
         k=mmKey(pcx+dx,pcz+dz);tile=MM.tiles[k];
-        if(tile&&t-tile.t<MM_RESCAN_MS+r*1500)continue;
-        var img=mmScan(w,pcx+dx,pcz+dz,py);
+        // re-scan when missing, stale, or the view mode / cave slice changed
+        var fresh=tile&&t-tile.t<MM_RESCAN_MS+r*1500&&tile.mode===mode&&(mode!=='cave'||tile.band===band);
+        if(fresh)continue;
+        var img=mode==='cave'?mmScanCave(w,pcx+dx,pcz+dz,py):mmScan(w,pcx+dx,pcz+dz,py);
         if(!img){if(!tile)continue;tile.t=t;continue;}  // not loaded: keep what we saw before
         if(!tile)MM.count++;
-        MM.tiles[k]={img:img,t:t,cx:pcx+dx,cz:pcz+dz};
+        MM.tiles[k]={img:img,t:t,cx:pcx+dx,cz:pcz+dz,mode:mode,band:band};
         MM.scanned++;budget--;
       }
     }
@@ -52368,6 +52408,7 @@ c.PK;})();
     // N marker
     ctx.fillStyle='#ffd84a';ctx.font='bold '+(10*dpr)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='top';
     ctx.fillText('N',wpx/2,3*dpr);
+    if(MM.caveOn){ctx.fillStyle='#7fe3ff';ctx.font='bold '+(9*dpr)+'px sans-serif';ctx.textAlign='left';ctx.fillText('CAVES',4*dpr,3*dpr);}
     MM.coords.textContent=Math.floor(p.b)+', '+Math.floor(p.f)+', '+Math.floor(p.c);
     MM.coords.style.display=S.minimapCoords?'block':'none';
   }
@@ -52466,7 +52507,8 @@ c.PK;})();
         {id:'minimapZoom',name:'Zoom',min:1,max:6,step:0.5,fmt:function(v){return v+'x';}},
         {id:'minimapCorner',name:'Corner',choices:['Top right','Top left']},
         {id:'minimapRound',name:'Round'},
-        {id:'minimapCoords',name:'Coordinates under it'}]},
+        {id:'minimapCoords',name:'Coordinates under it'},
+        {id:'minimapCaves',name:'Caves underground (a slice at your height, with tunnels and structures)'}]},
     {cat:'utility',id:'worldMap',name:'World Map',
       desc:'Press the map key (M) in a world for a full-screen map of everywhere you have been this session. Drag to move, scroll to zoom, the map key or Esc to close.',
       opts:[{id:'worldMapKey',name:'Map key',key:true,mouse:false}]});

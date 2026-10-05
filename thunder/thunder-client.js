@@ -309,7 +309,7 @@
     fastXp:false,menuSfx:true,modernSwim:true,
     // thunder-minimap.js: minimap (size in px, zoom in px per block, 0 top right / 1 top left)
     // minimap off by default for the best FPS (it reads chunks every frame)
-    minimap:false,minimapSize:130,minimapZoom:2,minimapCorner:0,minimapRound:false,minimapCoords:true,worldMap:true,
+    minimap:false,minimapSize:130,minimapZoom:2,minimapCorner:0,minimapRound:false,minimapCoords:true,minimapCaves:true,worldMap:true,
     // thunder-extras.js
     shulkerPreview:true,boat360:true,
     // thunder-weapons.js
