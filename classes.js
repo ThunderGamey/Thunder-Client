@@ -52169,15 +52169,20 @@ c.PK;})();
      kept for this session only.
      Underground (you are covered by blocks), the map switches to a cave view where it reads a
      slice at your own height instead of the surface: each column shows the first block at or just
-     below you (floors, walls and the blocks of underground structures), shaded by how far below
-     you it is, with open shafts left dark. On the world map the far explored surface stays while
-     the area around you shows the caves. Turn it off with "Caves underground" in the Minimap
-     settings.
+     below you (floors, walls and the blocks of underground structures), shaded smoothly by how
+     far below you it is, with open shafts left dark. Things worth seeing in the rock around you
+     light up in their own colour - ores (diamond, emerald, gold, redstone, iron, lapis, coal),
+     mob-spawner dungeons, chests, lava, mineshaft rails, mossy cobble and stronghold bricks - so
+     the cave map doubles as an ore and structure finder. (Minecraft 1.12.2 has no ancient cities,
+     wardens or trial chambers; those are far newer, so there are no such blocks to show.) On the
+     world map the far explored surface stays while the area around you shows the caves. Turn it
+     off with "Caves underground" in the Minimap settings.
      Game functions, classes and fields it uses:
      @use Cwu net.minecraft.client.multiplayer.ChunkProviderClient.getLoadedChunk
      @use FUh net.minecraft.world.chunk.Chunk.getHeightValue
      @use FaW net.minecraft.world.chunk.Chunk.getBlockState
      @use GeK net.minecraft.block.state.BlockStateContainer$StateImplementation.getMapColor
+     @use GvM net.minecraft.block.Block.getStateId
      @use T0 net.minecraft.util.math.BlockPos.<init>
      @class Ba net.minecraft.util.math.BlockPos
      @class AB7 net.minecraft.client.gui.GuiChat
@@ -52242,24 +52247,52 @@ c.PK;})();
       return FUh(ch,wx&15,wz&15)>Math.floor(p.f)+1;
     }catch(_){return false;}
   }
-  // one chunk's 16x16 image as a slice at the player's height (the cave view)
+  // blocks worth spotting in the rock around you, by 1.12 numeric id -> {c: colour, p: priority}.
+  // the highest-priority block in a column wins and is drawn bright so it stands out on the slice.
+  var MM_FEAT={
+    56:{c:0x5ff3e6,p:100},                      // diamond ore
+    129:{c:0x3ff07a,p:96},                      // emerald ore
+    52:{c:0xff4df0,p:94},                       // mob spawner (dungeon)
+    54:{c:0xffc24a,p:88},                       // chest (dungeon / mineshaft loot)
+    14:{c:0xffe24a,p:84},                       // gold ore
+    10:{c:0xff7a26,p:80},11:{c:0xff7a26,p:80},  // lava (flowing / still)
+    73:{c:0xff4b4b,p:76},74:{c:0xff4b4b,p:76},  // redstone ore (dark / lit)
+    15:{c:0xe6a36a,p:64},                       // iron ore
+    21:{c:0x3f72ff,p:60},                       // lapis ore
+    66:{c:0xbf8f52,p:54},                       // rail (mineshaft)
+    48:{c:0x7f8f5c,p:50},                       // mossy cobblestone (dungeon)
+    98:{c:0x9fabb8,p:46},                       // stone bricks (stronghold)
+    16:{c:0x4c4c56,p:38}                        // coal ore
+  };
+  // one chunk's 16x16 image as a slice at the player's height (the cave view). Each column shows
+  // the first block at or below you, smoothly shaded by depth; ores, spawners, chests, lava and
+  // the blocks of mineshafts/strongholds within a few blocks light up in their own colour.
   function mmScanCave(w,cx,cz,py){
     var ch=Cwu(w.Db,cx,cz);
     if(!ch)return null;
     if(!MM.pos){MM.pos=new Ba();T0(MM.pos,0,0,0);}
-    var pos=MM.pos,img=new W.ImageData(16,16),d=img.data,x,z,y,top=Math.min(py+3,255),bot=Math.max(py-24,0),wx,wz,i,st,mc,col,floor,sawAir,f,depth;
+    var pos=MM.pos,img=new W.ImageData(16,16),d=img.data,x,z,y,top=Math.min(py+3,255),bot=Math.max(py-24,0),
+        wx,wz,i,st,mc,col,floor,sawAir,f,depth,ft,bc,bp,by;
     for(z=0;z<16;z++)for(x=0;x<16;x++){
-      i=z*16+x;wx=cx*16+x;wz=cz*16+z;floor=-1;sawAir=false;
+      i=z*16+x;wx=cx*16+x;wz=cz*16+z;floor=-1;sawAir=false;col=0;bc=0;bp=0;by=0;
+      pos.m=wx;pos.l=wz;
       for(y=top;y>=bot;y--){
-        if(mmSolid(w,ch,x,y,z,wx,wz)){floor=y;break;}
-        sawAir=true;
+        st=FaW(ch,x,y,z);pos.i=y;mc=st?GeK(st,w,pos):null;
+        if(!mc||!mc.cAi){sawAir=true;continue;}         // air / no map colour
+        if(floor<0){floor=y;col=mc.cAi|0;}              // first solid: the floor we shade
+        ft=MM_FEAT[GvM(st)&4095];                       // an ore / spawner / lava etc.?
+        if(ft&&ft.p>bp){bp=ft.p;bc=ft.c;by=y;}
+        if(y<=floor-6)break;                            // a few blocks below the floor is enough
       }
-      if(floor<0){d[i*4+3]=0;continue;}                 // open shaft / nothing within reach
-      st=FaW(ch,x,floor,z);pos.m=wx;pos.i=floor;pos.l=wz;mc=st?GeK(st,w,pos):null;col=mc?mc.cAi|0:0;
-      if(!col){d[i*4+3]=0;continue;}
-      depth=py-floor;                                    // >=0 at or below you, <0 above your head
-      f=depth<=0?1.0:depth<4?0.84:depth<10?0.66:0.5;
-      if(!sawAir)f*=0.66;                                // solid up to your level (a wall): darker
+      if(bp){                                           // something worth seeing: make it pop
+        depth=py-by;f=depth<-2?0.74:depth<12?1.0:0.85;
+        d[i*4]=((bc>>16)&255)*f;d[i*4+1]=((bc>>8)&255)*f;d[i*4+2]=(bc&255)*f;d[i*4+3]=255;
+        continue;
+      }
+      if(floor<0||!col){d[i*4+3]=0;continue;}           // open shaft / nothing within reach
+      depth=py-floor;                                   // >=0 at or below you, <0 above your head
+      f=depth<=0?1.0:Math.max(0.42,1-depth*0.028);      // smooth: dimmer the deeper below you
+      if(!sawAir)f*=0.6;                                // solid up to your level (a wall): darker
       d[i*4]=((col>>16)&255)*f;d[i*4+1]=((col>>8)&255)*f;d[i*4+2]=(col&255)*f;d[i*4+3]=255;
     }
     return img;
@@ -52498,7 +52531,7 @@ c.PK;})();
     try{mmDraw();}catch(e){report(e);}
     try{wmDraw();}catch(e){report(e);}
   });
-  TC.minimap={state:function(){return {tiles:MM.count,scanned:MM.scanned,open:MM.open,shown:!!(MM.box&&MM.box.style.display==='block')};},
+  TC.minimap={state:function(){return {tiles:MM.count,scanned:MM.scanned,open:MM.open,caveOn:MM.caveOn,caveBand:MM.caveBand,shown:!!(MM.box&&MM.box.style.display==='block')};},
     openWorldMap:wmOpen,closeWorldMap:wmClose};
   MODULES.push(
     {cat:'utility',id:'minimap',name:'Minimap',
@@ -52508,7 +52541,7 @@ c.PK;})();
         {id:'minimapCorner',name:'Corner',choices:['Top right','Top left']},
         {id:'minimapRound',name:'Round'},
         {id:'minimapCoords',name:'Coordinates under it'},
-        {id:'minimapCaves',name:'Caves underground (a slice at your height, with tunnels and structures)'}]},
+        {id:'minimapCaves',name:'Caves underground (slice at your height; ores, dungeons, chests and lava stand out)'}]},
     {cat:'utility',id:'worldMap',name:'World Map',
       desc:'Press the map key (M) in a world for a full-screen map of everywhere you have been this session. Drag to move, scroll to zoom, the map key or Esc to close.',
       opts:[{id:'worldMapKey',name:'Map key',key:true,mouse:false}]});
