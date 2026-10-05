@@ -371,6 +371,7 @@
         // a code being made when the connection dropped is sent again, so the one shown is kept
         if(SO.recPending&&SO.recPendingKey){SO.recBusy=true;soSend({t:'recovery',code:SO.recPendingKey});}
         syWelcome(m.sync);       // settings that follow the account (thunder-sync.js)
+        owWelcome(m.me);         // owner powers, if this is the owner account (thunder-owner.js)
         if(mail.length&&S.socialToasts)soToast({kind:'msg',title:mail.length===1?mail[0].from.name:mail.length+' messages',
           text:mail.length===1?mail[0].text:'from '+Object.keys(who).join(', ')+' while you were away',id:mail.length===1?mail[0].from.id:''});
         if(SO.reqIn.length&&S.socialToasts)soToast({kind:'req',title:'Friend requests',text:SO.reqIn.length+' waiting in Right Shift \u2192 Friends'});
@@ -441,6 +442,7 @@
       }
       case 'sync':syRemote(m.set);return;
       case 'party':case 'pinvited':case 'pmsg':case 'pwarp':ptOn(m);return;     // thunder-party.js
+      case 'owned':case 'banlist':owOn(m);return;                              // thunder-owner.js
       case 'cosma':cosAnswer(m);return;
       case 'syncall':syWelcome(m.sync);soChanged();return;
       case 'invite':
@@ -458,6 +460,7 @@
         if(m.op==='recovery'){SO.recBusy=false;SO.recPending=SO.recPendingKey='';SO.recMsg=m.why;soChanged();return;}
         if(m.op==='passwd'){SO.acctBusy=false;SO.acctMsg=m.why;SO.acctOk=false;soChanged();return;}
         if(m.op==='sync'){SY.msg=m.why;soChanged();return;}
+        if(m.op==='owner'){soToast({kind:'info',title:'Owner',text:m.why,quiet:true});return;}
         if(m.op==='party'){ptErr(m.why);return;}
         if(m.op==='add'){SO.addMsg=m.why;SO.addOk=false;soChanged();return;}
         if((m.op==='msg'||m.op==='invite')&&m.to){
@@ -504,18 +507,35 @@
       pw2!==undefined&&pw!==pw2?'The two passwords are different.':'';
   }
   function soAuthFail(why){SO.authBusy=false;SO.authMsg=why;SO.authOk=false;soChanged();}
-  function soAuthSend(t,name,pw){
+  function soAuthSend(t,name,pw,extra){
     if(SO.state!=='auth'||!SO.ws){soAuthFail('Thunder Friends is not connected right now. Try again in a moment.');return;}
     SO.authBusy=true;SO.authMsg='';soChanged();
     soPwKey(name,pw).then(function(k){
-      if(!soSend({t:t,name:name,pw:k}))soAuthFail('Thunder Friends is not connected right now. Try again in a moment.');
+      var m={t:t,name:name,pw:k};if(extra)for(var x in extra)m[x]=extra[x];
+      if(!soSend(m))soAuthFail('Thunder Friends is not connected right now. Try again in a moment.');
     },function(){soAuthFail('This browser could not use that password.');});
   }
+  // the reserved owner name (thundergamey_): claiming it needs the owner key, turned into a proof
+  // here (the key never leaves this browser). Any other name: no key.
+  function soIsOwnerName(name){return String(name||'').trim().toLowerCase()==='thundergamey_';}
+  function soOwnerProofThen(key,ok){
+    var cs=W.crypto&&W.crypto.subtle;
+    if(!cs||!W.TextEncoder){soAuthFail('This browser cannot use the owner key here.');return;}
+    cs.digest('SHA-256',new W.TextEncoder().encode('thunder-owner:'+String(key||''))).then(function(b){
+      ok(Array.prototype.map.call(new Uint8Array(b),function(x){return ('0'+x.toString(16)).slice(-2);}).join(''));
+    },function(){soAuthFail('This browser could not use that owner key.');});
+  }
   // a new account: this name (one account per name) and a password
-  function soRegister(name,pw,pw2){
+  function soRegister(name,pw,pw2,ownerKey){
     name=String(name||'').trim();
     var why=!SO_NAME_RE.test(name)?'A name is 3 to 16 letters, numbers or _.':soPwProblem(pw,pw2);
     if(why){soAuthFail(why);return;}
+    if(soIsOwnerName(name)){
+      if(!ownerKey){soAuthFail('That name is reserved. Type the owner key to claim it.');return;}
+      SO.authBusy=true;SO.authMsg='';soChanged();
+      soOwnerProofThen(ownerKey,function(proof){soAuthSend('register',name,pw,{owner:proof});});
+      return;
+    }
     soAuthSend('register',name,pw);
   }
   function soLogin(name,pw){
@@ -888,8 +908,9 @@
     wrap.appendChild(side);wrap.appendChild(main);box.appendChild(wrap);
     // not signed in on this device: make an account, or log in (the rest of the card waits)
     var auth=el('div','tcs-auth'),aTitle=el('b','tcs-auth-t'),aIntro=el('div','tcs-note');
-    var aName=el('input'),aCode=el('input'),aPw=el('input'),aPw2=el('input'),aMsg=el('div','tcs-note'),aSwitch=el('div','tcs-note tcs-auth-sw');
+    var aName=el('input'),aCode=el('input'),aPw=el('input'),aPw2=el('input'),aOwner=el('input'),aMsg=el('div','tcs-note'),aSwitch=el('div','tcs-note tcs-auth-sw');
     aCode.type='text';aCode.maxLength=29;aCode.spellcheck=false;aCode.autocomplete='off';aCode.placeholder='Recovery code';aCode.className='tcs-code';
+    aOwner.type='password';aOwner.maxLength=200;aOwner.autocomplete='off';aOwner.placeholder='Owner key';
     aName.type='text';aName.maxLength=16;aName.spellcheck=false;aName.autocomplete='username';aName.placeholder='Name';
     aPw.type='password';aPw.maxLength=64;aPw.placeholder='Password';
     aPw2.type='password';aPw2.maxLength=64;aPw2.placeholder='Password again';aPw2.autocomplete='new-password';
@@ -905,13 +926,13 @@
       if(SO.authBusy)return;
       if(SO.authMode==='login')soLogin(aName.value,aPw.value);
       else if(SO.authMode==='recover')soRecover(aName.value,aCode.value,aPw.value,aPw2.value);
-      else soRegister(aName.value,aPw.value,aPw2.value);
+      else soRegister(aName.value,aPw.value,aPw2.value,aOwner.value);
     }
-    [aName,aCode,aPw,aPw2].forEach(function(i){
+    [aName,aCode,aPw,aPw2,aOwner].forEach(function(i){
       soKeepKeys(i,doAuth);
-      i.addEventListener('input',function(){if(SO.authMsg&&!SO.authOk){SO.authMsg='';paintAuth();}});
+      i.addEventListener('input',function(){if(i===aName)paintAuth();if(SO.authMsg&&!SO.authOk){SO.authMsg='';paintAuth();}});
     });
-    [aTitle,aIntro,aName,aCode,aPw,aPw2,aGo,aMsg,aSwitch,aFine].forEach(function(n){auth.appendChild(n);});
+    [aTitle,aIntro,aName,aCode,aPw,aPw2,aOwner,aGo,aMsg,aSwitch,aFine].forEach(function(n){auth.appendChild(n);});
     box.insertBefore(auth,wrap);
     function paintAuth(){
       var a=SO.auth||{},rec=SO.authMode==='recover',reg=!rec&&SO.authMode!=='login';
@@ -920,6 +941,7 @@
         reg?(a.old?'Thunder Friends now has accounts, so nobody else can use your name. Pick your name and a password: your friends stay.':
         'A name that is only yours, and a password. Log in with them on your other devices too.'):'Your account\'s name and password.';
       aCode.style.display=rec?'':'none';
+      aOwner.style.display=(reg&&soIsOwnerName(aName.value))?'':'none';
       aPw.placeholder=rec?'New password':'Password';aPw2.placeholder=rec?'New password again':'Password again';
       // the name offered: the profile name (unless someone else has it); what was typed stays
       var key=SO.authMode+'|'+(a.name||'')+'|'+a.taken;
@@ -970,7 +992,7 @@
     function friendRow(f){
       var r=el('div','tcs-f'+(SO.sel===f.id?' tcs-sel':''));
       r.appendChild(el('span','tcs-dot'+(soHosting(f)?' tcs-host':f.online?' tcs-on':'')));
-      var fn=el('div','tcs-fn');fn.appendChild(el('b',null,soTagged(f)));fn.appendChild(el('i',null,soDoing(f)));r.appendChild(fn);
+      var fn=el('div','tcs-fn'),fb=el('b',null,soTagged(f));if(soIsOwner(f))fb.appendChild(owBadge());fn.appendChild(fb);fn.appendChild(el('i',null,soDoing(f)));r.appendChild(fn);
       if(SO.unread[f.id])r.appendChild(el('span','tcs-badge',String(Math.min(99,SO.unread[f.id]))));
       r.addEventListener('click',function(){SO.sel=f.id;delete SO.unread[f.id];soSaveChats();soChanged();W.setTimeout(function(){var i=D.getElementById('tcs-say');if(i)i.focus();},0);});
       return r;
@@ -992,7 +1014,7 @@
       var st=soStatusLine();
       meDot.className='tcm-dot'+(st[0]?' '+st[0]:'');
       meTxt.textContent='';
-      if(SO.state==='on'&&SO.me){meTxt.appendChild(D.createTextNode('You are '));meTxt.appendChild(el('em',null,soTagged(SO.me)));}
+      if(SO.state==='on'&&SO.me){meTxt.appendChild(D.createTextNode('You are '));var mb=el('em',null,soTagged(SO.me));if(soIsOwner(SO.me))mb.appendChild(owBadge());meTxt.appendChild(mb);}
       else meTxt.textContent=st[1]+(st[2]?' \u2022 '+st[2]:'');
       meTxt.title=meTxt.textContent;
       copy.style.display=acctB.style.display=SO.state==='on'&&SO.me?'':'none';
@@ -1114,13 +1136,14 @@
       askB.disabled=askIn.disabled=!!busy;
       if(!f){head.appendChild(el('div','tcs-note','Chats'));return;}
       head.appendChild(el('span','tcs-dot'+(soHosting(f)?' tcs-host':f.online?' tcs-on':'')));
-      var fn=el('div','tcs-fn');fn.appendChild(el('b',null,soTagged(f)));fn.appendChild(el('i',null,soDoing(f)));head.appendChild(fn);
+      var fn=el('div','tcs-fn'),hb=el('b',null,soTagged(f));if(soIsOwner(f))hb.appendChild(owBadge());fn.appendChild(hb);fn.appendChild(el('i',null,soDoing(f)));head.appendChild(fn);
       if(soHosting(f)&&!asking)head.appendChild(soBtn('Join',function(){if(!soJoinFriend(f))paintHead();W.setTimeout(function(){var i=D.getElementById('tcs-code');if(i&&i.offsetParent)i.focus();},0);},true));
       if(soServerAddr(f))head.appendChild(soBtn('Join',function(){soJoinServer(f);},true));
       if(LH.state==='open'&&LH.code&&f.online)head.appendChild(soBtn('Invite',function(){soInvite(f.id);}));
       head.appendChild(soBtn(moreOpen?'Less':'More',function(){moreOpen=!moreOpen;paintHead();}));
       more.appendChild(armBtn('Remove friend','Click again to remove',function(){soAct('remove',f.id);},'remove:'+f.id));
       more.appendChild(armBtn('Block','Click again to block',function(){soAct('block',f.id);},'block:'+f.id));
+      if(owHasPowers()&&!soIsOwner(f))more.appendChild(soBtn('Ban from Thunder',function(){owBanStart(f.id,f.name);}));
     }
     function ids0(){return Object.keys(SO.friends).length>0;}
     // a button that asks for a second click
@@ -1201,12 +1224,12 @@
     box.appendChild(info);box.appendChild(rows);act.appendChild(again);box.appendChild(act);
     var ver=-1;
     function row(p){
-      var r=el('div','tcs-row');
-      r.appendChild(el('span',null,soTagged(p)));
+      var r=el('div','tcs-row'),sp=el('span',null,soTagged(p));if(soIsOwner(p))sp.appendChild(owBadge());r.appendChild(sp);
       if(p.friend||SO.friends[p.id])r.appendChild(el('em',null,'friend'));
       else if(SO.reqOut.some(function(x){return x.id===p.id;}))r.appendChild(el('em',null,'asked'));
       else if(SO.reqIn.some(function(x){return x.id===p.id;}))r.appendChild(soBtn('Accept',function(){soAct('accept',p.id);},true));
       else r.appendChild(soBtn('Add',function(){soSend({t:'add',who:p.id});},true));
+      if(owHasPowers()&&!soIsOwner(p))r.appendChild(soBtn('Ban',function(){owBanStart(p.id,p.name);}));
       return r;
     }
     addLive(function(){

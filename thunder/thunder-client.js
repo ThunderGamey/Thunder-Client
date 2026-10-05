@@ -1783,6 +1783,9 @@
   // Thunder Cosmetics: capes and wings everyone on Thunder sees
   // @include thunder-cosmetics.js
 
+  // Owner tools: the reserved ThunderGamey_ account's badge, ban powers and owner cosmetic
+  // @include thunder-owner.js
+
   // Title screen: animated Thunder storm background with mouse parallax, and the Thunder logo
   // @include thunder-title.js
 

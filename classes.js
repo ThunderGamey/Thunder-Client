@@ -56984,6 +56984,7 @@ c.PK;})();
         // a code being made when the connection dropped is sent again, so the one shown is kept
         if(SO.recPending&&SO.recPendingKey){SO.recBusy=true;soSend({t:'recovery',code:SO.recPendingKey});}
         syWelcome(m.sync);       // settings that follow the account (thunder-sync.js)
+        owWelcome(m.me);         // owner powers, if this is the owner account (thunder-owner.js)
         if(mail.length&&S.socialToasts)soToast({kind:'msg',title:mail.length===1?mail[0].from.name:mail.length+' messages',
           text:mail.length===1?mail[0].text:'from '+Object.keys(who).join(', ')+' while you were away',id:mail.length===1?mail[0].from.id:''});
         if(SO.reqIn.length&&S.socialToasts)soToast({kind:'req',title:'Friend requests',text:SO.reqIn.length+' waiting in Right Shift \u2192 Friends'});
@@ -57054,6 +57055,7 @@ c.PK;})();
       }
       case 'sync':syRemote(m.set);return;
       case 'party':case 'pinvited':case 'pmsg':case 'pwarp':ptOn(m);return;     // thunder-party.js
+      case 'owned':case 'banlist':owOn(m);return;                              // thunder-owner.js
       case 'cosma':cosAnswer(m);return;
       case 'syncall':syWelcome(m.sync);soChanged();return;
       case 'invite':
@@ -57071,6 +57073,7 @@ c.PK;})();
         if(m.op==='recovery'){SO.recBusy=false;SO.recPending=SO.recPendingKey='';SO.recMsg=m.why;soChanged();return;}
         if(m.op==='passwd'){SO.acctBusy=false;SO.acctMsg=m.why;SO.acctOk=false;soChanged();return;}
         if(m.op==='sync'){SY.msg=m.why;soChanged();return;}
+        if(m.op==='owner'){soToast({kind:'info',title:'Owner',text:m.why,quiet:true});return;}
         if(m.op==='party'){ptErr(m.why);return;}
         if(m.op==='add'){SO.addMsg=m.why;SO.addOk=false;soChanged();return;}
         if((m.op==='msg'||m.op==='invite')&&m.to){
@@ -57117,18 +57120,35 @@ c.PK;})();
       pw2!==undefined&&pw!==pw2?'The two passwords are different.':'';
   }
   function soAuthFail(why){SO.authBusy=false;SO.authMsg=why;SO.authOk=false;soChanged();}
-  function soAuthSend(t,name,pw){
+  function soAuthSend(t,name,pw,extra){
     if(SO.state!=='auth'||!SO.ws){soAuthFail('Thunder Friends is not connected right now. Try again in a moment.');return;}
     SO.authBusy=true;SO.authMsg='';soChanged();
     soPwKey(name,pw).then(function(k){
-      if(!soSend({t:t,name:name,pw:k}))soAuthFail('Thunder Friends is not connected right now. Try again in a moment.');
+      var m={t:t,name:name,pw:k};if(extra)for(var x in extra)m[x]=extra[x];
+      if(!soSend(m))soAuthFail('Thunder Friends is not connected right now. Try again in a moment.');
     },function(){soAuthFail('This browser could not use that password.');});
   }
+  // the reserved owner name (thundergamey_): claiming it needs the owner key, turned into a proof
+  // here (the key never leaves this browser). Any other name: no key.
+  function soIsOwnerName(name){return String(name||'').trim().toLowerCase()==='thundergamey_';}
+  function soOwnerProofThen(key,ok){
+    var cs=W.crypto&&W.crypto.subtle;
+    if(!cs||!W.TextEncoder){soAuthFail('This browser cannot use the owner key here.');return;}
+    cs.digest('SHA-256',new W.TextEncoder().encode('thunder-owner:'+String(key||''))).then(function(b){
+      ok(Array.prototype.map.call(new Uint8Array(b),function(x){return ('0'+x.toString(16)).slice(-2);}).join(''));
+    },function(){soAuthFail('This browser could not use that owner key.');});
+  }
   // a new account: this name (one account per name) and a password
-  function soRegister(name,pw,pw2){
+  function soRegister(name,pw,pw2,ownerKey){
     name=String(name||'').trim();
     var why=!SO_NAME_RE.test(name)?'A name is 3 to 16 letters, numbers or _.':soPwProblem(pw,pw2);
     if(why){soAuthFail(why);return;}
+    if(soIsOwnerName(name)){
+      if(!ownerKey){soAuthFail('That name is reserved. Type the owner key to claim it.');return;}
+      SO.authBusy=true;SO.authMsg='';soChanged();
+      soOwnerProofThen(ownerKey,function(proof){soAuthSend('register',name,pw,{owner:proof});});
+      return;
+    }
     soAuthSend('register',name,pw);
   }
   function soLogin(name,pw){
@@ -57501,8 +57521,9 @@ c.PK;})();
     wrap.appendChild(side);wrap.appendChild(main);box.appendChild(wrap);
     // not signed in on this device: make an account, or log in (the rest of the card waits)
     var auth=el('div','tcs-auth'),aTitle=el('b','tcs-auth-t'),aIntro=el('div','tcs-note');
-    var aName=el('input'),aCode=el('input'),aPw=el('input'),aPw2=el('input'),aMsg=el('div','tcs-note'),aSwitch=el('div','tcs-note tcs-auth-sw');
+    var aName=el('input'),aCode=el('input'),aPw=el('input'),aPw2=el('input'),aOwner=el('input'),aMsg=el('div','tcs-note'),aSwitch=el('div','tcs-note tcs-auth-sw');
     aCode.type='text';aCode.maxLength=29;aCode.spellcheck=false;aCode.autocomplete='off';aCode.placeholder='Recovery code';aCode.className='tcs-code';
+    aOwner.type='password';aOwner.maxLength=200;aOwner.autocomplete='off';aOwner.placeholder='Owner key';
     aName.type='text';aName.maxLength=16;aName.spellcheck=false;aName.autocomplete='username';aName.placeholder='Name';
     aPw.type='password';aPw.maxLength=64;aPw.placeholder='Password';
     aPw2.type='password';aPw2.maxLength=64;aPw2.placeholder='Password again';aPw2.autocomplete='new-password';
@@ -57518,13 +57539,13 @@ c.PK;})();
       if(SO.authBusy)return;
       if(SO.authMode==='login')soLogin(aName.value,aPw.value);
       else if(SO.authMode==='recover')soRecover(aName.value,aCode.value,aPw.value,aPw2.value);
-      else soRegister(aName.value,aPw.value,aPw2.value);
+      else soRegister(aName.value,aPw.value,aPw2.value,aOwner.value);
     }
-    [aName,aCode,aPw,aPw2].forEach(function(i){
+    [aName,aCode,aPw,aPw2,aOwner].forEach(function(i){
       soKeepKeys(i,doAuth);
-      i.addEventListener('input',function(){if(SO.authMsg&&!SO.authOk){SO.authMsg='';paintAuth();}});
+      i.addEventListener('input',function(){if(i===aName)paintAuth();if(SO.authMsg&&!SO.authOk){SO.authMsg='';paintAuth();}});
     });
-    [aTitle,aIntro,aName,aCode,aPw,aPw2,aGo,aMsg,aSwitch,aFine].forEach(function(n){auth.appendChild(n);});
+    [aTitle,aIntro,aName,aCode,aPw,aPw2,aOwner,aGo,aMsg,aSwitch,aFine].forEach(function(n){auth.appendChild(n);});
     box.insertBefore(auth,wrap);
     function paintAuth(){
       var a=SO.auth||{},rec=SO.authMode==='recover',reg=!rec&&SO.authMode!=='login';
@@ -57533,6 +57554,7 @@ c.PK;})();
         reg?(a.old?'Thunder Friends now has accounts, so nobody else can use your name. Pick your name and a password: your friends stay.':
         'A name that is only yours, and a password. Log in with them on your other devices too.'):'Your account\'s name and password.';
       aCode.style.display=rec?'':'none';
+      aOwner.style.display=(reg&&soIsOwnerName(aName.value))?'':'none';
       aPw.placeholder=rec?'New password':'Password';aPw2.placeholder=rec?'New password again':'Password again';
       // the name offered: the profile name (unless someone else has it); what was typed stays
       var key=SO.authMode+'|'+(a.name||'')+'|'+a.taken;
@@ -57583,7 +57605,7 @@ c.PK;})();
     function friendRow(f){
       var r=el('div','tcs-f'+(SO.sel===f.id?' tcs-sel':''));
       r.appendChild(el('span','tcs-dot'+(soHosting(f)?' tcs-host':f.online?' tcs-on':'')));
-      var fn=el('div','tcs-fn');fn.appendChild(el('b',null,soTagged(f)));fn.appendChild(el('i',null,soDoing(f)));r.appendChild(fn);
+      var fn=el('div','tcs-fn'),fb=el('b',null,soTagged(f));if(soIsOwner(f))fb.appendChild(owBadge());fn.appendChild(fb);fn.appendChild(el('i',null,soDoing(f)));r.appendChild(fn);
       if(SO.unread[f.id])r.appendChild(el('span','tcs-badge',String(Math.min(99,SO.unread[f.id]))));
       r.addEventListener('click',function(){SO.sel=f.id;delete SO.unread[f.id];soSaveChats();soChanged();W.setTimeout(function(){var i=D.getElementById('tcs-say');if(i)i.focus();},0);});
       return r;
@@ -57605,7 +57627,7 @@ c.PK;})();
       var st=soStatusLine();
       meDot.className='tcm-dot'+(st[0]?' '+st[0]:'');
       meTxt.textContent='';
-      if(SO.state==='on'&&SO.me){meTxt.appendChild(D.createTextNode('You are '));meTxt.appendChild(el('em',null,soTagged(SO.me)));}
+      if(SO.state==='on'&&SO.me){meTxt.appendChild(D.createTextNode('You are '));var mb=el('em',null,soTagged(SO.me));if(soIsOwner(SO.me))mb.appendChild(owBadge());meTxt.appendChild(mb);}
       else meTxt.textContent=st[1]+(st[2]?' \u2022 '+st[2]:'');
       meTxt.title=meTxt.textContent;
       copy.style.display=acctB.style.display=SO.state==='on'&&SO.me?'':'none';
@@ -57727,13 +57749,14 @@ c.PK;})();
       askB.disabled=askIn.disabled=!!busy;
       if(!f){head.appendChild(el('div','tcs-note','Chats'));return;}
       head.appendChild(el('span','tcs-dot'+(soHosting(f)?' tcs-host':f.online?' tcs-on':'')));
-      var fn=el('div','tcs-fn');fn.appendChild(el('b',null,soTagged(f)));fn.appendChild(el('i',null,soDoing(f)));head.appendChild(fn);
+      var fn=el('div','tcs-fn'),hb=el('b',null,soTagged(f));if(soIsOwner(f))hb.appendChild(owBadge());fn.appendChild(hb);fn.appendChild(el('i',null,soDoing(f)));head.appendChild(fn);
       if(soHosting(f)&&!asking)head.appendChild(soBtn('Join',function(){if(!soJoinFriend(f))paintHead();W.setTimeout(function(){var i=D.getElementById('tcs-code');if(i&&i.offsetParent)i.focus();},0);},true));
       if(soServerAddr(f))head.appendChild(soBtn('Join',function(){soJoinServer(f);},true));
       if(LH.state==='open'&&LH.code&&f.online)head.appendChild(soBtn('Invite',function(){soInvite(f.id);}));
       head.appendChild(soBtn(moreOpen?'Less':'More',function(){moreOpen=!moreOpen;paintHead();}));
       more.appendChild(armBtn('Remove friend','Click again to remove',function(){soAct('remove',f.id);},'remove:'+f.id));
       more.appendChild(armBtn('Block','Click again to block',function(){soAct('block',f.id);},'block:'+f.id));
+      if(owHasPowers()&&!soIsOwner(f))more.appendChild(soBtn('Ban from Thunder',function(){owBanStart(f.id,f.name);}));
     }
     function ids0(){return Object.keys(SO.friends).length>0;}
     // a button that asks for a second click
@@ -57814,12 +57837,12 @@ c.PK;})();
     box.appendChild(info);box.appendChild(rows);act.appendChild(again);box.appendChild(act);
     var ver=-1;
     function row(p){
-      var r=el('div','tcs-row');
-      r.appendChild(el('span',null,soTagged(p)));
+      var r=el('div','tcs-row'),sp=el('span',null,soTagged(p));if(soIsOwner(p))sp.appendChild(owBadge());r.appendChild(sp);
       if(p.friend||SO.friends[p.id])r.appendChild(el('em',null,'friend'));
       else if(SO.reqOut.some(function(x){return x.id===p.id;}))r.appendChild(el('em',null,'asked'));
       else if(SO.reqIn.some(function(x){return x.id===p.id;}))r.appendChild(soBtn('Accept',function(){soAct('accept',p.id);},true));
       else r.appendChild(soBtn('Add',function(){soSend({t:'add',who:p.id});},true));
+      if(owHasPowers()&&!soIsOwner(p))r.appendChild(soBtn('Ban',function(){owBanStart(p.id,p.name);}));
       return r;
     }
     addLive(function(){
@@ -59827,13 +59850,15 @@ c.PK;})();
     {id:'emerald',name:'Emerald',bg:[0x0b3322,0x1f7a4d],edge:0x5dffa8,bolt:0xf2fff7,boltEdge:0x5dffa8},
     {id:'galaxy',name:'Galaxy',bg:[0x140b33,0x30186b],edge:0xb388ff,bolt:0xffffff,boltEdge:0xb388ff,extra:'stars'},
     {id:'sunset',name:'Sunset',bg:[0xff8a3d,0x7a2a86],edge:0xffd29e,bolt:0x2a0d33,boltEdge:0xffd29e},
-    {id:'ice',name:'Ice',bg:[0xeaf8ff,0x8fd3ff],edge:0x2563eb,bolt:0x1d4ed8,boltEdge:0xffffff}
+    {id:'ice',name:'Ice',bg:[0xeaf8ff,0x8fd3ff],edge:0x2563eb,bolt:0x1d4ed8,boltEdge:0xffffff},
+    {id:'owner',name:'Owner',bg:[0x1a1205,0x3d2a08],edge:0xffd84a,bolt:0xfff6d0,boltEdge:0xffb020,extra:'stars'}
   ];
   var COS_WINGS=[
     {id:'thunder',name:'Thunder',base:[0x1e5fd0,0x4fd1ff],tip:0xeafcff,gap:0x0b3a7a},
     {id:'angel',name:'Angel',base:[0xffffff,0xe1e8f0],tip:0xffffff,gap:0xaab6c4},
     {id:'dragon',name:'Dragon',base:[0x2a0f38,0x5d1f73],tip:0x9b4dca,gap:0x12051a,membrane:true},
-    {id:'flame',name:'Flame',base:[0xff3d1f,0xffb238],tip:0xfff27a,gap:0xa3200b}
+    {id:'flame',name:'Flame',base:[0xff3d1f,0xffb238],tip:0xfff27a,gap:0xa3200b},
+    {id:'owner',name:'Owner',base:[0xffd84a,0xffb020],tip:0xfff6d0,gap:0x7a5600}
   ];
   function cosFind(list,id){for(var i=0;i<list.length;i++)if(list[i].id===id)return list[i];return null;}
   // a lightning bolt on the 10x16 face of a cape
@@ -60096,7 +60121,7 @@ c.PK;})();
   }
   function cosPicker(kind){
     return function(box){
-      var list=kind==='cape'?COS_CAPES:COS_WINGS,key=kind==='cape'?'cosmCape':'cosmWings',grid=el('div','tcm-cos');
+      var list=(kind==='cape'?COS_CAPES:COS_WINGS).filter(function(d){return d.id!=='owner'||owIsOwnerAcct();}),key=kind==='cape'?'cosmCape':'cosmWings',grid=el('div','tcm-cos');
       function pick(id){S[key]=id;save();cosPublish();paint();}
       var none=el('button','tcm-cos-b');none.type='button';none.appendChild(el('span','tcm-cos-none','\u2014'));none.appendChild(el('em',null,'None'));
       none.addEventListener('click',function(){pick('none');});
@@ -60131,6 +60156,164 @@ c.PK;})();
       desc:'Draw the Thunder capes and wings of the other Thunder players around you.'});
   TC.cosmetics={cache:COS.cache,pose:COS_POSE,capes:COS_CAPES.map(function(d){return d.id;}),wings:COS_WINGS.map(function(d){return d.id;}),
     tex:function(k,id){return !!cosTex(k,id);},of:function(p){return cosOf(p);},paintCape:function(id){return cosPaintCape(cosFind(COS_CAPES,id));}};
+
+  // Owner tools: the reserved ThunderGamey_ account's badge, ban powers and owner cosmetic
+  /* -------------------------------------------------------------------------------------------
+     Part of Thunder Client, created and owned by Jayvardhan Ginni (ThunderGamey).
+     Owner tools (Right Shift > Friends > Owner), for the reserved account ThunderGamey_ only.
+     Included into the client scope of thunder-client.js by build.js, after thunder-social.js.
+       - A badge shows by the owner's name everywhere (friends list, chat, parties, voice, On
+         Thunder now). Everyone sees it; the hub marks the name (thunder-relay/social.js).
+       - Owner powers need the owner key each session: the key is a private phrase the site owner
+         set as the OWNER_KEY secret of the thunder-relay Worker. It is turned into a proof in this
+         browser (SHA-256), so the key itself never leaves it, and is never stored. With powers the
+         owner can ban a player (and their devices) from Thunder Friends with a reason, and unban;
+         can wear the owner-only cosmetic; and can message any player, not only friends.
+     The reserved name cannot be taken by anyone else even without the key: the hub refuses to
+     register it unless the key is proven.
+     (soSend, soReady, SO, soToast, soTagged, soCss, soBtn, soKeepKeys, armBtn-style buttons,
+     el, now, keyLabel, MODULES, SPECIALS, runLive, menuOpen, currentCat and the menu helpers are
+     declared in thunder-social.js / thunder-client.js.)
+     ------------------------------------------------------------------------------------------- */
+  var OW_NAME='thundergamey_';
+  var OW={powers:false,bans:[],busy:false,msg:'',ok:false,banId:'',banName:'',banMsg:'',ver:0};
+  function owChanged(){OW.ver++;if(menuOpen)runLive();}
+  // signed in as the reserved owner account (the badge shows; powers may still be off)
+  function owIsOwnerAcct(){return !!(SO.me&&String(SO.me.name||'').toLowerCase()===OW_NAME);}
+  function owHasPowers(){return !!OW.powers&&owIsOwnerAcct();}
+  // the owner badge by any name the hub marked, or the owner's own name
+  function soIsOwner(p){return !!(p&&(p.owner||(p.name&&String(p.name).toLowerCase()===OW_NAME)));}
+  function owBadge(){
+    var b=el('span','tcs-owner');b.title='Thunder owner';b.innerHTML='<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>';
+    return b;
+  }
+
+  // the hub reset this account's owner state at sign-in (welcome): powers follow m.me.owner
+  function owWelcome(me){
+    OW.powers=!!(me&&me.owner);OW.busy=false;OW.msg='';OW.ok=false;OW.bans=[];OW.banId='';OW.banName='';OW.banMsg='';
+    owChanged();
+  }
+  function owOn(m){
+    switch(m.t){
+      case 'owned':
+        OW.busy=false;OW.powers=!!m.ok;OW.ok=!!m.ok;
+        OW.msg=m.ok?'Owner tools are on.':'That owner key is wrong.';
+        if(m.ok&&S.socialToasts)soToast({kind:'info',title:'Owner',text:'Owner tools are on for this session.',quiet:true});
+        owChanged();return;
+      case 'banlist':OW.bans=Array.isArray(m.bans)?m.bans:[];owChanged();return;
+    }
+  }
+  // the owner key becomes a proof here (never stored); the hub checks it against its secret
+  function owEnable(key){
+    key=String(key||'');
+    if(!key){OW.msg='Type your owner key.';owChanged();return;}
+    if(!soReady()){OW.msg='Thunder Friends is not connected right now.';owChanged();return;}
+    var cs=W.crypto&&W.crypto.subtle;
+    if(!cs||!W.TextEncoder){OW.msg='This browser cannot use the owner key here.';owChanged();return;}
+    OW.busy=true;OW.msg='';owChanged();
+    cs.digest('SHA-256',new W.TextEncoder().encode('thunder-owner:'+key)).then(function(buf){
+      var proof=Array.prototype.map.call(new Uint8Array(buf),function(x){return ('0'+x.toString(16)).slice(-2);}).join('');
+      if(!soSend({t:'owner',proof:proof})){OW.busy=false;OW.msg='Thunder Friends is not connected right now.';owChanged();}
+    },function(){OW.busy=false;OW.msg='This browser could not use that key.';owChanged();});
+  }
+  function owBan(id,reason){
+    if(!owHasPowers())return;
+    if(!/^[0-9a-f]{24}$/.test(id||'')){OW.banMsg='Pick a player to ban (from your friends or On Thunder now).';owChanged();return;}
+    reason=String(reason||'').replace(/\s+/g,' ').trim().slice(0,200);
+    soSend({t:'ban',id:id,reason:reason||'No reason given'});
+    OW.banId='';OW.banName='';OW.banMsg='Banned.';owChanged();
+  }
+  function owUnban(id){if(owHasPowers()&&/^[0-9a-f]{24}$/.test(id||''))soSend({t:'unban',id:id});}
+  // a Ban button elsewhere (a friend's chat, On Thunder now) brings the player here
+  function owBanStart(id,name){
+    if(!owHasPowers()||!/^[0-9a-f]{24}$/.test(id||''))return;
+    OW.banId=id;OW.banName=name||'';OW.banMsg='';
+    currentCat='friends';searchQuery='';
+    if(searchInput)searchInput.value='';
+    if(menuOpen)render();else showMenu();
+    W.setTimeout(function(){try{var i=D.getElementById('tow-reason');if(i)i.focus();}catch(_){}},60);
+  }
+
+  // ---- Right Shift > Friends > Owner -----------------------------------------------------------
+  var OW_CSS=[
+    '.tcs-owner{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;margin-left:5px;border-radius:4px;vertical-align:-2px;',
+      'color:#061019;background:linear-gradient(135deg,#ffd84a,#ffb020);box-shadow:0 0 6px rgba(255,208,74,.5)}',
+    '.tow-key{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px}',
+    '.tow-key input{flex:1;min-width:120px;height:30px;padding:0 10px;border-radius:8px;border:1px solid rgba(255,208,74,.4);background:rgba(3,7,12,.55);color:#eafaff;font:600 12px system-ui,sans-serif;outline:0}',
+    '.tow-key input:focus{border-color:rgba(255,208,74,.8);box-shadow:0 0 0 3px rgba(255,208,74,.14)}',
+    '.tow-ban{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}',
+    '.tow-ban input{flex:1;min-width:120px;height:28px;padding:0 9px;border-radius:7px;border:1px solid rgba(120,150,175,.28);background:rgba(3,7,12,.55);color:#eafaff;font:600 12px system-ui,sans-serif;outline:0}',
+    '.tow-rows{display:flex;flex-direction:column;gap:4px;margin-top:8px;max-height:200px;overflow-y:auto}',
+    '.tow-row{display:flex;align-items:center;gap:8px;padding:5px 9px;border-radius:8px;background:rgba(3,7,12,.42);color:#dff6ff;font-size:12px}',
+    '.tow-row span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.tow-row em{font-style:normal;font-size:10.5px;color:#9db4c6}'
+  ].join('');
+  function owCss(){
+    if(D.getElementById('thunder-owner-style'))return;
+    var st=D.createElement('style');st.id='thunder-owner-style';st.textContent=OW_CSS;
+    (D.head||D.documentElement).appendChild(st);
+  }
+  SPECIALS.ownertools=function(box){
+    soCss();owCss();
+    var note=el('div','tcs-note'),body=el('div');
+    box.appendChild(note);box.appendChild(body);
+    // not signed in: the key box; signed in: the ban form and the ban list
+    var keyWrap=el('div','tow-key'),keyIn=el('input'),keyB=soBtn('',function(){owEnable(keyIn.value);},true);
+    keyIn.type='password';keyIn.maxLength=200;keyIn.placeholder='Owner key';keyIn.autocomplete='off';
+    soKeepKeys(keyIn,function(){owEnable(keyIn.value);});
+    keyWrap.appendChild(keyIn);keyWrap.appendChild(keyB);
+    var keyMsg=el('div','tcs-note');
+    var banWrap=el('div','tow-ban'),banWho=el('span','tcs-note'),reason=el('input'),banB=soBtn('Ban',function(){owBan(OW.banId,reason.value);reason.value='';},true),banX=soBtn('Clear',function(){OW.banId='';OW.banName='';OW.banMsg='';owChanged();});
+    reason.id='tow-reason';reason.type='text';reason.maxLength=200;reason.placeholder='Reason (they see it)';reason.autocomplete='off';
+    soKeepKeys(reason,function(){owBan(OW.banId,reason.value);reason.value='';});
+    banWrap.appendChild(banWho);banWrap.appendChild(reason);banWrap.appendChild(banB);banWrap.appendChild(banX);
+    var banMsg=el('div','tcs-note'),rows=el('div','tow-rows');
+    [keyWrap,keyMsg,banWrap,banMsg,rows].forEach(function(n){body.appendChild(n);});
+    var ver=-1;
+    function paint(){
+      var owner=owIsOwnerAcct();
+      // hide the whole card for everyone who is not signed in as the owner account
+      var card=box.closest?box.closest('.tcm-card'):null;
+      if(card)card.style.display=owner?'':'none';
+      if(!owner)return;
+      var powers=owHasPowers();
+      note.textContent=powers?'Owner tools are on for this session.':
+        'You are signed in as the owner. Type your owner key to turn on owner tools (ban players, the owner cosmetic). The key is never stored.';
+      keyWrap.style.display=powers?'none':'';
+      keyB.textContent=OW.busy?'Checking\u2026':'Turn on owner tools';
+      keyB.disabled=keyIn.disabled=!!OW.busy;
+      keyMsg.textContent=OW.msg;keyMsg.style.display=OW.msg?'':'none';
+      keyMsg.className='tcs-note'+(OW.msg?(OW.ok?' tcs-ok':' tcs-bad'):'');
+      banWrap.style.display=powers?'':'none';banMsg.style.display=powers&&(OW.banMsg||!OW.banId)?'':'none';
+      banWho.textContent=OW.banId?'Ban '+(OW.banName||'this player')+':':'';
+      banWho.style.display=OW.banId?'':'none';
+      reason.style.display=banB.style.display=banX.style.display=OW.banId?'':'none';
+      banMsg.textContent=OW.banMsg||(powers?'To ban someone, press Ban on their chat or in On Thunder now, then give a reason here.':'');
+      while(rows.firstChild)rows.removeChild(rows.firstChild);
+      if(powers){
+        rows.appendChild(el('div','tcs-sec','Banned'+(OW.bans.length?' \u2022 '+OW.bans.length:'')));
+        if(!OW.bans.length)rows.appendChild(el('div','tcs-note','Nobody is banned.'));
+        OW.bans.forEach(function(b){
+          var r=el('div','tow-row');
+          var t=el('span',null,(b.name||'Player')+'#'+String(b.id||'').slice(0,4));t.title=b.reason||'';
+          r.appendChild(t);
+          r.appendChild(el('em',null,b.reason||''));
+          r.appendChild(soBtn('Unban',function(){owUnban(b.id);}));
+          rows.appendChild(r);
+        });
+      }
+    }
+    addLive(function(){
+      var v=OW.ver+'/'+SO.state+'/'+(SO.me?SO.me.name:'');
+      if(v===ver)return;ver=v;paint();
+    });
+  };
+  var OW_MOD={cat:'friends',id:null,name:'Owner',wide:true,special:'ownertools',
+    desc:'Owner tools for the ThunderGamey_ account: turn them on with your owner key, then ban players from Thunder Friends and wear the owner cosmetic.'};
+  (function(){var i=MODULES.indexOf(SY_MOD);if(i<0)MODULES.push(OW_MOD);else MODULES.splice(i+1,0,OW_MOD);})();
+
+  // for tests and the console
+  TC.owner={state:OW,enable:owEnable,ban:owBan,unban:owUnban,hasPowers:owHasPowers,isOwner:owIsOwnerAcct};
 
   // Title screen: animated Thunder storm background with mouse parallax, and the Thunder logo
   /* -------------------------------------------------------------------------------------------

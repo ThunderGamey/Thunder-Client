@@ -57,13 +57,15 @@
     {id:'emerald',name:'Emerald',bg:[0x0b3322,0x1f7a4d],edge:0x5dffa8,bolt:0xf2fff7,boltEdge:0x5dffa8},
     {id:'galaxy',name:'Galaxy',bg:[0x140b33,0x30186b],edge:0xb388ff,bolt:0xffffff,boltEdge:0xb388ff,extra:'stars'},
     {id:'sunset',name:'Sunset',bg:[0xff8a3d,0x7a2a86],edge:0xffd29e,bolt:0x2a0d33,boltEdge:0xffd29e},
-    {id:'ice',name:'Ice',bg:[0xeaf8ff,0x8fd3ff],edge:0x2563eb,bolt:0x1d4ed8,boltEdge:0xffffff}
+    {id:'ice',name:'Ice',bg:[0xeaf8ff,0x8fd3ff],edge:0x2563eb,bolt:0x1d4ed8,boltEdge:0xffffff},
+    {id:'owner',name:'Owner',bg:[0x1a1205,0x3d2a08],edge:0xffd84a,bolt:0xfff6d0,boltEdge:0xffb020,extra:'stars'}
   ];
   var COS_WINGS=[
     {id:'thunder',name:'Thunder',base:[0x1e5fd0,0x4fd1ff],tip:0xeafcff,gap:0x0b3a7a},
     {id:'angel',name:'Angel',base:[0xffffff,0xe1e8f0],tip:0xffffff,gap:0xaab6c4},
     {id:'dragon',name:'Dragon',base:[0x2a0f38,0x5d1f73],tip:0x9b4dca,gap:0x12051a,membrane:true},
-    {id:'flame',name:'Flame',base:[0xff3d1f,0xffb238],tip:0xfff27a,gap:0xa3200b}
+    {id:'flame',name:'Flame',base:[0xff3d1f,0xffb238],tip:0xfff27a,gap:0xa3200b},
+    {id:'owner',name:'Owner',base:[0xffd84a,0xffb020],tip:0xfff6d0,gap:0x7a5600}
   ];
   function cosFind(list,id){for(var i=0;i<list.length;i++)if(list[i].id===id)return list[i];return null;}
   // a lightning bolt on the 10x16 face of a cape
@@ -326,7 +328,7 @@
   }
   function cosPicker(kind){
     return function(box){
-      var list=kind==='cape'?COS_CAPES:COS_WINGS,key=kind==='cape'?'cosmCape':'cosmWings',grid=el('div','tcm-cos');
+      var list=(kind==='cape'?COS_CAPES:COS_WINGS).filter(function(d){return d.id!=='owner'||owIsOwnerAcct();}),key=kind==='cape'?'cosmCape':'cosmWings',grid=el('div','tcm-cos');
       function pick(id){S[key]=id;save();cosPublish();paint();}
       var none=el('button','tcm-cos-b');none.type='button';none.appendChild(el('span','tcm-cos-none','\u2014'));none.appendChild(el('em',null,'None'));
       none.addEventListener('click',function(){pick('none');});

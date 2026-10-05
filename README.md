@@ -67,7 +67,10 @@ in Right Shift > Utility > Readme.
   talk with the players in a friends' world (hold V, or always on), with voices that come from where
   each player stands; the voices go straight between your games, never through Thunder, and your
   microphone is used only once you choose it. **Thunder Cosmetics** (Right Shift > Cosmetics): free
-  Thunder capes and wings that everyone on Thunder Client sees on you. With **Settings Sync** your
+  Thunder capes and wings that everyone on Thunder Client sees on you. The owner account
+  (**ThunderGamey_**, reserved so nobody else can take the name) shows an owner badge, can ban a
+  player from Thunder Friends with a reason, wears an owner-only cosmetic and can message anyone;
+  owner tools unlock with a private owner key that never leaves the browser. With **Settings Sync** your
   settings follow your
   account: Thunder's settings, HUD layout, key bindings, mouse, sound and chat options, server list
   and server waypoints are the same on every computer you sign in on (shaders and video settings
