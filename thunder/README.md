@@ -218,6 +218,11 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   is kept for the session only. The HUD boxes on the minimap's side start below it, and in the top
   right it moves down while the game shows toasts (advancements, recipes, tutorial hints). The
   minimap is off by default (it reads chunks every frame); the World Map works either way.
+  Underground (blocks over your head) both maps switch to a cave view: a slice at your own height,
+  each column the first block at or below you shaded by depth, with ores (diamond, emerald, gold,
+  redstone, iron, lapis, coal), mob-spawner dungeons, chests, lava, mineshaft rails, mossy cobble
+  and stronghold bricks lit up in their own colour (matched by 1.12 block id, `getStateId`), so it
+  doubles as an ore and structure finder; "Caves underground" in the Minimap settings turns it off.
 - `thunder-waypoints.js` - Waypoints (Utility, on): B (or your own key) adds one where you stand,
   right-click on the World Map adds one there, and dying adds a "Death" point. They show on the
   minimap (at its edge when further away), on the World Map, and in the world as a diamond with the
@@ -267,7 +272,9 @@ Requirements: Node 18+ and the `acorn` parser (`npm install --no-save acorn`).
   back in the game. A pause menu or inventory you opened yourself stays open.
 - `thunder-client.js` - HUD, Right Shift menu, settings, the hooks listed in its header. Fullscreen
   covers the whole page (Eaglercraft asked for its canvas only, which hid the Right Shift menu,
-  maps and HUD editor in fullscreen). Among them: Hand Item Size (scales the real first-person sword/shield through
+  maps and HUD editor in fullscreen). Quick buttons (Utility, on) puts a Friends / Cosmetics /
+  Shaders launcher down the left of the title screen (`GuiMainMenu`) and the pause menu
+  (`GuiIngameMenu`), each opening that section of the Right Shift menu directly. Among them: Hand Item Size (scales the real first-person sword/shield through
   `ItemRenderer.renderItemInFirstPerson` + `renderItemSide`, first-person transforms only),
   Hitboxes (`RenderManager.debugBoundingBox`, kept in sync with F3+B), and a fix for a data-loss
   bug in the base runtime: deleting a world or resource pack also deleted every other world or

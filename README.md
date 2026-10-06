@@ -33,7 +33,7 @@ in Right Shift > Utility > Readme.
   (x2), the time before each line, Auto GG), World Backup (one file with all your singleplayer
   worlds and settings, to keep or move to another computer; Load backup brings them back, and a
   world whose save was cut off by a closed tab is repaired by itself), Minimap and World Map
-  (M), Waypoints (B, or right-click the World Map; shown in the world with the distance; Share sends
+  (M; underground they switch to a cave view of the ores and structures at your height), Waypoints (B, or right-click the World Map; shown in the world with the distance; Share sends
   one to a Thunder Friends friend, who adds it with one click), Shulker Preview, Toggle Sneak, Clear Chat, Password Hider, Show Own Name Tag, Crystal
   Optimizer, Crystal Tap, Modern Swimming (swim and crawl like 1.21.11: sprint underwater to swim
   where you look, through one-block gaps, in singleplayer, Friends worlds and on servers), Offhand Swap (F over a totem in your inventory puts it in your off hand, like
@@ -46,7 +46,8 @@ in Right Shift > Utility > Readme.
   lightning, sparks and a blocky skyline that shift with the mouse, lightning that strikes where
   you click, wind and thunder sounds on the menus only, the THUNDER CLIENT logo and ThunderGamey
   splash texts), Thunder menus
-  everywhere (storm backgrounds, glass lists, Thunder buttons, sliders and text boxes), and **Friends**:
+  everywhere (storm backgrounds, glass lists, Thunder buttons, sliders and text boxes), Friends /
+  Cosmetics / Shaders quick buttons on the title screen and pause menu, and **Friends**:
   open your singleplayer world to friends with a join code (Esc > Open to Friends) and join a
   friend's world from Right Shift > Friends. With Thunder's own relay switched on
   (`thunder-relay/`, set up once in Cloudflare: see NETWORKING.md), codes and games work from any
