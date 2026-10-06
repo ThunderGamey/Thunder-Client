@@ -378,6 +378,7 @@
     {id:'visual',name:'Visual'},
     {id:'utility',name:'Utility'}
   ];
+  var LAUNCH_CATS={};   // Friends/Cosmetics/Shaders: shown in the quick launcher, hidden from the sidebar (filled in the launcher block below)
   var MODULES=[
     {cat:'hud',id:'armor',name:'Armor HUD',desc:'Worn armor as item icons with vanilla durability bars, beside the off-hand slot.',opts:[
       {id:'armorWarn',name:'Low durability pulse'},
@@ -694,7 +695,7 @@
   }
   overlayChecks.push(function(){return menuOpen;});
 
-  function toggleMenu(){if(menuOpen)hideMenu();else showMenu();}
+  function toggleMenu(){if(menuOpen){hideMenu();return;}if(LAUNCH_CATS[currentCat])currentCat='hud';showMenu();}
   function hideMenu(){
     var was=menuOpen;
     if(menuOpen)menuSound(false);
@@ -743,6 +744,7 @@
     side.appendChild(brand);
     var tabs=el('nav');tabs.id='tcm-tabs';
     CATEGORIES.forEach(function(c){
+      if(LAUNCH_CATS[c.id])return;                    // Friends/Cosmetics/Shaders live in the quick launcher, not the sidebar
       var b=el('button','tcm-tab');b.type='button';b.setAttribute('data-cat',c.id);
       b.innerHTML=svg(c.id,16);
       b.appendChild(el('span','tcm-label',c.name));
@@ -1723,6 +1725,7 @@
   }
   TC.openSection=openMenuTo;
   var LAUNCH_ITEMS=[{cat:'friends',name:'Friends'},{cat:'cosmetics',name:'Cosmetics'},{cat:'shaders',name:'Shaders'}];
+  LAUNCH_ITEMS.forEach(function(it){LAUNCH_CATS[it.cat]=1;});   // these categories are hidden from the Right Shift sidebar (buildMenu) and reset in toggleMenu
   var LAUNCH_CSS=[
     '#thunder-launch{position:fixed;left:16px;top:50%;transform:translateY(-50%);z-index:1600;display:none;',
       'flex-direction:column;gap:9px;font:600 13px/1.2 "Segoe UI",system-ui,sans-serif;pointer-events:none}',
