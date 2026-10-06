@@ -307,6 +307,8 @@
     // thunder-qol.js
     toggleSneak:false,clearChat:false,hidePasswords:true,ownName:false,crystalOpt:true,xpClumps:true,
     fastXp:false,menuSfx:true,modernSwim:true,
+    // thunder-client.js: Friends/Cosmetics/Shaders quick buttons on the title screen and pause menu
+    quickLaunch:true,
     // thunder-minimap.js: minimap (size in px, zoom in px per block, 0 top right / 1 top left)
     // minimap off by default for the best FPS (it reads chunks every frame)
     minimap:false,minimapSize:130,minimapZoom:2,minimapCorner:0,minimapRound:false,minimapCoords:true,minimapCaves:true,worldMap:true,
@@ -1708,6 +1710,58 @@
     var cv=D.querySelector&&D.querySelector('canvas._eaglercraftX_canvas_element');
     if(cv){fsWholePage(cv);fsCanvas=cv;}
   });
+
+  // ---- Quick launcher: Friends, Cosmetics and Shaders on the title screen and pause menu -------
+  // The panels you use most, one click away instead of digging through the Right Shift menu. Each
+  // button opens that section of the menu. It is a page overlay (like the menu itself), shown over
+  // the game's own title and pause screens, and only there. Turn it off with "Quick buttons" in
+  // Utility.
+  function openMenuTo(cat){
+    currentCat=cat;searchQuery='';
+    if(searchInput)searchInput.value='';
+    if(menuOpen)render();else showMenu();
+  }
+  TC.openSection=openMenuTo;
+  var LAUNCH_ITEMS=[{cat:'friends',name:'Friends'},{cat:'cosmetics',name:'Cosmetics'},{cat:'shaders',name:'Shaders'}];
+  var LAUNCH_CSS=[
+    '#thunder-launch{position:fixed;left:16px;top:50%;transform:translateY(-50%);z-index:1600;display:none;',
+      'flex-direction:column;gap:9px;font:600 13px/1.2 "Segoe UI",system-ui,sans-serif;pointer-events:none}',
+    '#thunder-launch button{display:flex;align-items:center;gap:10px;width:150px;padding:10px 13px;border-radius:12px;',
+      'cursor:pointer;pointer-events:auto;color:#dff4ff;text-align:left;border:1px solid rgba(79,209,255,.34);',
+      'background:linear-gradient(180deg,rgba(14,22,34,.93),rgba(9,14,22,.96));box-shadow:0 2px 12px rgba(0,0,0,.45)}',
+    '#thunder-launch button{transition:transform .1s ease,border-color .1s ease,box-shadow .1s ease}',
+    '#thunder-launch button:hover{border-color:rgba(79,209,255,.75);transform:translateX(4px);box-shadow:0 0 16px rgba(79,209,255,.3)}',
+    '#thunder-launch button:active{transform:translateX(2px)}',
+    '#thunder-launch svg{color:#5fd7ff;flex:none}'
+  ].join('');
+  var launchBar=null;
+  function buildLauncher(){
+    if(launchBar)return launchBar;
+    if(!D.getElementById('thunder-launch-style')){
+      var st=D.createElement('style');st.id='thunder-launch-style';st.textContent=LAUNCH_CSS;
+      (D.head||D.documentElement).appendChild(st);
+    }
+    launchBar=el('div');launchBar.id='thunder-launch';
+    LAUNCH_ITEMS.forEach(function(it){
+      var b=el('button');b.type='button';b.title='Open '+it.name;
+      b.innerHTML=svg(it.cat,16);b.appendChild(el('span',null,it.name));
+      b.addEventListener('click',function(e){e.stopPropagation();e.preventDefault();openMenuTo(it.cat);});
+      launchBar.appendChild(b);
+    });
+    (D.body||D.documentElement).appendChild(launchBar);
+    return launchBar;
+  }
+  // shown on the game's title screen (Hj) and pause menu (Bxj), hidden while a Thunder overlay is up
+  frameTasks.push(function(){
+    try{
+      var scr=HEN&&HEN.cm;
+      var show=S.quickLaunch!==false&&!!scr&&(scr instanceof Hj||scr instanceof Bxj)&&!overlayOpen();
+      if(!show){if(launchBar&&launchBar.style.display!=='none')launchBar.style.display='none';return;}
+      buildLauncher().style.display='flex';
+    }catch(e){report(e);}
+  });
+  MODULES.push({cat:'utility',id:'quickLaunch',name:'Quick buttons',
+    desc:'Friends, Cosmetics and Shaders buttons on the title screen and the pause menu, so the panels you use most are one click away instead of inside the Right Shift menu.'});
 
   // Start-up: how far the game has got (for the loading screen), and Quick Start
   // @include thunder-boot.js
