@@ -49495,13 +49495,13 @@ c.PK;})();
     hitboxes:false,
     // Shaders (thunder-shaders.js). Off by default; strengths and intensity are percentages.
     // shPreset: 0 LOW, 1 MEDIUM, 2 HIGH, 3 CUSTOM. shBloomRes n = bloom at 1/2^n of the frame.
-    shaders:false,shIntensity:80,shPreset:1,shAuto:true,shTargetFps:30,shPerf:false,
+    shaders:false,shIntensity:85,shPreset:1,shAuto:true,shTargetFps:30,shPerf:false,
     shBloomRes:2,shBloomLevels:4,
-    shBloom:true,shBloomStr:60,shGrade:true,shGradeStr:75,shContrast:true,shContrastStr:35,
-    shVignette:true,shVignetteStr:40,shAmbient:true,shAmbientStr:50,shMotion:false,shMotionStr:35,
+    shBloom:true,shBloomStr:72,shGrade:true,shGradeStr:88,shContrast:true,shContrastStr:55,
+    shVignette:true,shVignetteStr:40,shAmbient:true,shAmbientStr:68,shMotion:false,shMotionStr:35,
     shRays:true,shRaysStr:65,shAtmos:true,shAtmosStr:60,shGlowStr:70,shUnder:true,shUnderStr:70,
     // World shader effects (thunder-world.js): waving plants, water; see-through leaves (Visual)
-    shWave:true,shWaveStr:60,shWater:true,shWaterStr:70,clearLeaves:false,   // see-through leaves cost FPS: off
+    shWave:true,shWaveStr:60,shWater:true,shWaterStr:80,clearLeaves:false,   // see-through leaves cost FPS: off
     newItems:true,           // thunder-items.js: newer items on servers drawn with the 1.21.11 pack's models
     // thunder-hitfx.js: an effect on what you hit (Visual): 0 off, 1 thunder shock, 2 lightning, 3+ particles
     hitEffect:0,hitEffectAmt:1,hitEffectSound:true,
@@ -53598,11 +53598,11 @@ c.PK;})();
   // that would overshoot). needs: 'chain' = blurred bloom levels, 'history' = the previous frame.
   // New effects are added here (see SHADERS.md).
   var SH_EFFECTS=[
-    {id:'bloom',on:'shBloom',str:'shBloomStr',max:1.2,needs:'chain',u:'u_bloom',
+    {id:'bloom',on:'shBloom',str:'shBloomStr',max:1.45,needs:'chain',u:'u_bloom',
       glsl:'c+=texture(u_bloomTex,v_uv).rgb*vec3(1.06,0.98,0.9)*(u_bloom*(1.0-0.4*smoothstep(0.3,0.7,expo(u_expo))));'},
     // Ambient Glow: light spills from bright areas into dark ones, mostly at night (in a bright
     // scene the spill is cut to a third, so daylight does not turn into haze)
-    {id:'ambient',on:'shAmbient',str:'shAmbientStr',max:0.6,needs:'chain',u:'u_amb',
+    {id:'ambient',on:'shAmbient',str:'shAmbientStr',max:0.9,needs:'chain',u:'u_amb',
       glsl:'{vec4 w=texture(u_wideTex,v_uv);'+
         'c+=w.rgb*vec3(1.0,0.92,0.8)*(1.0-clamp(c,0.0,1.0))*(u_amb*1.5*(1.0-0.65*smoothstep(0.08,0.4,expo(u_expo))));'+
         'float l=luma(c),dark=1.0-smoothstep(0.03,0.35,w.a);'+
@@ -53664,7 +53664,7 @@ c.PK;})();
         'c=mix(c,g,u_grade);}'},
     // contrast: S-curve on luminance only, applied by scaling the color (hue and saturation stay),
     // normalized so bright saturated colors cannot clip
-    {id:'contrast',on:'shContrast',str:'shContrastStr',max:0.6,lim:1,u:'u_con',
+    {id:'contrast',on:'shContrast',str:'shContrastStr',max:0.75,lim:1,u:'u_con',
       glsl:'{vec3 x=clamp(c,0.0,1.0);float l=luma(x);vec3 y=x*(l*(3.0-2.0*l));'+
         'y/=max(1.0,max(y.r,max(y.g,y.b)));c=mix(c,y,u_con);}'},
     {id:'vignette',on:'shVignette',str:'shVignetteStr',max:0.55,u:'u_vig',

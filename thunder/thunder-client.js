@@ -283,13 +283,13 @@
     hitboxes:false,
     // Shaders (thunder-shaders.js). Off by default; strengths and intensity are percentages.
     // shPreset: 0 LOW, 1 MEDIUM, 2 HIGH, 3 CUSTOM. shBloomRes n = bloom at 1/2^n of the frame.
-    shaders:false,shIntensity:80,shPreset:1,shAuto:true,shTargetFps:30,shPerf:false,
+    shaders:false,shIntensity:85,shPreset:1,shAuto:true,shTargetFps:30,shPerf:false,
     shBloomRes:2,shBloomLevels:4,
-    shBloom:true,shBloomStr:60,shGrade:true,shGradeStr:75,shContrast:true,shContrastStr:35,
-    shVignette:true,shVignetteStr:40,shAmbient:true,shAmbientStr:50,shMotion:false,shMotionStr:35,
+    shBloom:true,shBloomStr:72,shGrade:true,shGradeStr:88,shContrast:true,shContrastStr:55,
+    shVignette:true,shVignetteStr:40,shAmbient:true,shAmbientStr:68,shMotion:false,shMotionStr:35,
     shRays:true,shRaysStr:65,shAtmos:true,shAtmosStr:60,shGlowStr:70,shUnder:true,shUnderStr:70,
     // World shader effects (thunder-world.js): waving plants, water; see-through leaves (Visual)
-    shWave:true,shWaveStr:60,shWater:true,shWaterStr:70,clearLeaves:false,   // see-through leaves cost FPS: off
+    shWave:true,shWaveStr:60,shWater:true,shWaterStr:80,clearLeaves:false,   // see-through leaves cost FPS: off
     newItems:true,           // thunder-items.js: newer items on servers drawn with the 1.21.11 pack's models
     // thunder-hitfx.js: an effect on what you hit (Visual): 0 off, 1 thunder shock, 2 lightning, 3+ particles
     hitEffect:0,hitEffectAmt:1,hitEffectSound:true,
