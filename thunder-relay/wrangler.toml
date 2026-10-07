@@ -1,11 +1,18 @@
 # Thunder Client relay (Friends): a Cloudflare Worker with one Durable Object per world code, and
 # one more (SOCIAL, social.js) for the friends list, who is online and messages.
 # Deployed from this folder by Cloudflare (Workers & Pages > Create > Import a repository, root
-# directory thunder-relay); the site reaches it through a Service binding RELAY on the Pages
-# project. See thunder/NETWORKING.md.
+# directory thunder-relay). The client reaches it directly at its Worker address; the offline file
+# (Origin "null") is always allowed, and the sites listed in SITES below are too. See
+# thunder/NETWORKING.md.
 name = "thunder-relay"
 main = "relay.js"
 compatibility_date = "2025-09-01"
+
+# Origins allowed to use the relay from a browser, comma-separated (the offline file sends Origin
+# "null" and is always let in). Set here so it survives every deploy. The OWNER_KEY secret is set
+# in the dashboard (Settings > Variables and Secrets) and is never committed.
+[vars]
+SITES = "https://thunderclient.pages.dev"
 
 [[durable_objects.bindings]]
 name = "ROOMS"

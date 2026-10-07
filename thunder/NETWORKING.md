@@ -230,11 +230,13 @@ Set it up once:
    log ends with "root directory not found", the Path is misspelled: fix it under the Worker's
    **Settings** -> **Build**, then start a new build (**Deployments** -> **Retry build**, or any
    push to `main`); a build that already failed stays failed.
-2. Let the website in: the Worker (`thunder-relay`) -> **Settings** -> **Variables and Secrets**
-   -> add `SITES` (type Text) = your site's origin, for example `https://thunderclient.pages.dev`
-   (no trailing slash; list several comma-separated). The offline file needs nothing here - a page
-   opened from a folder sends Origin `null`, which the relay always allows. Save; the Worker
-   redeploys on its own (or **Deployments** -> **Retry**).
+2. Let the website in: `SITES` (which origins may use the relay from a browser) is set in
+   `thunder-relay/wrangler.toml` (`[vars]`) to `https://thunderclient.pages.dev`. To allow more
+   sites, add them there comma-separated and push - it deploys with the Worker and survives every
+   deploy. (Set it in `wrangler.toml`, not the dashboard: a plain-text variable added in the
+   dashboard is wiped by the next `npx wrangler deploy`; dashboard **secrets** like `OWNER_KEY`
+   survive.) The offline file needs nothing - a page opened from a folder sends Origin `null`,
+   which the relay always allows.
 3. Check: open `https://thunder-relay.thundergamey.workers.dev/relay` - it shows
    `{"relay":true,"version":1}`, and `/social` answers `{"social":true,"version":1}`. In the game,
    **Right Shift -> Friends -> Connection test** should say "Thunder relay: works". The same Worker
