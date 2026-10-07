@@ -54977,9 +54977,16 @@ c.PK;})();
     if(W.thunderSite)return String(W.thunderSite);
     return W.__thunderOffline?SITE_HOME:'';
   }
+  // Thunder's own relay and Friends hub are the thunder-relay Worker itself. The game talks to it
+  // directly - /relay and /social on RELAY_HOME - so Friends works without the Pages service
+  // binding: the offline file (Origin "null") is always let in, and the website is let in once its
+  // origin is in the Worker's SITES variable (see thunder/NETWORKING.md). Everything else (/turn)
+  // stays on the site. A website set by hand (siteOverride) routes all of it through that site.
+  var RELAY_HOME='https://thunder-relay.thundergamey.workers.dev/';
   function siteUrl(p){
     try{
-      var b=siteBase(),u=b?new W.URL(p,b):null;
+      var b=(!siteOverride()&&(p==='relay'||p==='social'))?RELAY_HOME:siteBase();
+      var u=b?new W.URL(p,b):null;
       return u&&/^https?:$/.test(u.protocol)?u:null;
     }catch(_){return null;}
   }

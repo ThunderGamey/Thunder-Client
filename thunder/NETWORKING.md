@@ -193,9 +193,11 @@ connection and network address is rate limited (addresses as a hash, in memory o
 The public Eaglercraft relays hand out the join codes, and some networks (school filters,
 extensions) block them; then codes cannot work at all. Some networks and managed laptops also
 block every browser-to-browser connection, TURN included. Thunder's own relay fixes both: it runs
-on the site owner's Cloudflare account (`thunder-relay/`, a Worker with a Durable Object) and is
-reached through the site's own address (`/relay`, forwarded by `functions/relay.js`), so wherever
-the game loads, the relay can be reached too.
+on the site owner's Cloudflare account (`thunder-relay/`, a Worker with a Durable Object). The
+client connects to it directly at its Worker address (baked into `thunder-lan.js` as `RELAY_HOME`,
+`https://thunder-relay.thundergamey.workers.dev/`), so it works without any Pages service binding:
+the offline file (Origin `null`) is always let in, and the website is let in once its origin is in
+the Worker's `SITES` variable.
 
 - **Codes** come from it (6 characters, for example `k7m2qx`; the public relays' codes have 5).
   The public relays stay as the fallback when it is off. A world keeps its code: the first time a
@@ -228,21 +230,22 @@ Set it up once:
    log ends with "root directory not found", the Path is misspelled: fix it under the Worker's
    **Settings** -> **Build**, then start a new build (**Deployments** -> **Retry build**, or any
    push to `main`); a build that already failed stays failed.
-2. **Workers & Pages** -> the Pages project that serves the site (`thunderclient`) -> **Settings**
-   -> **Bindings** -> **Add** -> **Service binding**: variable name `RELAY`, service
-   `thunder-relay`. Save.
-3. **Deployments** -> the latest one -> **Retry deployment** (bindings apply to new deployments;
-   any push to `main` deploys the site again too).
-4. Check: `https://thunderclient.pages.dev/relay` shows `{"relay":true,"version":1}` (before
-   step 2 it shows `"relay":false`). In the game, **Right Shift -> Friends -> Connection test**
-   should say "Thunder relay: works". Thunder Friends comes with it: the same Worker has the
-   friends hub (a second Durable Object, `ThunderSocial`, added by the `v2` migration in
-   `thunder-relay/wrangler.toml` on its next deploy), and `/social` on the site
-   (`functions/social.js`) uses the same `RELAY` binding. `https://thunderclient.pages.dev/social`
-   shows `{"social":true,"version":1}`.
+2. Let the website in: the Worker (`thunder-relay`) -> **Settings** -> **Variables and Secrets**
+   -> add `SITES` (type Text) = your site's origin, for example `https://thunderclient.pages.dev`
+   (no trailing slash; list several comma-separated). The offline file needs nothing here - a page
+   opened from a folder sends Origin `null`, which the relay always allows. Save; the Worker
+   redeploys on its own (or **Deployments** -> **Retry**).
+3. Check: open `https://thunder-relay.thundergamey.workers.dev/relay` - it shows
+   `{"relay":true,"version":1}`, and `/social` answers `{"social":true,"version":1}`. In the game,
+   **Right Shift -> Friends -> Connection test** should say "Thunder relay: works". The same Worker
+   carries Thunder Friends too (a second Durable Object, `ThunderSocial`), so nothing else to set up.
 
-Everyone playing has to reload the page once, so their game knows about the relay (an older copy
-of the page only looks on the public relays and will not find a 6-character code).
+The older way still works if you prefer it: a `RELAY` **Service binding** on the Pages project (the
+client then reaches the relay at the site's own `/relay`, `functions/relay.js`), which needs no
+`SITES`. The direct Worker address is the default now and does not need the binding.
+
+Everyone playing has to reload the page once (or re-open the offline file), so their game uses the
+relay (an older copy only looks on the public relays and will not find a 6-character code).
 
 Cost: the Workers Free plan includes Durable Objects (in 2025: 100,000 requests a day, where 20
 WebSocket messages count as one request, and 13,000 GB-s of running time a day). A code and a
